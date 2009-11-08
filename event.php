@@ -164,6 +164,7 @@
         return false;
       
       $this->Handler = $Handler;
+      $this->Bound = true;
       
       return true;
     }
