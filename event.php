@@ -121,6 +121,18 @@
     }
     // }}}
     
+    // {{{ isBound
+    /**
+     * Check wheter this event is bound to a base
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isBound () {
+      return $this->Bound;
+    }
+    // }}}
+    
     // {{{ unbind
     /**
      * Remove this event from an event-base
@@ -210,6 +222,22 @@
     public function writeEvent () {
       if ($this->Callback !== null)
         call_user_function ($this->Callback, $this, self::EVENT_WRITE);
+    }
+    // }}}
+    
+    
+    // {{{ loopOnce
+    /**
+     * Run the main-loop once
+     * 
+     * @param int $Timeout (optional) Timeout for our own implementation
+     * 
+     * @access public 
+     * @return void
+     **/
+    public function loopOnce ($Timeout = 250) {
+      if (is_object ($this->Handler))
+        $this->Handler->loopOnce ($Timeout);
     }
     // }}}
   }
