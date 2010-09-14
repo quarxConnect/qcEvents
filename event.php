@@ -15,6 +15,7 @@
   class phpEvents_Event {
     const EVENT_READ = 0;
     const EVENT_WRITE = 1;
+    const EVENT_TIMER = 2;
     
     // libEvent-Support
     private $evPtr = null;
@@ -225,6 +226,18 @@
     }
     // }}}
     
+    // {{{ timerEvent
+    /**
+     * Handle a timer-event
+     * 
+     * @access public
+     * @return void
+     **/
+    public function timerEvent () {
+      if ($this->Callback !== null)
+        call_user_function ($this->Callback, $this, self::EVENT_TIMER);
+    }
+    // }}}
     
     // {{{ loopOnce
     /**
@@ -238,6 +251,23 @@
     public function loopOnce ($Timeout = 250) {
       if (is_object ($this->Handler))
         $this->Handler->loopOnce ($Timeout);
+    }
+    // }}}
+    
+    // {{{ forceOnNextIteration
+    /**
+     * Force to raise a given event on next iteration
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function forceOnNextIteration ($Event = self::EVENT_TIMER) {
+      // Check if we have a parent assigned
+      if (!is_object ($this->Handler))
+        return false;
+      
+      // Queue the event on our parent
+      return $this->Handler->queueForNextIteration ($this, $Event);
     }
     // }}}
   }

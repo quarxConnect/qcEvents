@@ -16,14 +16,17 @@
     
     // List of associated events
     private $Events = array ();
+    private $forceEvents = array ();
     
     private $FDs = array ();
     private $readFDs = array ();
     private $writeFDs = array ();
     
     // Loop-Handling
+    private $onLoop = false;
     private $loopBreak = false;
     private $loopExit = false;
+    private $loopContinue = false;
     
     private $loopReadFDs = array ();
     private $loopWriteFDs = array ();
@@ -164,15 +167,47 @@
      * @return void
      **/
     public function loop () {
+      // Remember that we are on loop
+      $this->onLoop = true;
+      $this->loopContinue = true;
+      
       // Handle libEvent-Support
-      if (self::checkLibEvent ())
-        return (event_base_loop ($this->evBase) == 0);
+      if (self::checkLibEvent ()) {
+        $rc = 0;
+        
+        while ($this->loopContinue && ($rc == 0)) {
+          // Reset loop-status
+          $this->loopContinue = false;
+          
+          // Run queued events first
+          $this->runQueuedEvents ();
+          
+          // Enter the loop
+          $rc = event_base_loop ($this->evBase);
+        }
+        
+        $this->onLoop = false;
+        
+        return ($rc == 0);
+      }
       
-      // Reset loop-status
-      $this->loopExit = false;
+      while ($this->loopContinue) {
+        // Reset loop-status
+        $this->loopExit = false;
+        $this->loopContinue = false;
+        
+        // Run queued events first
+        $this->runQueuedEvents ();
+        
+        // Enter the loop
+        while (!($this->loopExit || $this->loopBreak)) {
+          $rc = self::loopOnceInternal (100000);
+        }
+      }
       
-      while (!($this->loopExit || $this->loopBreak))
-        self::loopOnceInternal (100000);
+      $this->onLoop = false;
+      
+      return $rc;
     }
     // }}}
     
@@ -186,11 +221,14 @@
      * @return void
      **/
     public function loopOnce ($Timeout = 250) {
+      // Run queued events first
+      $this->runQueuedEvents ();
+      
       // Handle libEvent-Support
       if (self::checkLibEvent ())
         return (event_base_loop ($this->evBase, EVLOOP_ONCE) == 0);
       
-      self::loopOnceInternal ($Timeout);
+      return self::loopOnceInternal ($Timeout);
     }
     // }}}
     
@@ -211,7 +249,7 @@
       
       // Wait for events
       if (stream_select ($readFDs, $writeFDs, $n, 0, $Timeout) == 0)
-        return;
+        return null;
       
       // Handle the events
       $this->loopBreak = false;
@@ -221,7 +259,7 @@
           $Event->readEvent ();
           
           if ($this->loopBreak)
-            return;
+            return false;
         }
       
       foreach ($writeFDs as $fd)
@@ -229,8 +267,50 @@
           $Event->writeEvent ();
           
           if ($this->loopBreak)
-            return;
+            return false;
         }
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ runQueuedEvents
+    /**
+     * Handle queued events
+     * 
+     * @access private
+     * @return void
+     **/
+    private function runQueuedEvents () {
+      // Check if there are any events pending
+      if (count ($this->forceEvents) == 0)
+        return null;
+      
+      // Run all pending events
+      foreach ($this->forceEvents as $ID=>$Ev) {
+        // Run the event
+        switch ($Ev [1]) {
+          case phpEvents_Event::EVENT_READ:
+            $Ev [0]->readEvent ();
+            break;
+          
+          case phpEvents_Event::EVENT_WRITE:
+            $Ev [0]->writeEvent ();
+            break;
+            
+          case phpEvents_Event::EVENT_TIMER:
+            $Ev [0]->timerEvent ();
+            break;
+        }
+        
+        unset ($this->forceEvents [$ID]);
+        
+        // Check wheter to quit here
+        if ($this->loopBreak)
+          return false;
+      }
+      
+      return true;
     }
     // }}}
     
@@ -261,6 +341,35 @@
         return event_base_loopexit ($this->evBase);
       
       return ($this->loopExit = true);
+    }
+    // }}}
+    
+    // {{{ queueForNextIteration
+    /**
+     * Force to raise an event on our next iteration
+     * 
+     * @param object $Handle
+     * @param enum $Event
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function queueForNextIteration ($Handle, $Event = phpEvents_Event::EVENT_TIMER) {
+      // Check if this event belongs to us
+      if (!$this->haveEvent ($Handle))
+        return false;
+      
+      // Make sure that a main-loop is continued
+      if ($this->onLoop)
+        $this->loopContinue = true;
+      
+      // Queue the event
+      $this->forceEvents [] = array ($Handle, $Event);
+      
+      // Stop the current loop after it was finished
+      $this->loopExit ();
+      
+      return true;
     }
     // }}}
     
