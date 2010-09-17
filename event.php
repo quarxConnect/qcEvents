@@ -1,6 +1,6 @@
 <?PHP
 
-  require_once ("phpEvents/base.php");
+  require_once ('phpEvents/base.php');
   
   /**
    * Event
@@ -45,32 +45,80 @@
     function __construct ($fd, $monitorRead, $monitorWrite, $Callback = null) {
       // Validate our parameters
       if (!($monitorRead || $monitorWrite))
-        throw new Exception ("Nothing to monitor");
+        throw new Exception ('Nothing to monitor');
       
       if (!is_resource ($fd))
-        throw new Exception ("Invalid fd");
+        throw new Exception ('Invalid fd');
       
-      if (!is_callable ($Callback))
-        # throw new Exception ("Invalid callback");
-        $Callback = null;
+      if ($Callback !== null)
+        $this->setCallback ($Callback);
+      
+      if (!$this->setFD ($fd, $monitorRead, $monitorWrite))
+        throw new Exception ('Could not create event');
+    }
+    // }}}
+    
+    // {{{ setFD
+    /**
+     * Set the file-descriptor to monitor
+     * 
+     * @param resource $fd
+     * @param bool $monitorRead (optional) Monitor read-events (default)
+     * @param bool $monitorWrite (optional) Monitor write-events
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setFD ($fd, $monitorRead = true, $monitorWrite = false) {
+      // Cleanup first
+      if ($wasBound = $this->isBound ())
+        $this->unbind ();
+      
+      // Check wheter FD is a valid resource
+      if (!is_resource ($fd))
+        return false;
       
       // Handle libEvent-Support
       if (phpEvents_Base::checkLibEvent ()) {
-        if (!is_resource ($this->evPtr = event_new ()))
-          throw new Exception ("Could not create event");
+        if (!is_resource ($this->evPtr) && !is_resource ($this->evPtr = event_new ()))
+          return false;
         
         $flags = ($monitorRead ? EV_READ : 0) |
                  ($monitorWrite ? EV_WRITE : 0) |
                  EV_PERSIST;
         
-        event_set ($this->evPtr, $fd, $flags, array ($this, "evCallback"), null);
-      }
+        if ($wasBound)
+          $this->bind ();
+        
+        return event_set ($this->evPtr, $fd, $flags, array ($this, 'evCallback'), null);
+      } 
       
-      // Store informations in our object
+      // Store informations in our object   
       $this->fd = $fd;
       $this->monitorRead = $monitorRead;
       $this->monitorWrite = $monitorWrite;
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ setCallback
+    /**
+     * Store a new callback-function
+     * 
+     * @param callback $Callback
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setCallback ($Callback) {
+      // Make sure we don't store crap
+      if (!is_callable ($Callback))
+        return false;
+      
       $this->Callback = $Callback;
+      
+      return true;
     }
     // }}}
     
@@ -134,6 +182,26 @@
     }
     // }}}
     
+    // {{{ bind
+    /**
+     * Add this event to an event-base
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function bind () {
+      // Don't bind twice
+      if ($this->isBound ())
+        return true;
+      
+      // Make sure we have a base assigned
+      if (!is_object ($this->Handler))
+        return false;
+      
+      return ($this->Bound = $this->Handler->addEvent ($this));
+    }
+    // }}}
+    
     // {{{ unbind
     /**
      * Remove this event from an event-base
@@ -169,7 +237,7 @@
      * @access public
      * @return bool
      **/
-    public function setHandler ($Handler) {
+    public function setHandler ($Handler, $markBound = false) {
       if (!($Handler instanceof phpEvents_Base))
         return false;
       
@@ -177,9 +245,23 @@
         return false;
       
       $this->Handler = $Handler;
-      $this->Bound = true;
+      
+      if ($markBound)
+        $this->Bound = true;
       
       return true;
+    }
+    // }}}
+    
+    // {{{ getHandler
+    /**
+     * Retrive handle of the event-base we are assigned to
+     * 
+     * @access public
+     * @return object
+     **/
+    public function getHandler () {
+      return $this->Handler;
     }
     // }}}
     
@@ -196,7 +278,7 @@
       elseif ($event == EV_WRITE)
         $this->writeEvent ();
       else
-        trigger_error ("Unknown Event $event", E_USER_NOTICE);
+        trigger_error ('Unknown Event ' . $event, E_USER_NOTICE);
     }
     // }}}
     

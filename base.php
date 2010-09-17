@@ -31,6 +31,12 @@
     private $loopReadFDs = array ();
     private $loopWriteFDs = array ();
     
+    // Timeouts
+    private $timeoutNext = 0;
+    private $timeoutEvents = array ();
+    private $timeoutSettings = array ();
+    private $timeoutTimer = array ();
+    
     // {{{ __construct
     /**
      * Create a new event-base
@@ -75,9 +81,7 @@
                event_add ($ptr);
       
       // Handle our own implementation
-      } else {
-        $fd = $Event->getFD ();
-        
+      } elseif (is_resource ($fd = $Event->getFD ())) {
         if ($Event->getRead ()) {
           if (!isset ($this->readFDs [$fd]))
             $this->readFDs [$fd] = array ();
@@ -98,7 +102,7 @@
       }
       
       // Register ourself on the event
-      $Event->setHandler ($this);
+      $Event->setHandler ($this, true);
       
       return true;
     }
@@ -118,9 +122,7 @@
       if (($key = array_search ($Event, $this->Events)) === false)
         return true;
       
-      if (!self::checkLibEvent ()) {
-        $fd = $Event->getFD ();
-      
+      if (!self::checkLibEvent () && is_resource ($fd = $Event->getFD ())) {
         if ($Event->getRead ()) {
           if (count ($this->readFDs [$fd]) == 1) {
             unset ($this->readFDs [$fd]);
@@ -248,8 +250,13 @@
       $n = null;
       
       // Wait for events
-      if (stream_select ($readFDs, $writeFDs, $n, 0, $Timeout) == 0)
+      if (@stream_select ($readFDs, $writeFDs, $n, 0, $Timeout) == 0) {
+        pcntl_signal_dispatch ();
+        
         return null;
+      }
+      
+      pcntl_signal_dispatch ();
       
       // Handle the events
       $this->loopBreak = false;
@@ -314,6 +321,52 @@
     }
     // }}}
     
+    // {{{ timerEvent
+    /**
+     * Handler for ALARM-Signals
+     * 
+     * @param int $Signal
+     * 
+     * @access public
+     * @return void
+     **/
+    public function timerEvent ($Signal) {
+      // Make sure its an Alarm
+      if ($Signal != SIGALRM)
+        return;
+      
+      // Make sure we have events
+      if (!isset ($this->timeoutTimer [$this->timeoutNext]))
+        return $this->setTimer ();
+      
+      // Handle the events
+      $Events = $this->timeoutTimer [$this->timeoutNext];
+      unset ($this->timeoutTimer [$this->timeoutNext]);
+      
+      $S = false;
+      
+      foreach ($Events as $Key) {
+        // Run the event
+        $this->timeoutEvents [$Key]->timerEvent ();
+        
+        // Requeue the event
+        if ($this->timeoutSettings [$Key][2]) {
+          $this->timeoutSettings [$Key][0] = $N = time () + $this->timeoutSettings [$Key][1];
+          $this->timeoutTimer [$N][$Key] = $Key;
+          $S = true;
+        
+        // Remove any reference
+        } else
+          unset ($this->timeoutEvents [$Key], $this->timeoutSettings [$Key]);
+      }
+      
+      if ($S)
+        ksort ($this->timeoutTimer, SORT_NUMERIC);
+      
+      return $this->setTimer ();
+    }
+    // }}}
+    
     // {{{ loopBreak
     /**
      * Leave the current loop immediatly
@@ -370,6 +423,84 @@
       $this->loopExit ();
       
       return true;
+    }
+    // }}}
+    
+    // {{{ addTimeout
+    /**
+     * Add create a timer for an event-object
+     * 
+     * @param object $Event The event itself
+     * @param int $Timeout How many seconds to wait
+     * @param bool $Repeat (optional) Keep the timeout
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function addTimeout ($Event, $Timeout, $Repeat = false) {
+      // Register this event as timed event
+      if (($key = array_search ($Event, $this->timeoutEvents)) === false) {
+        $this->timeoutEvents [] = $Event;
+        
+        if (($key = array_search ($Event, $this->timeoutEvents)) === false)
+          return false;
+      
+      // Check the store settings
+      } elseif (($N = $this->timeoutSettings [$key][0]) >= time ()) {
+        unset ($this->timeoutTimer [$N][$key]);
+        
+        if (($N == $this->timeoutNext) && (count ($this->timeoutTimer [$N]) == 0))
+          $this->timeoutNext = 0;
+      }
+      
+      // Calculate
+      $T = time ();
+      $N = $T * $Timeout;
+      
+      // Register the event
+      $this->timeoutSettings [$key] = array ($N, $Timeout, $Repeat);
+      $this->timeoutTimer [$N][$key] = $key;
+      ksort ($this->timeoutTimer, SORT_NUMERIC);
+      
+      // Setup the timer
+      if (($this->timeoutNext < $T) || ($this->timeoutNext > $N)) {
+        $this->timeoutNext = $N;
+        
+        pcntl_signal (SIGALRM, array ($this, 'timerEvent'));
+        pcntl_alarm ($Timeout);
+      }
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ setTimer
+    /**
+     * Make sure that the timer is set to the next timer-event
+     * 
+     * @access private
+     * @return void
+     **/
+    private function setTimer () {
+      // Don't do anything if there are no events
+      if (count ($this->timeoutTimer) == 0)
+        return;
+      
+      // Find next timestamp
+      $T = time ();
+      
+      foreach ($this->timeoutTimer as $Next=>$Keys)
+        if ($Next < $T)
+          unset ($this->timeoutTimer [$Next]);
+        else
+          break;
+      
+      if ($Next < $T)
+        return;
+      
+      // Set the timer
+      $this->timeoutNext = $Next;
+      pcntl_alarm ($Next - $T);
     }
     // }}}
     
