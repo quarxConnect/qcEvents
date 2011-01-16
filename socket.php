@@ -70,6 +70,7 @@
         return true;
       
       $this->closed ();
+      $this->unbind ();
       $this->Online = false;
       @fclose ($this->getFD ());
       

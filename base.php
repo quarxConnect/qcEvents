@@ -138,6 +138,8 @@
           } elseif (($k = array_search ($Event, $this->writeFDs [$fd])) !== false)
             unset ($this->writeFDs [$fd][$k]);
         }
+        
+        unset ($this->FDs [$fd]);
       }
       
       unset ($this->Events [$key]);
