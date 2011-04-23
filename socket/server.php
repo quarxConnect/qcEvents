@@ -7,8 +7,12 @@
     const MODE_TCP = phpEvents_Socket::MODE_TCP;
     const MODE_UDP = phpEvents_Socket::MODE_UDP;
     
+    const READ_UDP_BUFFER = 1500;
+    
+    private $Mode = phpEvents_Socket_Server::MODE_TCP;
+    
     // Internal stored class for connections
-    private $connectionClass = null;
+    private $connectionClass = 'phpEvents_Socket';
     
     // Are we listening at the moment
     private $Online = false;
@@ -32,7 +36,7 @@
       if (($Mode === null) || ($Port === null))
         return;
       
-      // Put ourself into listening-state
+      // Put ourself into listenng-state
       $this->listen ($Mode, $Port, $IP);
     }
     // }}}
@@ -72,10 +76,6 @@
      * @return bool
      **/
     public function listen ($Mode, $Port, $IP = '0.0.0.0', $Backlog = null) {
-      # TODO: Everything except TCP is unimplemented at the moment
-      if ($Mode != self::MODE_TCP)
-        return false;
-      
       // Handle Context
       if ($Backlog !== null)
         # bindto : Bind socket to ipaddr:port
@@ -84,7 +84,16 @@
         $Context = stream_context_create (array ());
       
       // Create the socket
-      if (!is_resource ($Socket = stream_socket_server ('tcp://' . $IP . ':' . $Port, $ErrNo, $ErrStr, STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, $Context)))
+      if ($Mode == self::MODE_UDP) {
+        $Proto = 'udp';
+        $Flags = STREAM_SERVER_BIND;
+      } elseif ($Mode == self::MODE_TCP) {
+        $Proto = 'tcp';
+        $Flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
+      } else
+        return false;
+      
+      if (!is_resource ($Socket = stream_socket_server ($Proto . '://' . $IP . ':' . $Port, $ErrNo, $ErrStr, $Flags, $Context)))
         return false;
       
       // Setup the event-handler
@@ -95,6 +104,8 @@
       }
       
       // Set ourself to online
+      $this->Mode = $Mode;
+      
       return ($this->Online = true);
     }
     // }}}
@@ -107,13 +118,44 @@
      * @return void
      **/
     public function readEvent () {
-      // Accept incoming connection
-      if (!is_resource ($Connection = stream_socket_accept ($this->getFD ())))
+      // Handle UDP-Events
+      if ($this->Mode == self::MODE_UDP) {
+        if (($Data = stream_socket_recvfrom ($fd = $this->getFD (), self::READ_UDP_BUFFER, 0, $Remote)) === false)
+          # TODO: What to do here?
+          return false;
+        
+        // Create a client-handle if there is none yet
+        if (!isset ($this->Clients [$Remote])) {
+          $Client = new $this->connectionClass;
+          
+          // Setup the client
+          $Client->setServer ($this);
+          $Client->setConnection ($fd, $Remote);
+          
+          $this->Clients [$Remote] = $Client;
+        } else
+          $Client = $this->Clients [$Remote];
+        
+        // Forward the data to the client
+        $Client->readUDPServer ($Data);
+        
+        # TODO: Add a timeout to destroy UDP-Clients?
+        
+        return;
+      
+      // Handle TCP-Events (accept an incoming connection)
+      } elseif ($this->Mode == self::MODE_TCP) {
+        // Accept incoming connection
+        if (!is_resource ($Connection = stream_socket_accept ($this->getFD ())))
+          return false;
+        
+      // This should never happen
+      } else
         return false;
       
-      // Create Client
+      // Create new Client if neccessary
       $Client = new $this->connectionClass;
-      
+        
       // Remember this client here
       # Do we really care?!
       # $this->Clients [] = $Client;

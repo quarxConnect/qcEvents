@@ -98,6 +98,9 @@
       $this->monitorRead = $monitorRead;
       $this->monitorWrite = $monitorWrite;
       
+      if ($wasBound)
+        $this->bind ();
+      
       return true;
     }
     // }}}
