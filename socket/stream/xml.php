@@ -78,7 +78,7 @@
      * @return void
      **/
     public function restartStream () {
-      // Check if there is a root-elemt registered and send it
+      // Check if there is a root-element registered and send it
       if (is_object ($this->rootLocal))
         $this->sendXML ($this->rootLocal);
       
@@ -87,6 +87,7 @@
         return false;
       
       $this->streamStarted = true;
+      $this->rootRemote = null;
       
       // Fire up the callback
       $this->startStream ();
