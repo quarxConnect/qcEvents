@@ -107,7 +107,7 @@
             $this->requestURI = trim ($Line);
             $this->haveRequestLine = true;
             
-            if (strtotupper (substr ($this->requestProtocol, 0, 5)) != 'HTTP/')
+            if (strtoupper (substr ($this->requestProtocol, 0, 5)) != 'HTTP/')
               $this->requestProtocol = 'HTTP/1.1';
             
           // Parse additional headers
@@ -152,6 +152,9 @@
       
       // Increase the request-counter
       $this->Requests++;
+      
+      // Make sure not to disconnect an active connection
+      $this->lastRequest = time () +  $this->keepAlive * 2;
       
       // Inherit to our handler
       if ($this->processRequest ($this->requestURI) !== self::REQUEST_DELAY)
