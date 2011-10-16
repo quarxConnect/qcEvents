@@ -26,8 +26,12 @@
     
     private $Buffer = '';
     private $haveRequestLine = false;
+    private $haveHeaders = false;
     private $expectBody = false;
     private $expectBodyLength = 0;
+    
+    private $Requests = 0;
+    private $maxRequests = 10;
     
     // {{{ reset
     /**
@@ -38,6 +42,8 @@
      **/
     protected function reset () {
       $this->haveRequestLine = false;
+      $this->haveHeaders = false;
+      
       $this->expectBody = false;
       $this->requestHeaders = array ();
       $this->requestBody = null;
@@ -98,16 +104,12 @@
             $this->requestURI = trim ($Line);
             $this->haveRequestLine = true;
             
-            echo 'HTTP-Request STARTED ', $this->requestMethod, ' ', $this->requestURI, ' ', $this->requestProtocol, "\n";
-            
           // Parse additional headers
           } else {
             $Header = substr ($this->getWord ($Line), 0, -1);
             $Value = trim ($Line);
             
             $this->requestHeaders [strtolower ($Header)] = $Value;
-            
-            echo 'HTTP-Request Header ', $Header, ' ', $Value, "\n";
           }
         }
         
@@ -134,7 +136,7 @@
       } elseif ($this->requestMethod == self::METHOD_POST)
         return $this->badRequest ();
       
-      echo 'HTTP-Request DISPATCH', "\n\n";
+      $this->Requests++;
       
       // Inherit to our handler
       if ($this->processRequest ($this->requestURI) !== self::REQUEST_DELAY)
@@ -287,6 +289,9 @@
       
       # TODO: Check Last-Modified and Etag against contentNewer()
       
+      if (($this->requestMethod != self::METHOD_HEAD) && ($this->responseBody !== null) && (substr ($this->responseBody, -1, 1) != "\n"))
+        $this->responseBody .= "\n";
+      
       // Output headers
       $this->writeHeaders ();
       
@@ -298,6 +303,9 @@
         $this->disconnect ();
       else
         $this->reset ();
+      
+      if (strlen ($this->Buffer) > 0)
+        $this->forceOnNextIteration (self::EVENT_READ);
       
       return true;
     }
@@ -316,8 +324,6 @@
         return false;
       
       $this->headersSent = true;
-      
-      echo "\n";
       
       // Write out the status-line
       $this->write ($this->requestProtocol . ' ' . $this->responseCode . "\n");
@@ -340,10 +346,12 @@
       
       if ($this->closeConnection ())
         $this->write ('Connection: close' . "\n");
-      else
+      else {
         $this->write ('Connection: Keep-Alive' . "\n");
-      
-      # Keep-Alive: timeout=2, max=10
+        
+        # TODO:
+        $this->write ('Keep-Alive: timeout=2, max=' . ($this->maxRequests - $this->Requests) . "\n");
+      }
       
       foreach ($this->responseHeaders as $Name=>$Value)
         $this->write ($Name . ': ' . $Value . "\n");
@@ -351,11 +359,6 @@
       $this->write ("\n");
     }
     // }}}
-    
-    public function write ($x) {
-      echo '< ', trim ($x), "\n";
-      return parent::write ($x);
-    }
     
     // {{{ closeConnection
     /**
@@ -365,13 +368,15 @@
      * @return bool
      **/
     protected function closeConnection () {
-      return true;
       return (
         // Check if the client forces us to close the connection
         (isset ($this->requestHeaders ['connection']) && ($this->requestHeaders ['connection'] == 'close')) ||
         
         // Check if we can not determine the length of our response
-        ($this->responseBody === null)
+        ($this->responseBody === null) ||
+        
+        // Check if max requests per class are reached
+        ($this->Requests == $this->maxRequests)
       );
     }
     // }}}
