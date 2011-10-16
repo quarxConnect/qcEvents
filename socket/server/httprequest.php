@@ -14,7 +14,7 @@
     
     private $requestMethod = phpEvents_Socket_Server_HTTPRequest::METHOD_GET;
     private $requestURI = '';
-    private $requestProtocol = 'HTTP/0.9';
+    private $requestProtocol = 'HTTP/1.1';
     private $requestHeaders = array ();
     private $requestBody = null;
     
@@ -30,8 +30,11 @@
     private $expectBody = false;
     private $expectBodyLength = 0;
     
+    // Persistent Connection (Keep-Alive) settings
     private $Requests = 0;
     private $maxRequests = 10;
+    private $keepAlive = 2;
+    private $lastRequest = 0;
     
     // {{{ reset
     /**
@@ -104,6 +107,9 @@
             $this->requestURI = trim ($Line);
             $this->haveRequestLine = true;
             
+            if (strtotupper (substr ($this->requestProtocol, 0, 5)) != 'HTTP/')
+              $this->requestProtocol = 'HTTP/1.1';
+            
           // Parse additional headers
           } else {
             $Header = substr ($this->getWord ($Line), 0, -1);
@@ -136,6 +142,15 @@
       } elseif ($this->requestMethod == self::METHOD_POST)
         return $this->badRequest ();
       
+      // Check for a valid Request-Method
+      if ((($this->requestMethod != self::METHOD_GET) &&
+           ($this->requestMethod != self::METHOD_POST) &&
+           ($this->requestMethod != self::METHOD_HEAD) &&
+           ($this->requestMethod != self::METHOD_OPTIONS)) ||
+          !$this->haveRequestLine)
+        return $this->badRequest ();
+      
+      // Increase the request-counter
       $this->Requests++;
       
       // Inherit to our handler
@@ -348,15 +363,33 @@
         $this->write ('Connection: close' . "\n");
       else {
         $this->write ('Connection: Keep-Alive' . "\n");
+        $this->write ('Keep-Alive: timeout=' . $this->keepAlive . ', max=' . ($this->maxRequests - $this->Requests) . "\n");
         
-        # TODO:
-        $this->write ('Keep-Alive: timeout=2, max=' . ($this->maxRequests - $this->Requests) . "\n");
+        $this->addTimeout ($this->keepAlive, false, array ($this, 'checkKeepAlive'));
+        $this->lastRequest = time ();
       }
       
       foreach ($this->responseHeaders as $Name=>$Value)
         $this->write ($Name . ': ' . $Value . "\n");
       
       $this->write ("\n");
+    }
+    // }}}
+    
+    // {{{ checkKeepAlive
+    /**
+     * Check wheter to close a persistent connection
+     * 
+     * @access public
+     * @return void
+     **/
+    public function checkKeepAlive () {
+      // Check if the timeout was really reached or requeue
+      if (time () - $this->lastRequest < $this->keepAlive)
+        return $this->addTimeout ($this->keepAlive - (time () - $this->lastRequest), false, array ($this, 'checkKeepAlive'));
+      
+      // Close the connection if the timeout was reached
+      $this->disconnect ();
     }
     // }}}
     

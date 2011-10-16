@@ -349,7 +349,10 @@
       
       foreach ($Events as $Key) {
         // Run the event
-        $this->timeoutEvents [$Key]->timerEvent ();
+        if ($this->timeoutSettings [$Key][3] !== null)
+          call_user_func ($this->timeoutSettings [$Key][3]);
+        else
+          $this->timeoutEvents [$Key]->timerEvent ();
         
         // Requeue the event
         if ($this->timeoutSettings [$Key][2]) {
@@ -435,11 +438,12 @@
      * @param object $Event The event itself
      * @param int $Timeout How many seconds to wait
      * @param bool $Repeat (optional) Keep the timeout
+     * @param callback $Callback (optional) Use this function as Callback
      * 
      * @access public
      * @return bool
      **/
-    public function addTimeout ($Event, $Timeout, $Repeat = false) {
+    public function addTimeout ($Event, $Timeout, $Repeat = false, $Callback = null) {
       // Register this event as timed event
       if (($key = array_search ($Event, $this->timeoutEvents)) === false) {
         $this->timeoutEvents [] = $Event;
@@ -460,7 +464,10 @@
       $N = $T * $Timeout;
       
       // Register the event
-      $this->timeoutSettings [$key] = array ($N, $Timeout, $Repeat);
+      if (($Callback !== null) && !is_callable ($Callback))
+        $Callback = null;
+      
+      $this->timeoutSettings [$key] = array ($N, $Timeout, $Repeat, $Callback);
       $this->timeoutTimer [$N][$key] = $key;
       ksort ($this->timeoutTimer, SORT_NUMERIC);
       
@@ -515,11 +522,11 @@
      **/
     public static function checkLibEvent () {
       // Check if a previous result was cached
-      if (!defined ("PHPEVENT_LIBEVENT")) {
-        if (function_exists ("event_set"))
-          define ("PHPEVENT_LIBEVENT", true);
+      if (!defined ('PHPEVENT_LIBEVENT')) {
+        if (function_exists ('event_set'))
+          define ('PHPEVENT_LIBEVENT', true);
         else
-          define ("PHPEVENT_LIBEVENT", false);
+          define ('PHPEVENT_LIBEVENT', false);
       }
       
       // Return the cached result

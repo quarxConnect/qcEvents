@@ -355,6 +355,25 @@
       return $this->Handler->queueForNextIteration ($this, $Event);
     }
     // }}}
+    
+    // {{{ setTimeout
+    /**
+     * Add create a timeout for this event-object
+     * 
+     * @param int $Timeout How many seconds to wait
+     * @param bool $Repeat (optional) Keep the timeout
+     * @param callback $Callback (optional) Use this function as Callback
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function addTimeout ($Timeout, $Repeat = false, $Callback = null) {
+      if (!is_object ($H = $this->getHandler ()))
+        return false;
+      
+      return $H->addTimeout ($this, $Timeout, $Repeat, $Callback);
+    }
+    // }}}
   }
 
 ?>
