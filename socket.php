@@ -1,8 +1,20 @@
 <?PHP
 
-  require_once ('phpEvents/event.php');
+  require_once ('qcEvents/event.php');
   
-  class phpEvents_Socket extends phpEvents_Event {
+  /**
+   * Event-Socket
+   * ------------
+   * Socket based Event-Handler
+   * 
+   * @class qcEvents_Base
+   * @package qcEvents
+   * @revision 01
+   * @author Bernd Holzmueller <bernd@quarxconnect.de>
+   * @license http://creativecommons.org/licenses/by-sa/3.0/de/ Creative
+   * Commons Attribution-Share Alike 3.0 Germany
+   **/
+  class qcEvents_Socket extends qcEvents_Event {
     const MODE_TCP = 0;
     const MODE_UDP = 1;
     

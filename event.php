@@ -1,18 +1,19 @@
 <?PHP
 
-  require_once ('phpEvents/base.php');
+  require_once ('qcEvents/base.php');
   
   /**
    * Event
    * -----
    * Event-object
    * 
-   * @class phpEvents_Event
-   * @package phpEvent
+   * @class qcEvents_Event
+   * @package qcEvents
    * @revision 01   
-   * @author Bernd Holzmueller <bernd@tiggerswelt.net>
+   * @author Bernd Holzmueller <bernd@quarxconnect.de>
+   * @license http://creativecommons.org/licenses/by-sa/3.0/de/ Creative Commons Attribution-Share Alike 3.0 Germany
    **/
-  class phpEvents_Event {
+  class qcEvents_Event {
     const EVENT_READ = 0;
     const EVENT_WRITE = 1;
     const EVENT_TIMER = 2;
@@ -79,7 +80,7 @@
         return false;
       
       // Handle libEvent-Support
-      if (phpEvents_Base::checkLibEvent ()) {
+      if (qcEvents_Base::checkLibEvent ()) {
         if (!is_resource ($this->evPtr) && !is_resource ($this->evPtr = event_new ()))
           return false;
         
@@ -218,7 +219,7 @@
         return true;
       
       // Handle libEvent-Support
-      if (phpEvents_Base::checkLibEvent () && !event_del ($this->evPtr))
+      if (qcEvents_Base::checkLibEvent () && !event_del ($this->evPtr))
         return false;
       
       // Now really unbind
@@ -241,7 +242,7 @@
      * @return bool
      **/
     public function setHandler ($Handler, $markBound = false) {
-      if (!($Handler instanceof phpEvents_Base))
+      if (!($Handler instanceof qcEvents_Base))
         return false;
       
       if (!$Handler->haveEvent ($this))

@@ -1,9 +1,20 @@
 <?PHP
 
-  require_once ('phpEvents/socket.php');
-  require_once ('phpEvents/socket/stream/xml/tag.php');
+  require_once ('qcEvents/socket.php');
+  require_once ('qcEvents/socket/stream/xml/tag.php');
   
-  class phpEvents_Socket_Stream_XML extends phpEvents_Socket {
+  /**
+   * XML-Stream
+   * ----------
+   * Simple XML-Stream-Handler
+   * 
+   * @class qcEvents_Socket_Stream_XML
+   * @package qcEvents
+   * @revision 01
+   * @author Bernd Holzmueller <bernd@quarxconnect.de>
+   * @license http://creativecommons.org/licenses/by-sa/3.0/de/ Creative Commons Attribution-Share Alike 3.0 Germany
+   **/
+  class qcEvents_Socket_Stream_XML extends qcEvents_Socket {
     private $tagBuffer = null;
     private $tagRoot = null;
     private $tagCurrent = null;
@@ -104,7 +115,7 @@
      * @return bool
      **/
     public function setRootTag ($Tag) {
-      if (!($Tag instanceof phpEvents_Socket_Stream_XML_Tag))
+      if (!($Tag instanceof qcEvents_Socket_Stream_XML_Tag))
         return false;
       
       if ($this->isOnline ())
@@ -392,7 +403,7 @@
       $Candidates = array ();
       
       foreach ($Classes as $Class)
-        if (is_subclass_of ($Class, 'phpEvents_Socket_Stream_XML_Tag') &&
+        if (is_subclass_of ($Class, 'qcEvents_Socket_Stream_XML_Tag') &&
             defined ($Class . '::TAG_NAME') &&
             (constant ($Class . '::TAG_NAME') == $Name))
           $Candidates [] = $Class;
@@ -406,8 +417,8 @@
         if (defined ($cls . '::DEFAULT_XML_TAG'))
           $Class = constant ($cls . '::DEFAULT_XML_TAG');
         
-        if (!is_subclass_of ($Class, 'phpEvents_Socket_Stream_XML_Tag'))
-          $Class = 'phpEvents_Socket_Stream_XML_Tag';
+        if (!is_subclass_of ($Class, 'qcEvents_Socket_Stream_XML_Tag'))
+          $Class = 'qcEvents_Socket_Stream_XML_Tag';
       }
       
       echo 'Creating ', $Class, ' for ', $Name, "\n";
@@ -530,11 +541,11 @@
       
       // Check wheter to auto-create an event-handler
       if (!$this->isBound ()) {
-        trigger_error ('This XML_Stream is not bound to a phpEvents_Base, auto-creating one');
+        trigger_error ('This XML_Stream is not bound to a qcEvents_Base, auto-creating one');
         
-        require_once ('phpEvents/base.php');
+        require_once ('qcEvents/base.php');
         
-        $Base = new phpEvents_Base;
+        $Base = new qcEvents_Base;
         $Base->addEvent ($this);
       }
       
@@ -603,7 +614,7 @@
     public function toXML ($Data) {
       // Verify data-integry
       if (is_object ($Data)) {
-        if ($Data instanceof phpEvents_Socket_Stream_XML_Tag)
+        if ($Data instanceof qcEvents_Socket_Stream_XML_Tag)
           return $Data->toString ();
         
         $Data = (array)$Data;

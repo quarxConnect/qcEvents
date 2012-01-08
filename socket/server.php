@@ -1,18 +1,29 @@
 <?PHP
 
-  require_once ('phpEvents/event.php');
-  require_once ('phpEvents/socket.php');
+  require_once ('qcEvents/event.php');
+  require_once ('qcEvents/socket.php');
   
-  class phpEvents_Socket_Server extends phpEvents_Event {
-    const MODE_TCP = phpEvents_Socket::MODE_TCP;
-    const MODE_UDP = phpEvents_Socket::MODE_UDP;
+  /**
+   * Server-Socket
+   * -------------
+   * Event-based Server-Sockets
+   * 
+   * @class qcEvents_Socket_Server
+   * @package qcEvents
+   * @revision 01
+   * @author Bernd Holzmueller <bernd@quarxconnect.de>
+   * @license http://creativecommons.org/licenses/by-sa/3.0/de/ Creative Commons Attribution-Share Alike 3.0 Germany
+   **/
+  class qcEvents_Socket_Server extends qcEvents_Event {
+    const MODE_TCP = qcEvents_Socket::MODE_TCP;
+    const MODE_UDP = qcEvents_Socket::MODE_UDP;
     
     const READ_UDP_BUFFER = 1500;
     
-    private $Mode = phpEvents_Socket_Server::MODE_TCP;
+    private $Mode = qcEvents_Socket_Server::MODE_TCP;
     
     // Internal stored class for connections
-    private $connectionClass = 'phpEvents_Socket';
+    private $connectionClass = 'qcEvents_Socket';
     
     // Are we listening at the moment
     private $Online = false;
@@ -52,8 +63,8 @@
      **/
     public function setClass ($Classname) {
       // Verify the class
-      if (($Classname == 'phpEvents_Socket') ||
-          !is_subclass_of ($Classname, 'phpEvents_Socket'))
+      if (($Classname == 'qcEvents_Socket') ||
+          !is_subclass_of ($Classname, 'qcEvents_Socket'))
         return false;
       
       // Set the class

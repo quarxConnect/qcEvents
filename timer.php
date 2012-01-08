@@ -1,18 +1,19 @@
 <?PHP
 
-  require_once ('phpEvents/event.php');
+  require_once ('qcEvents/event.php');
   
   /**
    * Timer Event
    * -----------
    * Event-Object for timed tasks
    * 
-   * @class phpEvents_Timer
-   * @package phpEvents
+   * @class qcEvents_Timer
+   * @package qcEvents
    * @revision 01
-   * @author Bernd Holzmueller <bernd@tiggerswelt.net>
+   * @author Bernd Holzmueller <bernd@quarxconnect.de>
+   * @license http://creativecommons.org/licenses/by-sa/3.0/de/ Creative Commons Attribution-Share Alike 3.0 Germany
    **/
-  class phpEvents_Timer extends phpEvents_Event {
+  class qcEvents_Timer extends qcEvents_Event {
     private $Timeout = 0;
     private $Repeat = false;
     

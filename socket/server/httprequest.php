@@ -1,8 +1,19 @@
 <?PHP
 
-  require_once ('phpEvents/socket.php');
+  require_once ('qcEvents/socket.php');
   
-  class phpEvents_Socket_Server_HTTPRequest extends phpEvents_Socket {
+  /**
+   * HTTP-Server
+   * -----------
+   * HTTP-Request Handler (server)
+   * 
+   * @class qcEvents_Socket_Server_HTTPRequest
+   * @package qcEvents
+   * @revision 01
+   * @author Bernd Holzmueller <bernd@quarxconnect.de>
+   * @license http://creativecommons.org/licenses/by-sa/3.0/de/ Creative Commons Attribution-Share Alike 3.0 Germany
+   **/
+  class qcEvents_Socket_Server_HTTPRequest extends qcEvents_Socket {
     const METHOD_GET = 'GET';
     const METHOD_POST = 'POST';
     const METHOD_HEAD = 'HEAD';
@@ -12,7 +23,7 @@
     const REQUEST_ERROR = 500;
     const REQUEST_DELAY = 99;
     
-    private $requestMethod = phpEvents_Socket_Server_HTTPRequest::METHOD_GET;
+    private $requestMethod = qcEvents_Socket_Server_HTTPRequest::METHOD_GET;
     private $requestURI = '';
     private $requestProtocol = 'HTTP/1.1';
     private $requestHeaders = array ();
@@ -354,7 +365,7 @@
       // Server, User-Agent, WWW-Authenticate
       
       if (!isset ($this->responseHeaders ['Server']))
-        $this->write ('Server: tiggersWelt.net phpEvents/HTTPd' . "\n");
+        $this->write ('Server: tiggersWelt.net qcEvents/HTTPd' . "\n");
       
       if (!isset ($this->responseHeaders ['Date']))
         $this->write ('Date: ' . date ('r') . "\n");

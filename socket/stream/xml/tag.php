@@ -2,11 +2,16 @@
 
   /**
    * XML Tag
+   * -------
+   * Single XML-Object from XML-Streams
    *
-   * @package phpEvents
-   * @class phpEvents_Socket_Stream_XML_Tag
+   * @package qcEvents
+   * @class qcEvents_Socket_Stream_XML_Tag
+   * @revision 01
+   * @author Bernd Holzmueller <bernd@quarxconnect.de>
+   * @license http://creativecommons.org/licenses/by-sa/3.0/de/ Creative Commons Attribution-Share Alike 3.0 Germany
    **/
-  class phpEvents_Socket_Stream_XML_Tag {
+  class qcEvents_Socket_Stream_XML_Tag {
     private $_tagName = "";
     private $_tagNamespace = null;
     private $_tagNamespaces = array ();
@@ -307,7 +312,7 @@
      * 
      * @access public
      * @return string
-     * @see phpEvents_Socket_Stream_XML_Tag::toString ()
+     * @see qcEvents_Socket_Stream_XML_Tag::toString ()
      **/
     #public function __toString () {
     #  return $this->toString ();
@@ -399,7 +404,7 @@
      **/
     public function setParent ($Handle) {
       // Check if new parent is of the right type
-      if (!($Handle instanceof phpEvents_Socket_Stream_XML_Tag))
+      if (!($Handle instanceof qcEvents_Socket_Stream_XML_Tag))
         return false;
       
       // Remove ourself from old parent
@@ -583,7 +588,7 @@
      **/
     public function removeSubtag ($Tag) {
       // Check type of input
-      if (!($Tag instanceof phpEvents_Socket_Stream_XML_Tag))
+      if (!($Tag instanceof qcEvents_Socket_Stream_XML_Tag))
         return false;
       
       // Retrive name of tag

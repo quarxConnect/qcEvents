@@ -5,12 +5,13 @@
    * ----------
    * Main-Interface to our event-handler
    * 
-   * @class phpEvents_Base
-   * @package phpEvent
+   * @class qcEvents_Base
+   * @package qcEvents
    * @revision 01
-   * @author Bernd Holzmueller <bernd@tiggerswelt.net>
+   * @author Bernd Holzmueller <bernd@quarxconnect.de>
+   * @license http://creativecommons.org/licenses/by-sa/3.0/de/ Creative Commons Attribution-Share Alike 3.0 Germany
    **/
-  class phpEvents_Base {
+  class qcEvents_Base {
     // libEvent-Support
     private $evBase = null;
     
@@ -299,15 +300,15 @@
       foreach ($this->forceEvents as $ID=>$Ev) {
         // Run the event
         switch ($Ev [1]) {
-          case phpEvents_Event::EVENT_READ:
+          case qcEvents_Event::EVENT_READ:
             $Ev [0]->readEvent ();
             break;
           
-          case phpEvents_Event::EVENT_WRITE:
+          case qcEvents_Event::EVENT_WRITE:
             $Ev [0]->writeEvent ();
             break;
             
-          case phpEvents_Event::EVENT_TIMER:
+          case qcEvents_Event::EVENT_TIMER:
             $Ev [0]->timerEvent ();
             break;
         }
@@ -412,7 +413,7 @@
      * @access public
      * @return bool
      **/
-    public function queueForNextIteration ($Handle, $Event = phpEvents_Event::EVENT_TIMER) {
+    public function queueForNextIteration ($Handle, $Event = qcEvents_Event::EVENT_TIMER) {
       // Check if this event belongs to us
       if (!$this->haveEvent ($Handle))
         return false;

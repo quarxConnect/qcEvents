@@ -1,12 +1,13 @@
 <?PHP
 
   /**
-   * phpEvents demo-application
+   * qcEvents demo-application
    * --------------------------
    * 
-   * @package phpEvents
+   * @package qcEvents
    * @revision 01
-   * @author Bernd Holzmueller <bernd@tiggerswelt.net>
+   * @author Bernd Holzmueller <bernd@quarxconnect.de>
+   * @license http://creativecommons.org/licenses/by-sa/3.0/de/ Creative Commons Attribution-Share Alike 3.0 Germany
    **/
   
   error_reporting (E_ALL);
@@ -14,14 +15,14 @@
   // Just to be sure
   set_include_path ("../" . PATH_SEPARATOR . get_include_path ());
   
-  // Load the phpEvents-Library
-  require_once ("phpEvents/base.php");
-  require_once ("phpEvents/event.php");
+  // Load the qcEvents-Library
+  require_once ('qcEvents/base.php');
+  require_once ('qcEvents/event.php');
   
   // Create a new event-base
-  $Base = new phpEvents_Base;
+  $Base = new qcEvents_Base;
   
-  class Server_Socket extends phpEvents_Event {
+  class Server_Socket extends qcEvents_Event {
     private $Socket = null;
     
     // {{{ __construct
@@ -58,7 +59,7 @@
   }
   
   // Check our mode
-  if (phpEvents_Base::checkLibEvent ())
+  if (qcEvents_Base::checkLibEvent ())
     print "Running with native libEvent-Support\n";
   else
     print "Running with php-coded Event-Support\n";
