@@ -1,6 +1,6 @@
 <?PHP
 
-  require_once ('qcEvents/base.php');
+  require_once ('qcEvents/Base.php');
   
   /**
    * Event

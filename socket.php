@@ -1,6 +1,6 @@
 <?PHP
 
-  require_once ('qcEvents/event.php');
+  require_once ('qcEvents/Event.php');
   
   /**
    * Event-Socket

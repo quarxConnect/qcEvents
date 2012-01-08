@@ -543,7 +543,7 @@
       if (!$this->isBound ()) {
         trigger_error ('This XML_Stream is not bound to a qcEvents_Base, auto-creating one');
         
-        require_once ('qcEvents/base.php');
+        require_once ('qcEvents/Base.php');
         
         $Base = new qcEvents_Base;
         $Base->addEvent ($this);

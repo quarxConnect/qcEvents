@@ -16,8 +16,8 @@
   set_include_path ("../" . PATH_SEPARATOR . get_include_path ());
   
   // Load the qcEvents-Library
-  require_once ('qcEvents/base.php');
-  require_once ('qcEvents/event.php');
+  require_once ('qcEvents/Base.php');
+  require_once ('qcEvents/Event.php');
   
   // Create a new event-base
   $Base = new qcEvents_Base;
