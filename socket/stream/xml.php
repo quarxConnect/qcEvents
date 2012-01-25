@@ -1,6 +1,6 @@
 <?PHP
 
-  require_once ('qcEvents/socket.php');
+  require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/socket/stream/xml/tag.php');
   
   /**
