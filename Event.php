@@ -295,7 +295,7 @@
      **/
     public function readEvent () {
       if ($this->Callback !== null)
-        call_user_function ($this->Callback, $this, self::EVENT_READ);
+        call_user_func ($this->Callback, $this, self::EVENT_READ);
     }
     // }}}
     
@@ -308,7 +308,7 @@
      **/
     public function writeEvent () {
       if ($this->Callback !== null)
-        call_user_function ($this->Callback, $this, self::EVENT_WRITE);
+        call_user_func ($this->Callback, $this, self::EVENT_WRITE);
     }
     // }}}
     
@@ -321,7 +321,7 @@
      **/
     public function timerEvent () {
       if ($this->Callback !== null)
-        call_user_function ($this->Callback, $this, self::EVENT_TIMER);
+        call_user_func ($this->Callback, $this, self::EVENT_TIMER);
     }
     // }}}
     
