@@ -70,11 +70,15 @@
      * @return bool
      **/
     public function setOriginator ($O) {
+      // Check if there is already an originator set
       if (($this->Originator !== null) || (strlen ($O) == 0))
         return false;
       
-      # TODO: Validate the new originator
+      // Clean up and validate the receiver
+      if (!($O = self::stripAddress ($O)))
+        return false;
       
+      // Set the receiver
       $this->Originator = $O;
       
       return true;
@@ -91,8 +95,11 @@
      * @return bool
      **/
     public function addReceiver ($R) {
-      # TODO: Validate the recevier
+      // Clean up the receiver
+      if (!($R = self::stripAddress ($R)))
+        return false;
       
+      // Append receiver to our list
       $this->Receivers [] = $R;
       
       return true;
@@ -108,6 +115,95 @@
      **/
     protected function mayReceive () {
       return (($this->Originator !== null) && (count ($this->Receivers) > 0));
+    }
+    // }}}
+    
+    // {{{ stripAddress
+    /**
+     * Retrive a clean e-mail-adress
+     * 
+     * @param string $Address
+     * 
+     * @access public
+     * @return string
+     **/
+    public static function stripAddress ($A) {
+      // Tuncate any whitespaces
+      $A = trim ($A);
+      
+      // Check for leading gt
+      if ($A [0] == '<')
+        $A = substr ($A, 1);
+      
+      // Parse the address
+      $LocalPart = '';
+      $Domain = '';
+      $inQ = false;
+      $onLocal = true;
+      
+      for ($i = 0; $i < strlen ($A); $i++)
+        if ($A [$i] == '"') {
+          // Quoted-string  = DQUOTE *QcontentSMTP DQUOTE
+          // QcontentSMTP   = qtextSMTP / quoted-pairSMTP
+          
+          // Quotes are only allowed in local part
+          if (!$onLocal)
+            break;
+          
+          // Toggle in-quotes
+          $inQ = !$inQ;
+          
+          // Append to output
+          $LocalPart .= $A [$i];
+        
+        } elseif ($A [$i] == '@') {
+          if (!$onLocal)
+            return false;
+          
+          elseif (!$inQ)
+            $onLocal = false;
+          
+          else
+            $LocalPart .= $A [$i];
+          
+        } elseif ($A [$i] == '\\') {
+          // quoted-pairSMTP = %d92 %d32-126
+          if (!$onLocal)
+            break;
+          
+          $N = $A [$i + 1];
+          $C = ord ($N);
+          
+          if (($C < 32) || ($C > 126))
+            return false;
+          
+          $LocalPart .= $A [$i++] . $N;
+        } elseif ($onLocal) {
+          // qtextSMTP = %d32-33 / %d35-91 / %d93-126
+          if ($inQ) {
+            $C = ord ($A [$i]);
+            
+            if (($C < 32) || (($C > 33) && ($C < 35)) || ($C == 92) || ($C > 126))
+              return false;
+          
+          // Dot-string = Atom *("."  Atom)
+          } else {
+            if (($i == 0) && ($A [0] == '.'))
+              return false;
+            
+            $C = ord ($A [$i]);
+            
+            if (($C < 33) || ($C == 34) || (($C > 39) && ($C < 42)) || ($C == 44) || (($C > 57) && ($C < 61)) || ($C == 62) || ($C == 64) || (($C > 90) && ($C < 94)) || ($C > 126))
+              return false;
+              
+          }
+          
+          $LocalPart .= $A [$i];
+          
+        } else
+          $Domain .= $A [$i];
+      
+      return $LocalPart . '@' . $Domain;
     }
     // }}}
     
