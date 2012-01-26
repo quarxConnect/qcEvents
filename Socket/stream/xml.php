@@ -1,7 +1,7 @@
 <?PHP
 
   require_once ('qcEvents/Socket.php');
-  require_once ('qcEvents/socket/stream/xml/tag.php');
+  require_once ('qcEvents/Socket/stream/xml/tag.php');
   
   /**
    * XML-Stream
