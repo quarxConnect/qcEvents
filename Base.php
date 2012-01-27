@@ -32,6 +32,9 @@
     private $loopReadFDs = array ();
     private $loopWriteFDs = array ();
     
+    // Signal-Handling
+    private $handleSignals = null;
+    
     // Timeouts
     private $timeoutNext = 0;
     private $timeoutEvents = array ();
@@ -55,6 +58,8 @@
       } else {
         # TODO?
       }
+      
+      $this->handleSignals = extension_loaded ('pcntl');
     }
     // }}}
     
@@ -254,12 +259,12 @@
       
       // Wait for events
       if (@stream_select ($readFDs, $writeFDs, $n, 0, $Timeout) == 0) {
-        pcntl_signal_dispatch ();
+        $this->signalHandler ();
         
         return null;
       }
       
-      pcntl_signal_dispatch ();
+      $this->signalHandler ();
       
       // Handle the events
       $this->loopBreak = false;
@@ -281,6 +286,19 @@
         }
       
       return true;
+    }
+    // }}}
+    
+    // {{{ signalHandler
+    /**
+     * Handle pending signals
+     * 
+     * @access private
+     * @return void
+     **/
+    private function signalHandler () {
+      if ($this->handleSignals === true)
+        pcntl_signal_dispatch ();
     }
     // }}}
     

@@ -335,7 +335,10 @@
      **/
     public function mwrite () {
       foreach (func_get_args () as $Message)
-        $this->write ($Message);
+        if (!$this->write ($Message))
+          return false;
+      
+      return true;
     }
     // }}}
     
