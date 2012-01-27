@@ -324,6 +324,21 @@
     }
     // }}}
     
+    // {{{ mwrite
+    /**
+     * Write multiple messages to our connection
+     * 
+     * @param string ...
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function mwrite () {
+      foreach (func_get_args () as $Message)
+        $this->write ($Message);
+    }
+    // }}}
+    
     // {{{ close
     /**
      * Just an Alias for disconnect()
