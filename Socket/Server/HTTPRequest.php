@@ -327,6 +327,10 @@
      * @return void
      **/
     public function checkKeepAlive () {
+      // Don't close connection if we are processing right now
+      if ($this->onRequest)
+        return;
+      
       // Check if the timeout was really reached or requeue
       if (time () - $this->lastRequest < $this->keepAlive)
         return $this->addTimeout ($this->keepAlive - (time () - $this->lastRequest), false, array ($this, 'checkKeepAlive'));
