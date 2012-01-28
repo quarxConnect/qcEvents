@@ -73,7 +73,8 @@
         # TODO?
       }
       
-      $this->handleSignals = extension_loaded ('pcntl');
+      if (!($this->handleSignals = extension_loaded ('pcntl')))
+        trigger_error ('No PCNTL Extension found, using manual timer-events', E_USER_WARNING);
     }
     // }}}
     
@@ -311,8 +312,13 @@
      * @return void
      **/
     private function signalHandler () {
+      // Let PCNTL handle the events
       if ($this->handleSignals === true)
-        pcntl_signal_dispatch ();
+        return pcntl_signal_dispatch ();
+      
+      // Do it manual
+      while (($this->timeoutNext > 0) && ($this->timeoutNext <= time ()))
+        $this->timerEvent (SIGALRM);
     }
     // }}}
     
@@ -479,10 +485,6 @@
      * @return bool
      **/
     public function addTimeout ($Event, $Timeout, $Repeat = false, $Callback = null) {
-      // We need PCNTL to handle Timeouts (at the moment)
-      if ($this->handleSignals !== true)
-        return false;
-      
       // Check the callback
       if (($Callback !== null) && !is_callable ($Callback))
         $Callback = null;
@@ -502,8 +504,10 @@
       if (($this->timeoutNext < $T) || ($this->timeoutNext > $N)) {
         $this->timeoutNext = $N;
         
-        pcntl_signal (SIGALRM, array ($this, 'timerEvent'));
-        pcntl_alarm ($Timeout);
+        if ($this->handleSignals) {
+          pcntl_signal (SIGALRM, array ($this, 'timerEvent'));
+          pcntl_alarm ($Timeout);
+        }
       }
       
       return true;
@@ -518,9 +522,8 @@
      * @return void
      **/
     private function setTimer () {
-      // We need PCNTL at the moment to set the timer
-      if ($this->handleSignals !== true)
-        return;
+      // Reset the next timeout
+      $this->timeoutNext = 0;
       
       // Don't do anything if there are no events
       if (count ($this->timeoutEvents) == 0)
@@ -530,7 +533,7 @@
       $T = time ();
       
       foreach ($this->timeoutEvents as $Next=>$Keys)
-        if ($Next < $T)
+        if (($Next < $T) && $this->handleSignals)
           unset ($this->timeoutEvents [$Next]);
         else
           break;
@@ -540,7 +543,9 @@
       
       // Set the timer
       $this->timeoutNext = $Next;
-      pcntl_alarm ($Next - $T);
+      
+      if ($this->handleSignals)
+        pcntl_alarm ($Next - $T);
     }
     // }}}
     
