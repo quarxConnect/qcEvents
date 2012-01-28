@@ -463,6 +463,10 @@
      * @return bool
      **/
     public function addTimeout ($Event, $Timeout, $Repeat = false, $Callback = null) {
+      // We need PCNTL to handle Timeouts (at the moment)
+      if ($this->handleSignals !== true)
+        return false;
+      
       // Register this event as timed event
       if (($key = array_search ($Event, $this->timeoutEvents)) === false) {
         $this->timeoutEvents [] = $Event;
@@ -510,6 +514,10 @@
      * @return void
      **/
     private function setTimer () {
+      // We need PCNTL at the moment to set the timer
+      if ($this->handleSignals !== true)
+        return;
+      
       // Don't do anything if there are no events
       if (count ($this->timeoutTimer) == 0)
         return;

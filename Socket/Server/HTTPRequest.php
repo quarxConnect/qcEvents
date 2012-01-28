@@ -1,6 +1,24 @@
 <?PHP
 
-  require_once ('qcEvents/Socket.php');
+  /**
+   * qcEvents - HTTP-Server Implementation
+   * Copyright (C) 2012 Bernd Holzmueller <bernd@quarxconnect.de>
+   *
+   * This program is free software: you can redistribute it and/or modify
+   * it under the terms of the GNU General Public License as published by
+   * the Free Software Foundation, either version 3 of the License, or
+   * (at your option) any later version.
+   * 
+   * This program is distributed in the hope that it will be useful,
+   * but WITHOUT ANY WARRANTY; without even the implied warranty of
+   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   * GNU General Public License for more details.
+   *
+   * You should have received a copy of the GNU General Public License
+   * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   **/
+  
+  require_once ('qcEvents/Socket/Stream/HTTP.php');
   
   /**
    * HTTP-Server
@@ -9,37 +27,21 @@
    * 
    * @class qcEvents_Socket_Server_HTTPRequest
    * @package qcEvents
-   * @revision 01
-   * @author Bernd Holzmueller <bernd@quarxconnect.de>
-   * @license http://creativecommons.org/licenses/by-sa/3.0/de/ Creative Commons Attribution-Share Alike 3.0 Germany
+   * @revision 02
    **/
-  class qcEvents_Socket_Server_HTTPRequest extends qcEvents_Socket {
-    const METHOD_GET = 'GET';
-    const METHOD_POST = 'POST';
-    const METHOD_HEAD = 'HEAD';
-    const METHOD_OPTIONS= 'OPTIONS';
-    
+  class qcEvents_Socket_Server_HTTPRequest extends qcEvents_Socket_Stream_HTTP {
     const REQUEST_OK = 200;
     const REQUEST_ERROR = 500;
     const REQUEST_DELAY = 99;
     
-    private $requestMethod = qcEvents_Socket_Server_HTTPRequest::METHOD_GET;
-    private $requestURI = '';
-    private $requestProtocol = 'HTTP/1.1';
-    private $requestHeaders = array ();
-    private $requestBody = null;
+    private $Buffer = '';
     
+    private $onRequest = false;
     private $responseCode = 200;
     private $responseHeaders = array ();
     private $responseBody = null;
     private $responseSent = false;
     private $headersSent = false;
-    
-    private $Buffer = '';
-    private $haveRequestLine = false;
-    private $haveHeaders = false;
-    private $expectBody = false;
-    private $expectBodyLength = 0;
     
     // Persistent Connection (Keep-Alive) settings
     private $Requests = 0;
@@ -55,18 +57,14 @@
      * @return void
      **/
     protected function reset () {
-      $this->haveRequestLine = false;
-      $this->haveHeaders = false;
-      
-      $this->expectBody = false;
-      $this->requestHeaders = array ();
-      $this->requestBody = null;
-      
       $this->responseCode = 200;
       $this->responseHeaders = array ();
       $this->responseBody = null;
       $this->responseSent = false;
       $this->headersSent = false;
+      $this->onRequest = false;
+      
+      parent::reset ();
     }
     // }}}
     
@@ -92,74 +90,37 @@
      * @return void
      **/
     protected function receive ($Data) {
-      // Append Data to our internal buffer
-      $this->Buffer .= $Data;
-      
-      if ($this->haveHeaders && !$this->expectBody && !$this->responseSent)
+      // Check if we are processing a request ATM
+      if ($this->onRequest) {
+        $this->Buffer .= $Data;
+        
         return;
-      
-      // Parse headers
-      if (!$this->haveHeaders) {
-        while (($p = strpos ($this->Buffer, "\n")) !== false) {
-          // Peek a line from buffer
-          $Line = trim (substr ($this->Buffer, 0, $p));
-          $this->Buffer = substr ($this->Buffer, $p + 1);
-          
-          // Check for end of headers
-          if ($Line == '') {
-            $this->haveHeaders = true;
-            break;
-          }
-          
-          // Parse request-line
-          if (!$this->haveRequestLine) {
-            $this->requestMethod = strtoupper ($this->getWord ($Line));
-            $this->requestProtocol = $this->getLastWord ($Line);
-            $this->requestURI = trim ($Line);
-            $this->haveRequestLine = true;
-            
-            if (strtoupper (substr ($this->requestProtocol, 0, 5)) != 'HTTP/')
-              $this->requestProtocol = 'HTTP/1.1';
-            
-          // Parse additional headers
-          } else {
-            $Header = substr ($this->getWord ($Line), 0, -1);
-            $Value = trim ($Line);
-            
-            $this->requestHeaders [strtolower ($Header)] = $Value;
-          }
-        }
-        
-        // Abort incomplete request here
-        if (!$this->haveHeaders)
-          return;
-        
-        // Prepare for processing
-        if (isset ($this->requestHeaders ['content-length'])) {
-          $this->expectBody = true;
-          $this->expectBodyLength = intval ($this->requestHeaders ['content-length']);
-        }
+      } elseif (strlen ($this->Buffer) > 0) {
+        $Data = $this->Buffer . $Data;
+        $this->Buffer = '';
       }
       
-      // Check if the body is ready
-      if ($this->expectBody) {
-        if (strlen ($this->Buffer) < $this->expectBodyLength)
-          return;
-        
-        $this->requestBody = substr ($this->Buffer, 0, $this->expectBodyLength);
-        $this->Buffer = ltrim (substr ($this->Buffer, $this->expectBodyLength + 1));
+      // Ask our handler to parse a request
+      if (($rc = $this->bufferRequest ($Data)) === false)
+        return $this->badRequest ('Malformed request');
       
-      // We have to expect a body on POST-requests, otherwise its a bad request
-      } elseif ($this->requestMethod == self::METHOD_POST)
-        return $this->badRequest ();
+      // Check if the request is still incomplete
+      if ($rc === null)
+        return;
       
-      // Check for a valid Request-Method
-      if ((($this->requestMethod != self::METHOD_GET) &&
-           ($this->requestMethod != self::METHOD_POST) &&
-           ($this->requestMethod != self::METHOD_HEAD) &&
-           ($this->requestMethod != self::METHOD_OPTIONS)) ||
-          !$this->haveRequestLine)
-        return $this->badRequest ();
+      $this->onRequest = true;
+      
+      // Retrive the Request-Object
+      if (!is_object ($Request = $this->getRequest ()))
+        return $this->internalError ('Could not retrive final request-object');
+      
+      // Check for a known method
+      if ($Request->getMethod () === null)
+        return $this->badRequest ('Invalid HTTP-Method used');
+      
+      // Check if there is a POST without data
+      if (($Request->expectPayload () || ($Request->getMethod () == qcEvents_Socket_Stream_HTTP_Request::METHOD_POST)) && !$Request->hasPayload ())
+        return $this->badRequest ('Expected payload');
       
       // Increase the request-counter
       $this->Requests++;
@@ -168,52 +129,8 @@
       $this->lastRequest = time () +  $this->keepAlive * 2;
       
       // Inherit to our handler
-      if ($this->processRequest ($this->requestURI) !== self::REQUEST_DELAY)
+      if (($this->processRequest ($Request) !== self::REQUEST_DELAY) && !$this->responseSent)
         $this->writeResponse ();
-    }
-    // }}}
-    
-    // {{{ getWord
-    /**
-     * Retrive a single word and truncate it from input
-     * 
-     * @param string $Data
-     * 
-     * @access private
-     * @return string
-     **/
-    private function getWord (&$Data) {
-      if (($p = strpos ($Data, ' ')) !== false) {
-        $Word = substr ($Data, 0, $p);
-        $Data = trim (substr ($Data, $p + 1));
-      } else {
-        $Word = $Data;
-        $Data = '';
-      }
-      
-      return $Word;
-    }
-    // }}}
-    
-    // {{{ getLastWord
-    /**
-     * Retrive the last single word and truncate it from input
-     * 
-     * @param string $Data
-     * 
-     * @access private
-     * @return string
-     **/
-    private function getLastWord (&$Data) {
-      if (($p = strrpos ($Data, ' ')) !== false) {
-        $Word = substr ($Data, $p + 1);
-        $Data = substr ($Data, 0, $p);
-      } else {
-        $Word = $Data;
-        $Data = '';
-      }
-      
-      return $Word;
     }
     // }}}
     
@@ -225,7 +142,10 @@
      * @return enum
      **/
     public function getRequestMethod () {
-      return $this->requestMethod;
+      if (!is_object ($R = $this->getRequest ()))
+        return false;
+      
+      return $R->getMethod ();
     }
     // }}}
     
@@ -237,7 +157,10 @@
      * @return string
      **/
     public function getRequestBody () {
-      return $this->requestBody;
+      if (!is_object ($R = $this->getRequest ()))
+        return false;
+      
+      return $R->getPayload ();
     }
     // }}}
     
@@ -318,14 +241,19 @@
       
       # TODO: Check Last-Modified and Etag against contentNewer()
       
-      if (($this->requestMethod != self::METHOD_HEAD) && ($this->responseBody !== null) && (substr ($this->responseBody, -1, 1) != "\n"))
+      $Method = null;
+      
+      if (is_object ($Request = $this->getRequest ()) &&
+          (($Method = $Request->getMethod ()) != qcEvents_Socket_Stream_HTTP_Request::METHOD_HEAD) &&
+          ($this->responseBody !== null) &&
+          (substr ($this->responseBody, -1, 1) != "\n"))
         $this->responseBody .= "\n";
       
       // Output headers
       $this->writeHeaders ();
       
       // Output body
-      if (($this->requestMethod != self::METHOD_HEAD) && ($this->responseBody !== null))
+      if (($Method != qcEvents_Socket_Stream_HTTP_Request::METHOD_HEAD) && ($this->responseBody !== null))
         $this->write ($this->responseBody);
       
       if ($this->closeConnection ())
@@ -355,7 +283,8 @@
       $this->headersSent = true;
       
       // Write out the status-line
-      $this->write ($this->requestProtocol . ' ' . $this->responseCode . "\n");
+      # TODO: Append Human readable string
+      $this->write ((is_object ($Request = $this->getRequest ()) ? $Request->getProtocol () : 'HTTP/0.9') . ' ' . $this->responseCode . "\n");
       
       unset ($this->responseHeaders ['Content-Length']);
       
@@ -365,26 +294,26 @@
       // Server, User-Agent, WWW-Authenticate
       
       if (!isset ($this->responseHeaders ['Server']))
-        $this->write ('Server: tiggersWelt.net qcEvents/HTTPd' . "\n");
+        $this->mwrite ('Server: quarxConnect.de qcEvents/HTTPd', "\n");
       
       if (!isset ($this->responseHeaders ['Date']))
-        $this->write ('Date: ' . date ('r') . "\n");
+        $this->mwrite ('Date: ', date ('r'), "\n");
       
       if (($l = strlen ($this->responseBody)) > 0)
-        $this->write ('Content-Length: ' . $l . "\n");
+        $this->mwrite ('Content-Length: ', $l, "\n");
       
-      if ($this->closeConnection ())
-        $this->write ('Connection: close' . "\n");
-      else {
-        $this->write ('Connection: Keep-Alive' . "\n");
-        $this->write ('Keep-Alive: timeout=' . $this->keepAlive . ', max=' . ($this->maxRequests - $this->Requests) . "\n");
+      if ($this->closeConnection () || !$this->addTimeout ($this->keepAlive, false, array ($this, 'checkKeepAlive'))) {
+        $this->mwrite ('Connection: close', "\n");
+        $this->Requests = $this->maxRequests;
+      } else {
+        $this->mwrite ('Connection: Keep-Alive', "\n");
+        $this->mwrite ('Keep-Alive: timeout=', $this->keepAlive, ', max=', ($this->maxRequests - $this->Requests), "\n");
         
-        $this->addTimeout ($this->keepAlive, false, array ($this, 'checkKeepAlive'));
         $this->lastRequest = time ();
       }
       
       foreach ($this->responseHeaders as $Name=>$Value)
-        $this->write ($Name . ': ' . $Value . "\n");
+        $this->mwrite ($Name, ': ', $Value, "\n");
       
       $this->write ("\n");
     }
@@ -415,16 +344,17 @@
      * @return bool
      **/
     protected function closeConnection () {
-      return (
-        // Check if the client forces us to close the connection
-        (isset ($this->requestHeaders ['connection']) && ($this->requestHeaders ['connection'] == 'close')) ||
-        
-        // Check if we can not determine the length of our response
-        ($this->responseBody === null) ||
-        
-        // Check if max requests per class are reached
-        ($this->Requests == $this->maxRequests)
-      );
+      // Check if we can not determine the length of our response
+      // or if max requests per class are reached
+      if (($this->responseBody === null) || ($this->Requests == $this->maxRequests))
+        return true;
+      
+      // Retrive the request-object
+      if (!is_object ($Request = $this->getRequest ()))
+        return false;
+      
+      // Check if the client forces us to close the connection
+      return (($v = $Request->getHeader ('connection')) && ($v == 'close'));
     }
     // }}}
     
@@ -439,16 +369,20 @@
      * @return bool
      **/
     protected function contentNewer ($Date, $Etag = null) {
+      // Retrive the request-object
+      if (!is_object ($Request = $this->getRequest ()))
+        return false;
+      
       $dateMatch = false;
       $etagMatch = false;
       
       // Check the date
-      if (isset ($this->requestHeaders ['if-modified-since']))
-        $dateMatch = ($Date <= strtotime ($this->requestHeaders ['if-modified-since']));
+      if ($v = $Request->getHeader ('if-modified-since'))
+        $dateMatch = ($Date <= strtotime ($v));
       
       // Check the etag
-      if (($Etag !== null) && isset ($this->requestHeaders ['etag']))
-        $etagMatch = ($Etag == $this->requestHeaders ['etag']);
+      if (($Etag !== null) && ($v = $Request->getHeader ('etag')))
+        $etagMatch = ($Etag == $v);
       
       return !($dateMatch || $etagMatch);
     }
@@ -463,9 +397,30 @@
      * @access protected
      * @return enum
      **/
-    protected function badRequest ($Content = '') {
+    protected function badRequest ($Content = '', $Delayed = false) {
       $this->setResponse ($Content, 400);
-      $this->writeResponse ();
+      
+      if ($Delayed)
+        $this->writeResponse ();
+      
+      return self::REQUEST_ERROR;
+    }
+    // }}}
+    
+    // {{{ internalError
+    /**
+     * Indicate an internal server error
+     * 
+     * @param string $Content (optional)
+     * 
+     * @access protected
+     * @return enum
+     **/
+    protected function internalError ($Content = '', $Delayed = false) {
+      $this->setResponse ($Content, 500);
+      
+      if ($this->Delayed)
+        $this->writeResponse ();
       
       return self::REQUEST_ERROR;
     }
@@ -475,12 +430,12 @@
     /**
      * Callback: Incoming request is ready
      * 
-     * @param string $URI
+     * @param object $Request
      * 
      * @access protected
      * @return bool
      **/
-    protected function processRequest ($URI) { }
+    protected function processRequest ($Request) { }
     // }}}
   }
 
