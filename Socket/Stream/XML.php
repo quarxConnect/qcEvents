@@ -19,7 +19,7 @@
     private $tagRoot = null;
     private $tagCurrent = null;
     private $tagNext = null;
-    private $tagDebug = true;
+    private $tagDebug = false;
     private $tagWaiting = null;
     
     private $rootLocal = null;
@@ -271,12 +271,14 @@
             $this->tagCurrent = self::buildTag ($Name);
             $this->tagCurrent->isReady (false);
             
-            if (is_object ($P = $this->tagCurrent->getParent ()))
+            if (is_object ($P = $this->tagCurrent->getParent ()) && $this->tagDebug)
               echo '  - Parent ', $P->getName (), "\n";
           
             if (!is_object ($this->tagRoot) && $this->tagAcceptRoot ($this->tagCurrent)) {
               $this->tagRoot = $this->tagCurrent;
-              echo '  - Using as root', "\n";
+              
+              if ($this->tagDebug)
+                echo '  - Using as root', "\n";
             }
           }
         }
@@ -421,7 +423,8 @@
           $Class = 'qcEvents_Socket_Stream_XML_Tag';
       }
       
-      echo 'Creating ', $Class, ' for ', $Name, "\n";
+      if ($this->tagDebug)
+        echo 'Creating ', $Class, ' for ', $Name, "\n";
       
       return new $Class ($Name, null);
     }

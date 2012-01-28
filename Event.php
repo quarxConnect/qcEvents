@@ -232,6 +232,32 @@
     }
     // }}}
     
+    // {{{ getBase
+    /**
+     * Retrive our base Event-Handler
+     * 
+     * @access public
+     * @return object
+     **/
+    public function getBase () {
+      return $this->getHandler ();
+    }
+    // }}}
+    
+    // {{{ setBase
+    /**
+     * Set our base Event-Handler
+     * 
+     * @param object $Base
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setBase ($Base) {
+      return $Base->addEvent ($this);
+    }
+    // }}}
+    
     // {{{ setHandler
     /**
      * Store handle of our event-base

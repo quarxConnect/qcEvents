@@ -38,8 +38,6 @@
     // Timeouts
     private $timeoutNext = 0;
     private $timeoutEvents = array ();
-    private $timeoutSettings = array ();
-    private $timeoutTimer = array ();
     
     // {{{ __construct
     /**
@@ -357,35 +355,37 @@
         return;
       
       // Make sure we have events
-      if (!isset ($this->timeoutTimer [$this->timeoutNext]))
+      if (!isset ($this->timeoutEvents [$this->timeoutNext]))
         return $this->setTimer ();
       
       // Handle the events
-      $Events = $this->timeoutTimer [$this->timeoutNext];
-      unset ($this->timeoutTimer [$this->timeoutNext]);
+      $Events = $this->timeoutEvents [$this->timeoutNext];
+      unset ($this->timeoutEvents [$this->timeoutNext]);
       
       $S = false;
+      $T = time ();
       
-      foreach ($Events as $Key) {
+      foreach ($Events as $Event) {
         // Run the event
-        if ($this->timeoutSettings [$Key][3] !== null)
-          call_user_func ($this->timeoutSettings [$Key][3]);
+        if ($Event [3] !== null)
+          call_user_func ($Event [3]);
         else
-          $this->timeoutEvents [$Key]->timerEvent ();
+          $Event [0]->timerEvent ();
         
         // Requeue the event
-        if ($this->timeoutSettings [$Key][2]) {
-          $this->timeoutSettings [$Key][0] = $N = time () + $this->timeoutSettings [$Key][1];
-          $this->timeoutTimer [$N][$Key] = $Key;
-          $S = true;
-        
-        // Remove any reference
-        } else
-          unset ($this->timeoutEvents [$Key], $this->timeoutSettings [$Key]);
+        if ($Event [2]) {
+          $N = $T + $Event [1];
+          
+          if (!isset ($this->timeoutEvents [$N])) {
+            $this->timeoutEvents [$N] = array ($Event);
+            $S = true;
+          } else
+            $this->timeoutEvents [$N][] = $Event;
+        }
       }
       
       if ($S)
-        ksort ($this->timeoutTimer, SORT_NUMERIC);
+        ksort ($this->timeoutEvents, SORT_NUMERIC);
       
       return $this->setTimer ();
     }
@@ -467,32 +467,20 @@
       if ($this->handleSignals !== true)
         return false;
       
-      // Register this event as timed event
-      if (($key = array_search ($Event, $this->timeoutEvents)) === false) {
-        $this->timeoutEvents [] = $Event;
-        
-        if (($key = array_search ($Event, $this->timeoutEvents)) === false)
-          return false;
-      
-      // Check the store settings
-      } elseif (($N = $this->timeoutSettings [$key][0]) >= time ()) {
-        unset ($this->timeoutTimer [$N][$key]);
-        
-        if (($N == $this->timeoutNext) && (count ($this->timeoutTimer [$N]) == 0))
-          $this->timeoutNext = 0;
-      }
-      
-      // Calculate
-      $T = time ();
-      $N = $T * $Timeout;
-      
-      // Register the event
+      // Check the callback
       if (($Callback !== null) && !is_callable ($Callback))
         $Callback = null;
       
-      $this->timeoutSettings [$key] = array ($N, $Timeout, $Repeat, $Callback);
-      $this->timeoutTimer [$N][$key] = $key;
-      ksort ($this->timeoutTimer, SORT_NUMERIC);
+      // Calculate 
+      $T = time ();
+      $N = $T + $Timeout;
+      
+      if (!isset ($this->timeoutEvents [$N])) {
+        $this->timeoutEvents [$N] = array (array ($Event, $Timeout, $Repeat, $Callback));
+        
+        ksort ($this->timeoutEvents, SORT_NUMERIC);
+      } else
+        $this->timeoutEvents [$N][] = array ($Event, $Timeout, $Repeat, $Callback);
       
       // Setup the timer
       if (($this->timeoutNext < $T) || ($this->timeoutNext > $N)) {
@@ -519,15 +507,15 @@
         return;
       
       // Don't do anything if there are no events
-      if (count ($this->timeoutTimer) == 0)
+      if (count ($this->timeoutEvents) == 0)
         return;
       
       // Find next timestamp
       $T = time ();
       
-      foreach ($this->timeoutTimer as $Next=>$Keys)
+      foreach ($this->timeoutEvents as $Next=>$Keys)
         if ($Next < $T)
-          unset ($this->timeoutTimer [$Next]);
+          unset ($this->timeoutEvents [$Next]);
         else
           break;
       
