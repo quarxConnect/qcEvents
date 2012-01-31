@@ -121,6 +121,18 @@
     }
     // }}}
     
+    // {{{ hasOriginator
+    /**
+     * Check if a mail-originator was set
+     * 
+     * @access protected
+     * @return bool
+     **/
+    protected function hasOriginator () {
+      return ($this->Originator !== null);
+    }
+    // }}}
+    
     // {{{ mayReceive
     /**
      * Check if we are ready to receive mail-payload
@@ -397,8 +409,13 @@
           if (!$this->Greeted)
             return $this->respond (550, 'Polite people say Hello first');
           
-          if (!$this->addReceiver ($Params))
+          if ($this->hasOriginator ())
+            return $this->respond (503, 'Commands out of order');
+          
+          if (($rc = $this->addReceiver ($Params)) === false)
             return $this->respond (550, 'Receiver-address rejected');
+          elseif ($rc === null)
+            return $this->respond (450, 'Receiver-address temporarily rejected');
           
           return $this->respond (250, 'Ok');
           
