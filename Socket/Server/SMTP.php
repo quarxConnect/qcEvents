@@ -30,6 +30,9 @@
    * @revision 01
    **/
   class qcEvents_Socket_Server_SMTP extends qcEvents_Socket {
+    // Server is ready for connections
+    private $Ready = true;
+    
     // Allow Pipelining
     private $Pipelining = false;
     
@@ -133,15 +136,15 @@
     }
     // }}}
     
-    // {{{ mayReceive
+    // {{{ haveReceivers
     /**
-     * Check if we are ready to receive mail-payload
+     * Check if we have receivers assigned
      * 
      * @access protected
      * @return bool
      **/
-    protected function mayReceive () {
-      return (($this->Originator !== null) && (count ($this->Receivers) > 0));
+    protected function haveReceivers () {
+      return (count ($this->Receivers) > 0));
     }
     // }}}
     
@@ -265,8 +268,11 @@
      **/
     protected function connected () {
       // Connection was established, send a hello
-      // Format: 220 {Domain} [text-string] <crlf>
-      $this->respond (220, 'smtpd.quarxconnect.de ESMTP quarxConnect.de/20120125 ready.');
+      if ($this->Ready)
+        // Format: 220 {Domain} [text-string] <crlf>
+        $this->respond (220, 'smtpd.quarxconnect.de ESMTP quarxConnect.de/20120125 ready.');
+      else
+        $this->respond (554, 'smtpd.quarxconnect.de ESMTP quarxConnect.de/20120125 not ready for connections, sorry.');
       
       # TODO: Setup ourself in any way?
     }
@@ -367,6 +373,15 @@
       // Peek the command
       list ($Command, $Params) = array_shift ($this->Commands);
       
+      // Mask dummy-commands
+      if ($Command == '503')
+        $Command = '';
+      
+      // Force a 503 if client does not want to quit
+      if (!$this->Ready && ($Command != 'QUIT'))
+        $Command = '503';
+      
+      // Handle the command
       switch ($Command) {
         // Send a Hello to each other
         case 'HELO':
@@ -397,36 +412,58 @@
         // Store Originator of mail
         case 'MAIL FROM': // Once
           if (!$this->Greeted)
-            return $this->respond (550, 'Polite people say Hello first');
+            return $this->respond (503, 'Polite people say Hello first');
           
-          if (!$this->setOriginator ($Params))
-            return $this->respind (550, 'Originator-address rejected');
+          // Try to set the originator
+          if (($rc = $this->setOriginator ($Params)) === false)
+            return $this->respond (550, 'Originator-address rejected');
+          
+          // The originator was rejected temporarily
+          elseif ($rc === null)
+            // This is a violation of RFC 5321, but non of 451, 452, 455 matches here...
+            return $this->respond (450, 'Originator-address rejected for the moment');
+          
+          // Return a custom message
+          elseif (is_array ($rc) && (count ($rc) == 2) && is_int ($rc [0]) && is_string ($rc [1]))
+            return $this->respond ($rc [0], $rc [1]);
           
           return $this->respond (250, 'Ok');
           
         // Store Receipient of mail
         case 'RCPT TO':   // Many
           if (!$this->Greeted)
-            return $this->respond (550, 'Polite people say Hello first');
+            return $this->respond (503, 'Polite people say Hello first');
           
+          // Check if the originator was already set
           if ($this->hasOriginator ())
             return $this->respond (503, 'Commands out of order');
           
+          // Try to add another receiver
           if (($rc = $this->addReceiver ($Params)) === false)
             return $this->respond (550, 'Receiver-address rejected');
+          
+          // The receiver was rejected temporarly
           elseif ($rc === null)
             return $this->respond (450, 'Receiver-address temporarily rejected');
+          
+          // Return a custom message
+          elseif (is_array ($rc) && (count ($rc) == 2) && is_int ($rc [0]) && is_string ($rc [1]))
+            return $this->respond ($rc [0], $rc [1]);
           
           return $this->respond (250, 'Ok');
           
         // Start receiving mail-payload
         case 'DATA':
           if (!$this->Greeted)
-            return $this->respond (550, 'Polite people say Hello first');
+            return $this->respond (503, 'Polite people say Hello first');
+          
+          // Check if the originator was already set
+          if ($this->hasOriginator ())
+            return $this->respond (503, 'Bad sequence of commands');
           
           // Check if we are ready to receive Mail
-          if (!$this->mayReceive ())
-            return $this->respond (550, 'Not ready to receive mail');
+          if (!$this->haveReceivers ())
+            return $this->respond (554, 'No valid recipients');
           
           // Put ourself into DATA-Mode
           $this->inData = true;
@@ -449,6 +486,9 @@
         case 'EXPN':
         case 'HELP':
           return $this->respond (502, 'Command not implemented');
+        
+        case '503':
+           return $this->respond (503, 'Bad sequence of commands');
         
         default:
           return $this->respond (500, 'Command unknown');
