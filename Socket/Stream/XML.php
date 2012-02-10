@@ -77,6 +77,20 @@
     protected function receiveTag ($Tag) { }
     // }}}
     
+    // {{{ enableDebug
+    /**
+     * Set Debug-Status
+     * 
+     * @param bool $Status (optional)
+     * 
+     * @access public
+     * @return void
+     **/
+    public function enableDebug ($Status = true) {
+      $this->tagDebug = $Status;
+    }
+    // }}}
+    
     // {{{ setStream
     /**
      * Set stream for our parser
