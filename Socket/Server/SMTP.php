@@ -31,10 +31,13 @@
    **/
   class qcEvents_Socket_Server_SMTP extends qcEvents_Socket {
     // Server is ready for connections
-    private $Ready = true;
+    protected $Ready = true;
     
     // Allow Pipelining
-    private $Pipelining = false;
+    protected $Pipelining = false;
+    
+    // If a callback returns NULL, indicate a temporary reject
+    protected $nullIsTempDefer = true;
     
     // Internal Receive-Buffer
     private $Buffer = '';
@@ -75,6 +78,8 @@
       
       if ($this->inData && (($p = strpos ($this->Buffer, "\r\n.\r\n")) !== false))
         $this->Buffer = substr ($this->Buffer, $p + 5);
+      
+      $this->inData = false;
     }
     // }}}
     
@@ -92,14 +97,22 @@
       if (($this->Originator !== null) || (strlen ($O) == 0))
         return false;
       
-      // Clean up and validate the receiver
-      if (!($O = self::stripAddress ($O)))
-        return false;
-      
       // Set the receiver
       $this->Originator = $O;
       
       return true;
+    }
+    // }}}
+    
+    // {{{ getOriginator
+    /**
+     * Retrive our current orginiator
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getOriginator () {
+      return $this->Originator;
     }
     // }}}
     
@@ -113,10 +126,6 @@
      * @return bool
      **/
     public function addReceiver ($R) {
-      // Clean up the receiver
-      if (!($R = self::stripAddress ($R)))
-        return false;
-      
       // Append receiver to our list
       $this->Receivers [] = $R;
       
@@ -253,8 +262,7 @@
       elseif ($rc === false)
         $this->respond (554, 'Transaction failed');
       
-      // Go out of DATA-Mode
-      $this->inData = false;
+      // Perform a reset
       $this->reset ();
     }
     // }}}
@@ -303,6 +311,7 @@
         $this->Buffer = substr ($this->Buffer, $p + 5);
         
         // Forward it to the handler
+        $this->inData = false;
         $this->receivedMail ($Message);
         unset ($Message);
       }
@@ -414,12 +423,16 @@
           if (!$this->Greeted)
             return $this->respond (503, 'Polite people say Hello first');
           
+          // Clean up the originator
+          if (!($Originator = self::stripAddress ($Params)))
+            return $this->respond (501, 'Malformed originator');
+          
           // Try to set the originator
-          if (($rc = $this->setOriginator ($Params)) === false)
+          if (($rc = $this->setOriginator ($Originator)) === false)
             return $this->respond (550, 'Originator-address rejected');
           
           // The originator was rejected temporarily
-          elseif ($rc === null)
+          elseif (($rc === null) && $this->nullIsTempDefer)
             // This is a violation of RFC 5321, but non of 451, 452, 455 matches here...
             return $this->respond (450, 'Originator-address rejected for the moment');
           
@@ -438,12 +451,16 @@
           if ($this->hasOriginator ())
             return $this->respond (503, 'Commands out of order');
           
+          // Clean up the receiver
+          if (!($Receiver = self::stripAddress ($Params)))
+            return $this->respond (501, 'Malformed receiver');
+          
           // Try to add another receiver
           if (($rc = $this->addReceiver ($Params)) === false)
             return $this->respond (550, 'Receiver-address rejected');
           
           // The receiver was rejected temporarly
-          elseif ($rc === null)
+          elseif (($rc === null) && $this->nullIsTempDefer)
             return $this->respond (450, 'Receiver-address temporarily rejected');
           
           // Return a custom message
@@ -496,7 +513,18 @@
     }
     // }}}
     
-    private function respond ($Code, $Message, $Close = false) {
+    // {{{ respond
+    /**
+     * Push a response to the client
+     * 
+     * @param int $Code
+     * @param mixed $Message
+     * @param bool $Close (optional)
+     * 
+     * @access protected
+     * @return bool
+     **/
+    protected function respond ($Code, $Message, $Close = false) {
       if (!is_array ($Message))
         $Message = array ($Message);
       
@@ -509,6 +537,48 @@
       
       return $rc;
     }
+    
+    // {{{ respondWithCode
+    /**
+     * Send a response-code to client with auto-generated message
+     * 
+     * @param int $Code
+     * 
+     * @access protected
+     * @return bool
+     **/
+    protected function respondWithCode ($Code) {
+      $Messages = array (
+        250 => 'Requested mail action okay, completed',
+        251 => 'User not local; will forward to another address',
+        252 => 'Cannot VRFY user, but will accept message and attempt delivery',
+        
+        354 => 'Start mail input; end with <CRLF>.<CRLF>',
+        
+        450 => 'Requested mail action not taken: mailbox unavailable',
+        451 => 'Requested action aborted: local error in processing',
+        452 => 'Requested action not taken: insufficient system storage',
+        455 => 'Server unable to accommodate parameters',
+        
+        500 => 'Syntax error, command unrecognized',
+        501 => 'Syntax error in parameters or arguments',
+        502 => 'Command not implemented',
+        503 => 'Bad sequence of commands',
+        504 => 'Command parameter not implemented',
+        550 => 'Requested action not taken: mailbox unavailable',
+        551 => 'User not local; please try another address',
+        552 => 'Requested mail action aborted: exceeded storage allocation',
+        553 => 'Requested action not taken: mailbox name not allowed',
+        554 => 'Transaction failed',
+        555 => 'MAIL FROM/RCPT TO parameters not recognized or not implemented',
+      );
+      
+      if (isset ($Messages [$Code]))
+        return $this->respond ($Code, $Messages [$Code]);
+      
+      return $this->respond ($Code, 'Sorry, can not help you');
+    }
+    // }}}
   }
 
 ?>

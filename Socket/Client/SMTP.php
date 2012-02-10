@@ -150,7 +150,7 @@
         return false;
       
       // Submit the originator and change status
-      return $this->sendCommand ('MAIL FROM: <' . $this->cOriginator . '>', self::STATUS_ORIGINATOR);
+      return $this->sendCommand ('MAIL FROM:<' . $this->cOriginator . '>', self::STATUS_ORIGINATOR);
     }
     // }}}
     
@@ -235,7 +235,7 @@
         return true;
         
       // Send the next receiver
-      $this->sendCommand ('RCPT TO: <' . ($this->cReceiver = $rc) . '>', self::STATUS_RECEIVERS);
+      $this->sendCommand ('RCPT TO:<' . ($this->cReceiver = $rc) . '>', self::STATUS_RECEIVERS);
     }
     // }}}
     
@@ -536,6 +536,63 @@
       # TODO: RSET here instead of quit?
       $this->sendCommand ('QUIT', self::STATUS_QUIT);
     }
+    // }}}
+    
+    // {{{ quit
+    /**
+     * Quit and close the connection
+     * 
+     * @access public
+     * @return void
+     **/
+    public function quit () {
+      $this->sendCommand ('QUIT', self::STATUS_QUIT);
+    }
+    // }}}
+    
+    // {{{ closed
+    /**
+     * Internal Callback: Connection was closed
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function closed () {
+      $this->disconnected ($this->Status == self::STATUS_QUIT);
+      $this->unbind ();
+    }
+    // }}}
+    
+    // {{{ disconnected
+    /**
+     * Callback: Our client-connection was closed
+     * 
+     * @param bool $Expected
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function disconnected ($Expected) { }
+    // }}}
+    
+    // {{{ acceptedMail
+    /**
+     * Callback: The Mail was accepted by the server
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function acceptedMail () { }
+    // }}}
+    
+    // {{{ deferredMail
+    /**
+     * Callback: The Mail was rejected by the server
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function deferredMail () { }
     // }}}
   }
 
