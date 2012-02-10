@@ -193,6 +193,31 @@
     }
     // }}}
     
+    // {{{ haveTLS
+    /**
+     * Check if we have TLS-Support available
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function haveTLS () {
+      # TODO: Implement this
+      return false;
+    }
+    // }}}
+    
+    // {{{ startTLS
+    /**
+     * Start TLS on this connection
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function startTLS () {
+      return false;
+    }
+    // }}}
+    
     // {{{ readEvent
     /**
      * Handle incoming events
@@ -400,6 +425,26 @@
      * @return void
      **/
     protected function closed () { }
+    // }}}
+    
+    // {{{ tlsEnabled
+    /**
+     * Callback: TLS was successfully enabled on the stream
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function tlsEnabled () { }
+    // }}}
+    
+    // {{{ tlsFailed
+    /**
+     * Callback: The stream failed to enable TLS
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function tlsFailed () { }
     // }}}
   }
 
