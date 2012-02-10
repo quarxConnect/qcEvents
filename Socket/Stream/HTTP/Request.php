@@ -18,16 +18,19 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
+  require_once ('qcEvents/Socket/Stream/HTTP/Header.php');
+  
   /**
    * HTTP-Request
    * ------------
    * Simple object to carry all Informations from a HTTP-Request
    * 
    * @class qcEvents_Socket_Stream_HTTP_Request
+   * @extends qcEvents_Socket_Stream_HTTP_Header
    * @package qcEvents
    * @revision 01
    **/
-  class qcEvents_Socket_Stream_HTTP_Request {
+  class qcEvents_Socket_Stream_HTTP_Request extends qcEvents_Socket_Stream_HTTP_Header {
     // Request-Methods
     const METHOD_GET = 'GET';
     const METHOD_POST = 'POST';
@@ -38,10 +41,6 @@
     private $Method = null;
     private $URI = null;
     private $Protocol = null;
-    private $Complete = false;
-    
-    // Additional headers
-    private $Headers = array ();
     
     // Payload of this request
     private $Payload = null;
@@ -68,21 +67,6 @@
       
       $this->URI = $URI;
       $this->Protocol = $Protocol;
-    }
-    // }}}
-    
-    // {{{ appendHeader
-    /**
-     * Store a Header/Value on this request
-     * 
-     * @param string $Name
-     * @param string $Value
-     * 
-     * @access public
-     * @return void
-     **/
-    public function appendHeader ($Name, $Value) {
-      $this->Headers [strtolower ($Name)] = $Value;
     }
     // }}}
     
@@ -122,25 +106,6 @@
     }
     // }}}
     
-    // {{{ getHeader
-    /**
-     * Retrive a header from this request
-     * 
-     * @param string $Name
-     * 
-     * @access public
-     * @return string
-     **/
-    public function getHeader ($Name) {
-      $Name = strtolower ($Name);
-      
-      if (!isset ($this->Headers [$Name]))
-        return null;
-      
-      return $this->Headers [$Name];
-    }
-    // }}}
-    
     // {{{ expectPayload
     /**
      * Check if there is payload expected on this request
@@ -149,7 +114,7 @@
      * @return bool
      **/
     public function expectPayload () {
-      return isset ($this->Headers ['content-length']);
+      return ($this->getHeader ('content-length') !== null);
     }
     // }}}
     
@@ -161,10 +126,7 @@
      * @return int
      **/
     public function getPayloadLength () {
-      if (isset ($this->Headers ['content-length']))
-        return intval ($this->Headers ['content-length']);
-      
-      return 0;
+      return $this->getContentLength ();
     }
     // }}}
     
@@ -203,23 +165,6 @@
      **/ 
     public function hasPayload () {
       return ($this->Payload !== null) && (strlen ($this->Payload) > 0);
-    }
-    // }}}
-    
-    // {{{ headerComplete
-    /**
-     * Check if the header was received completely
-     * 
-     * @param bool $Set (optional) Mark the header as complete
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function headerComplete ($Set = null) {
-      if ($Set === true)
-        $this->Complete = true;
-      
-      return $this->Complete;
     }
     // }}}
   }
