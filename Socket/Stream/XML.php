@@ -456,7 +456,7 @@
       if ($this->tagDebug)
         echo 'Creating ', $Class, ' for ', $Name, "\n";
       
-      return new $Class ($Name, null);
+      return $Class::createXMLTag ($Name, null);
     }
     // }}}
     

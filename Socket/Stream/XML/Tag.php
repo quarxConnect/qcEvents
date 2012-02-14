@@ -41,6 +41,28 @@
     
     public $Subtags = array ();
     
+    // {{{ createXMLTag
+    /**
+     * Create a new XML-Tag
+     * 
+     * @param string $Name (optional)  
+     * @param object $Parent (optional)
+     * @param string $Value (optional)
+     * 
+     * @access friendly
+     * @return void
+     **/
+    public static function createXMLTag ($Name, $Parent = null, $Value = null) {
+      $Tag = new static ();
+      
+      $Tag->setName ($Name);
+      $Tag->setValue ($Value);
+      $Tag->setParent ($Parent);
+      
+      return $Tag;
+    }
+    // }}}
+    
     // {{{ __construct
     /**
      * Create a new XML-Tag
@@ -52,10 +74,15 @@
      * @access friendly
      * @return void
      **/
-    function __construct ($Name = '', $Parent = null, $Value = null) {
-      $this->setName ($Name);
-      $this->setValue ($Value);
-      $this->setParent ($Parent);
+    function __construct ($Name = null, $Parent = null, $Value = null) {
+      if ($Name !== null)
+        $this->setName ($Name);
+      
+      if ($Parent !== null)
+        $this->setParent ($Parent);
+      
+      if ($Value !== null)
+        $this->setValue ($Value);
     }
     // }}}
     
