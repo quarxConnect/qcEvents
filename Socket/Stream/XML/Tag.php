@@ -554,7 +554,7 @@
       if ($Unique)
         $this->removeSubtagsByName ($Name);
       
-      $Tag = new $Class ($Name, $this, $Value);
+      $Tag = $Class::createXMLTag ($Name, $this, $Value);
       
       return $Tag;
     }
