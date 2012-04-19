@@ -129,7 +129,7 @@
       $this->lastRequest = time () +  $this->keepAlive * 2;
       
       // Inherit to our handler
-      if (($this->processRequest ($Request) !== self::REQUEST_DELAY) && !$this->responseSent)
+      if (($this->___callback ('processRequest', $Request) !== self::REQUEST_DELAY) && !$this->responseSent)
         $this->writeResponse ();
     }
     // }}}

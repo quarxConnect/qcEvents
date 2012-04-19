@@ -257,7 +257,7 @@
      **/
     protected function receivedMail ($Message) {
       // Fire up a callback
-      if ($rc = $this->processMail ($this->Originator, $this->Receivers, $Message))
+      if ($rc = $this->___callback ('processMail', $this->Originator, $this->Receivers, $Message))
         $this->respond (250, 'Ok, thank you for the postcard');
       elseif ($rc === false)
         $this->respond (554, 'Transaction failed');
@@ -312,7 +312,8 @@
         
         // Forward it to the handler
         $this->inData = false;
-        $this->receivedMail ($Message);
+        $this->___callback ('receivedMail', $Message);
+        
         unset ($Message);
       }
       
@@ -537,6 +538,7 @@
       
       return $rc;
     }
+    // }}}
     
     // {{{ respondWithCode
     /**

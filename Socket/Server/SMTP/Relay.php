@@ -97,7 +97,7 @@
       $this->allErrors = false;
       
       // Invoke local handler
-      $this->clientReady ($Client, true);
+      $this->___callback ('clientReady', $Client, true);
     }
     // }}}
     
@@ -113,7 +113,7 @@
       $this->hadErrors = true;
       
       // Invoke local handler
-      $this->clientReady ($Client, false);
+      $this->___callback ('clientReady', $Client, false);
     }
     // }}}
     

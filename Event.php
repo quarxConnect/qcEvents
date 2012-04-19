@@ -417,6 +417,32 @@
       return $H->addTimeout ($this, $Timeout, $Repeat, $Callback);
     }
     // }}}
+    
+    // {{{ __callback
+    /**
+     * Issue a callback
+     * 
+     * @param string $Callback Name of the callback
+     * @param ...
+     * 
+     * @access protected
+     * @return mixed
+     **/
+    protected function ___callback ($Name) {
+      // Retrive all given parameters
+      $Args = func_get_args ();
+      $Name = array_shift ($Args);
+      
+      // Check if the callback is available
+      $Callback = array ($this, $Name);
+      
+      if (!is_callable ($Callback))
+        return false;
+      
+      // Issue the callback
+      return call_user_func_array ($Callback, $Args);
+    }
+    // }}}
   }
 
 ?>

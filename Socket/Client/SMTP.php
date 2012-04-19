@@ -366,8 +366,6 @@
       switch ($this->Status) {
         // Server sent initial greeting
         case self::STATUS_CONNECTED:
-          echo 'Received Greeting with ', $Code, "\n", print_r ($Messagen, true), "\n";
-          
           // Server is ready to accept mails from us
           if ($Code < 400)
             $this->sendCommand ('EHLO ' . $this->getHostname (), self::STATUS_HELO);
@@ -402,7 +400,7 @@
           // Server sent a reply
           if ($Code < 400) {
             // Fire up the callback
-            $this->acceptedOriginator ($this->cOriginator, $Code);
+            $this->___callback ('acceptedOriginator', $this->cOriginator, $Code);
             
             // Try to submit the receivers
             $this->sendReceivers ();
@@ -413,7 +411,7 @@
             $this->Status = self::STATUS_HELO;
             
             // Fire up the callback and maybe cancel the mail-submission
-            if (!$this->deferredOriginator ($this->cOriginator, $Code))
+            if (!$this->___callback ('deferredOriginator', $this->cOriginator, $Code))
               $this->cancelMail ();
           }
           
@@ -424,10 +422,10 @@
           // Check if the last receiver was accepted
           if ($Code < 400) {
             $this->cAcceptedReceivers [] = $this->cReceiver;
-            $this->acceptedReceiver ($Receiver, $Code);
+            $this->___callback ('acceptedReceiver', $Receiver, $Code);
           
           // Or handle a it via callback
-          } elseif ($this->deferredReceiver ($Receiver, $Code) === false)
+          } elseif ($this->___callback ('deferredReceiver', $Receiver, $Code) === false)
             return $this->cancelMail ();
           
           // Submit the next receiver
@@ -513,7 +511,7 @@
      **/
     private function finishMail () {
       // Fire up the callback
-      $this->acceptedMail ();
+      $this->___callback ('acceptedMail');
       
       // Close the connection
       # TODO: RSET here instead of quit?
@@ -530,7 +528,7 @@
      **/
     private function cancelMail () {
       // Fire up the callback
-      $this->deferredMail ();
+      $this->___callback ('deferredMail');
       
       // Close the connection
       # TODO: RSET here instead of quit?
@@ -558,7 +556,7 @@
      * @return void
      **/
     protected function closed () {
-      $this->disconnected ($this->Status == self::STATUS_QUIT);
+      $this->___callback ('disconnected', $this->Status == self::STATUS_QUIT);
       $this->unbind ();
     }
     // }}}

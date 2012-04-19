@@ -121,8 +121,8 @@
         @fclose ($this->getFD ());
       }
       
-      $this->closed ();
       $this->Online = false;
+      $this->___callback ('closed');
       
       return true;
     }
@@ -231,7 +231,7 @@
         return $this->disconnect ();
       
       // Forward to our handler
-      $this->receive ($Data);
+      $this->___callback ('receive', $Data);
     }
     // }}}
     
@@ -253,8 +253,8 @@
       // Forget about write-events
       $this->setFD ($this->getFD (), true, false);
       
-      // FOrward the event
-      $this->connected ();
+      // Forward the event
+      $this->___callback ('connected');
     }
     // }}}
     
@@ -269,7 +269,7 @@
      **/
     public function readUDPServer ($Data) {
       // Forward to our handler
-      $this->receive ($Data);
+      $this->___callback ('receive', $Data);
     }
     // }}}
     

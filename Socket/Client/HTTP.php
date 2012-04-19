@@ -86,7 +86,7 @@
         return null;
       
       // Fire up the callback
-      $this->responseReceived ($this->Request, $this->Response);
+      $this->___callback ('responseReceived', $this->Request, $this->Response);
       
       // Head over to the next request
       $this->Request = null;
