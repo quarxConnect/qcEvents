@@ -61,13 +61,6 @@
     private $cPayload = null;
     private $cWait = false;
     
-    protected function acceptedOriginator ($Originator, $Code) { }
-    protected function deferredOriginator ($Originator, $Code) { }
-    protected function acceptedReceiver ($Receiver, $Code) { }
-    protected function deferredReceiver ($Receiver, $Code) { }
-    protected function acceptedMail () { }
-    protected function deferredMail () { }
-    
     // {{{ __construct
     /**
      * Create a new SMTP-Connection
@@ -591,6 +584,58 @@
      * @return void
      **/
     protected function deferredMail () { }
+    // }}}
+    
+    // {{{ acceptedOriginator
+    /**
+     * Callback: The requested originator of the mail was accepted
+     * 
+     * @param string $Originator
+     * @param int $Code
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function acceptedOriginator ($Originator, $Code) { }
+    // }}}
+    
+    // {{{ deferredOriginator
+    /**
+     * Callback: The requested originator of the mail was deferred
+     * 
+     * @param string $Originator
+     * @param int $Code
+     * 
+     * @access protected
+     * @return bool Cancel mail-submission if not TRUE
+     **/
+    protected function deferredOriginator ($Originator, $Code) { }
+    // }}}
+    
+    // {{{ acceptedReceiver
+    /**
+     * Callback: A single receiver was accepted by the other side (more may follow)
+     * 
+     * @param string $Receiver
+     * @param int $Code
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function acceptedReceiver ($Receiver, $Code) { }
+    // }}}
+    
+    // {{{ deferredReceiver
+    /**
+     * Callback: One of our receivers was deferred by the server
+     * 
+     * @param string $Receiver
+     * @param int $Code
+     * 
+     * @access protected
+     * @return bool Cancel mail-submission if not TRUE
+     **/
+    protected function deferredReceiver ($Receiver, $Code) { }
     // }}}
   }
 
