@@ -32,6 +32,9 @@
    * @revision 01
    **/
   class qcEvents_Socket_Server_SMTP_Relay extends qcEvents_Socket_Server_SMTP {
+    // Just relay thorugh a single smart-host
+    private $smartHost = null;
+    
     // SMTP-Clients for forwarding e-mails
     private $Clients = array ();
     
@@ -40,6 +43,8 @@
     private $haveReceivers = false;
     private $hadErrors = false;
     private $allErrors = true;
+    
+    protected $nullIsTempDefer = false;
     
     // {{{ deferredOriginator
     /**
@@ -78,7 +83,8 @@
         if ($C < 300)
           $this->haveReceivers = true;
         
-        $this->respondWithCode ($C);
+        $this->respond ($C, 'Ok');
+        $this->processQueue ();
         
         unset ($this->rQueue [$K]);
       }
@@ -144,6 +150,7 @@
       
       // Respond and reset
       $this->respond (250, 'Ok, thank you for the postcard');
+      $this->processQueue ();
       $this->reset ();
     }
     // }}}
@@ -166,6 +173,7 @@
       $this->haveReceivers = false;
       $this->hadErrors = false;
       $this->allErrors = true;
+      $this->nullIsTempDefer = false;
       
       // Let our parent do the rest
       return parent::reset ();
@@ -183,7 +191,7 @@
      **/
     protected function receivedMail ($Message) {
       // Forward the message to all clients
-      foreach ($Clients as $Client)
+      foreach ($this->Clients as $Client)
         $Client->setPayload ($Message);
       
       return null;
@@ -198,10 +206,44 @@
      * 
      * @access protected
      * @return string
+     * 
+     * @todo The isn't asyncronous!
+     * @todo Add support for more than one server
      **/
     protected function lookupDestination ($R) {
-      # TODO
-      return false;
+      // Check wheter to use a smart-host
+      if ($this->smartHost !== null)
+        return $this->smartHost;
+      
+      // Retrive the domain from the receiver
+      if (($p = strrpos ($R, '@')) === false)
+        return false;
+      
+      $Domain = substr ($R, $p + 1);
+      
+      // Check for CNAME first
+      while (is_array ($Result = dns_get_record ($Domain, DNS_CNAME, $Auth, $Add)) && (count ($Result) > 0)) {
+        $RR = array_shift ($Result);
+        $Domain = $RR ['target'];
+      }
+      
+      // Check for regular MX-Records
+      if (is_array ($Result = dns_get_record ($Domain, DNS_MX, $Auth, $Add)) && (count ($Result) > 0)) {
+        $RR = array_shift ($Result);
+        $Destination = $RR ['target'];
+        
+        foreach ($Add as $RR)
+          if (($RR ['host'] == $Destination) && isset ($RR ['ip'])) {
+            $Destination = $RR ['ip'];
+            
+            break;
+          }
+        
+        return $Destination;
+      }
+      
+      // Just let PHP do the rest...
+      return $Domain;
     }
     // }}}
     
@@ -223,7 +265,7 @@
       if (isset ($this->Clients [$Destination]))
         $Client = $this->Clients [$Destination];
       else {
-        $this->Clients [$Destination] = $Client = new qcEvents_Socket_Server_SMTP_Relay_Client ($Destination);
+        $this->Clients [$Destination] = $Client = new qcEvents_Socket_Server_SMTP_Relay_Client ($this, $Destination);
         $Client->setOriginator ($this->getOriginator ());
       }
       

@@ -415,7 +415,7 @@
           // Check if the last receiver was accepted
           if ($Code < 400) {
             $this->cAcceptedReceivers [] = $this->cReceiver;
-            $this->___callback ('acceptedReceiver', $Receiver, $Code);
+            $this->___callback ('acceptedReceiver', $this->cReceiver, $Code);
           
           // Or handle a it via callback
           } elseif ($this->___callback ('deferredReceiver', $Receiver, $Code) === false)

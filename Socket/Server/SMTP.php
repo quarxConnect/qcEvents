@@ -26,6 +26,7 @@
    * Simple SMTP-Server-Implementation (RFC 5321)
    * 
    * @class qcEvents_Socket_Server_SMTP
+   * @extends qcEvents_Socket
    * @package qcEvents
    * @revision 01
    **/
@@ -44,6 +45,7 @@
     
     // Are we currently receiving Mail-Payload?
     private $Commands = array ();
+    private $queueResponded = true;
     
     private $Greeted = false;
     private $Originator = null;
@@ -80,6 +82,7 @@
         $this->Buffer = substr ($this->Buffer, $p + 5);
       
       $this->inData = false;
+      $this->queueResponded = true;
     }
     // }}}
     
@@ -153,7 +156,7 @@
      * @return bool
      **/
     protected function haveReceivers () {
-      return (count ($this->Receivers) > 0));
+      return (count ($this->Receivers) > 0);
     }
     // }}}
     
@@ -303,7 +306,8 @@
       // Check if we are receiving payload
       if ($this->inData) {
         // Check if payload was received completely
-        if (($p = strpos ($this->Buffer, "\r\n.\r\n")) === false)
+        if ((($p = strpos ($this->Buffer, "\r\n.\r\n")) === false) &&
+            (($p = strpos ($this->Buffer, "\n.\n")) === false))
           return;
         
         // Retrive the message from buffer
@@ -373,12 +377,15 @@
      **/
     protected function processQueue () {
       // Check if there are commands waiting
-      if (count ($this->Commands) == 0)
+      if ((count ($this->Commands) == 0) || !$this->queueResponded)
         return;
       
       // Don't run commands in data-mode
       if ($this->inData)
         return;
+      
+      // We haven't responded the last/this command
+      $this->queueResponded = false;
       
       // Peek the command
       list ($Command, $Params) = array_shift ($this->Commands);
@@ -413,7 +420,7 @@
         
         // Do nothing
         case 'NOOP':
-          return $this->respond (250, 'OK');
+          return $this->respond (250, 'Ok');
         
         // Say goodbye and close the connection
         case 'QUIT':
@@ -449,7 +456,7 @@
             return $this->respond (503, 'Polite people say Hello first');
           
           // Check if the originator was already set
-          if ($this->hasOriginator ())
+          if (!$this->hasOriginator ())
             return $this->respond (503, 'Commands out of order');
           
           // Clean up the receiver
@@ -468,7 +475,10 @@
           elseif (is_array ($rc) && (count ($rc) == 2) && is_int ($rc [0]) && is_string ($rc [1]))
             return $this->respond ($rc [0], $rc [1]);
           
-          return $this->respond (250, 'Ok');
+          if ($rc !== null)
+            return $this->respond (250, 'Ok');
+          
+          return;
           
         // Start receiving mail-payload
         case 'DATA':
@@ -476,7 +486,7 @@
             return $this->respond (503, 'Polite people say Hello first');
           
           // Check if the originator was already set
-          if ($this->hasOriginator ())
+          if (!$this->hasOriginator ())
             return $this->respond (503, 'Bad sequence of commands');
           
           // Check if we are ready to receive Mail
@@ -535,6 +545,8 @@
       
       if ($Close)
         $this->close ();
+      
+      $this->queueResponded = true;
       
       return $rc;
     }

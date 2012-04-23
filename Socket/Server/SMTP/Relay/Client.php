@@ -37,11 +37,28 @@
     private $onReceivers = true;
     
     
+    // {{{ __construct
+    /**
+     * Create a new SMTP-Relay Client (for internal use only)
+     * 
+     * @param object $Parent
+     * @param string $Host
+     * @param int $Port (optional)
+     * 
+     * @access friendly
+     * @return void
+     **/
     function __construct ($Parent, $Host, $Port = 25) {
-      $this->Parent = $Parent;
-      
+      // Inherit to our parent constructor first
       parent::__construct ($Host, $Port);
+      
+      // Register our parent and ourself
+      if (is_object ($this->Parent = $Parent)) { 
+        $Base = $Parent->getBase ();
+        $Base->addEvent ($this);
+      }
     }
+    // }}}
     
     // {{{ addReceiver
     /**
