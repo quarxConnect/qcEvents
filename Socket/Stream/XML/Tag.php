@@ -86,6 +86,29 @@
     }
     // }}}
     
+    // {{{ __clone
+    /**
+     * Magic function: This tag was cloned
+     * 
+     * @access friendly
+     * @return void
+     **/
+    function __clone () { $this->___clone (); }
+    private function ___clone () {
+      $ST = $this->Subtags;
+      $this->Subtags = array ();
+      
+      foreach ($ST as $N=>$Tags) {
+        $this->Subtags [$N] = array ();
+        
+        foreach ($Tags as $Tag) {
+          $this->Subtags [$N][] = $c = clone $Tag;
+          $c->_tagParent = $this;
+        }
+      }
+    }
+    // }}}
+    
     // {{{ isReady
     /**
      * Determine or set if this tag has parsed all its attributes
@@ -137,6 +160,38 @@
      **/
     public function forceOpen () {
       $this->_tagForceOpen = true;
+    }
+    // }}}
+    
+    // {{{ cast
+    /**
+     * Cast this XML-Tag into a new subclass
+     * 
+     * @param string $Class
+     * 
+     * @access public
+     * @return object
+     **/
+    public function cast ($Class) {
+      if (!class_exists ($Class) ||
+          !is_subclass_of ($Class, get_class ($this)))
+        return false;
+      
+      $Clone = new $Class;
+      $Clone->_tagName = $this->_tagName;
+      $Clone->_tagNamespace = $this->_tagNamespace;
+      $Clone->_tagNamespaces = $this->_tagNamespaces;
+      $Clone->_tagLang = $this->_tagLang;
+      $Clone->_tagValue = $this->_tagValue;
+      $Clone->_tagParent = null;
+      $Clone->_tagReady = true;
+      $Clone->_tagOpen = false;
+      $Clone->_tagAttributes = $this->_tagAttributes;
+      $Clone->_tagForceOpen = $this->_tagForceOpen;
+      $Clone->Subtags = $this->Subtags;
+      $Clone->___clone ();
+      
+      return $Clone;
     }
     // }}}
     
