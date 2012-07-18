@@ -44,6 +44,7 @@
     private $loopBreak = false;
     private $loopExit = false;
     private $loopContinue = false;
+    private $loopEmpty = true;
     
     private $loopReadFDs = array ();
     private $loopWriteFDs = array ();
@@ -165,6 +166,28 @@
       
       unset ($this->Events [$key]);
       $Event->unbind ();
+      
+      if (!$this->loopEmpty && (count ($this->Events) == 0))
+        $this->loopExit ();
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ quitOnEmpty
+    /**
+     * Leave the loop if there are no events on the queue
+     * 
+     * @param bool $Trigger (optional) Set the condition
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function quitOnEmpty ($Trigger = null) {
+      if ($Trigger === null)
+        return !$this->loopEmpty;
+      
+      $this->loopEmpty = !$Trigger;
       
       return true;
     }
