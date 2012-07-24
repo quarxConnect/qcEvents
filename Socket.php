@@ -39,6 +39,8 @@
     private $Online = false;
     private $Server = null;
     private $Peer = null;
+    private $Mode = null;
+    private $lastEvent = 0;
     
     // {{{ __construct
     /**
@@ -101,6 +103,9 @@
       if (!is_resource ($Socket = stream_socket_client ('tcp://' . $IP . ':' . $Port, $errno, $err, 5, STREAM_CLIENT_ASYNC_CONNECT)))
         return false;
       
+      $this->Mode = $Mode;
+      $this->lastEvent = time ();
+      
       return $this->setConnection ($Socket);
     }
     // }}}
@@ -119,7 +124,8 @@
       if (!$this->isUDPServerClient ()) {
         $this->unbind ();
         @fclose ($this->getFD ());
-      }
+      } elseif (is_object ($this->Server))
+        $this->Server->disconnectChild ($this);
       
       $this->Online = false;
       $this->___callback ('closed');
@@ -150,11 +156,12 @@
      * 
      * @param resource $Socket
      * @param string $Peer (optional)
+     * @param enum $Mode (optional)
      * 
      * @access public
      * @return bool
      **/
-    public function setConnection ($Socket, $Peer = null) {
+    public function setConnection ($Socket, $Peer = null, $Mode = null) {
       // Make sure socket is of the right type
       if (!is_resource ($Socket))
         return false;
@@ -164,6 +171,9 @@
       
       if ($Peer !== null)
         $this->setPeername ($Peer);
+      
+      if ($Mode !== null)
+        $this->Mode = $Mode;
       
       return true;
     }
@@ -190,6 +200,42 @@
      **/
     protected function isUDPServerClient () {
       return (is_object ($this->Server) && ($this->getFD () == $this->Server->getFD ()));
+    }
+    // }}}
+    
+    // {{{ isUDP
+    /**
+     * Check if we are an UDP-Socket
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isUDP () {
+      return ($this->Mode == self::MODE_UDP);
+    }
+    // }}}
+    
+    // {{{ isTCP
+    /**
+     * Check if we are an TCP-Socket
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isTCP () {
+      return ($this->Mode == self::MODE_TCP);
+    }
+    // }}}
+    
+    // {{{ getMode
+    /**
+     * Retrive the protocol-mode of this socket
+     * 
+     * @access public
+     * @return enum
+     **/
+    public function getMode () {
+      return $this->Mode;
     }
     // }}}
     
@@ -230,6 +276,8 @@
       if (($Data = stream_socket_recvfrom ($this->getFD (), self::READ_BUFFER)) == '')
         return $this->disconnect ();
       
+      $this->lastEvent = time ();
+      
       // Forward to our handler
       $this->___callback ('receive', $Data);
     }
@@ -268,6 +316,8 @@
      * @return void
      **/
     public function readUDPServer ($Data) {
+      $this->lastEvent = time ();
+      
       // Forward to our handler
       $this->___callback ('receive', $Data);
     }
@@ -326,6 +376,21 @@
     }
     // }}}
     
+    // {{{ getPeer
+    /**
+     * Retrive the whole name of the remote endpoint
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getPeer () {
+      if ($this->Peer === null)
+        $this->Peer = stream_socket_get_name ($this->getFD (), true);
+      
+      return $this->Peer;
+    }
+    // }}}
+    
     // {{{ getLocalname
     /**
      * Retrive the address of the local endpoint
@@ -360,6 +425,8 @@
       if ($this->Peer === null)
         return false;
       
+      $this->lastEvent = time ();
+      
       return stream_socket_sendto ($fd, $Data, 0, $this->Peer);
     }
     // }}}
@@ -391,6 +458,18 @@
      **/
     public function close () {
       return $this->disconnect ();
+    }
+    // }}}
+    
+    // {{{ getLastEvent
+    /**
+     * Retrive the timestamp when the last read/write-Event happened on this socket
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getLastEvent () {
+      return $this->lastEvent;
     }
     // }}}
     

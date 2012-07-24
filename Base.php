@@ -89,6 +89,10 @@
      * @return bool
      **/
     public function addEvent ($Event) {
+      // Make sure this is a valid Event
+      if (!($Event instanceof qcEvents_Event))
+        return false;
+      
       // Remove the event from its previous base
       $Event->unbind ();
       

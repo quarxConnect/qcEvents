@@ -35,6 +35,7 @@
     const MODE_UDP = qcEvents_Socket::MODE_UDP;
     
     const READ_UDP_BUFFER = 1500;
+    const CHILD_UDP_TIMEOUT = 30;
     
     private $Mode = qcEvents_Socket_Server::MODE_TCP;
     
@@ -44,8 +45,11 @@
     // Are we listening at the moment
     private $Online = false;
     
-    // All connections we handle
+    // All connections we handle (only in UDP-Mode)
     private $Clients = array ();
+    
+    // Do we have an Timer set to timeout UDP-Children
+    private $haveUDPTimer = false;
     
     // {{{ __construct
     /**
@@ -102,13 +106,16 @@
      * @access public
      * @return bool
      **/
-    public function listen ($Mode, $Port, $IP = '0.0.0.0', $Backlog = null) {
+    public function listen ($Mode, $Port, $IP = null, $Backlog = null) {
       // Handle Context
       if ($Backlog !== null)
         # bindto : Bind socket to ipaddr:port
         $Context = stream_context_create (array ('backlog' => $Backlog));
       else
         $Context = stream_context_create (array ());
+      
+      if ($IP === null)
+        $IP = '0.0.0.0';
       
       // Create the socket
       if ($Mode == self::MODE_UDP) {
@@ -157,9 +164,14 @@
           
           // Setup the client
           $Client->setServer ($this);
-          $Client->setConnection ($fd, $Remote);
+          $Client->setConnection ($fd, $Remote, $this->Mode);
           
           $this->Clients [$Remote] = $Client;
+          
+          if (!$this->haveUDPTimer) {
+            $this->addTimeout (self::CHILD_UDP_TIMEOUT, true, array ($this, 'checkUDPChildren'));
+            $this->haveUDPTimer = true;
+          }
         } else
           $Client = $this->Clients [$Remote];
         
@@ -194,6 +206,48 @@
       // Add the client to our event-handler
       if (is_object ($Handler = $this->getHandler ()))
         $Handler->addEvent ($Client);
+    }
+    // }}}
+    
+    // {{{ disconnectChild
+    /**
+     * Remove a child-handle from an UDP-Server
+     * 
+     * @param object $Child
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function disconnectChild ($Child) {
+      // This only applies to UDP-Mode
+      if ($this->Mode != self::MODE_UDP)
+        return false;
+      
+      // Retrive name of the peer on the child
+      $Peer = $Child->getPeer ();
+      
+      // Check if we know it
+      if (isset ($this->Clients [$Peer]))
+        unset ($this->Clients [$Peer]);
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ checkUDPChildren
+    /**
+     * Check if one of our children timed out
+     * 
+     * @access public
+     * @return void
+     **/
+    public function checkUDPChildren () {
+      // Retrive the actual time
+      $t = time ();
+      
+      foreach ($this->Clients as $C)
+        if ($t - $C->getLastEvent () > self::CHILD_UDP_TIMEOUT)
+          $C->disconnect ();
     }
     // }}}
   }
