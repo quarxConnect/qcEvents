@@ -35,7 +35,7 @@
     const MODE_UDP = qcEvents_Socket::MODE_UDP;
     
     const READ_UDP_BUFFER = 1500;
-    const CHILD_UDP_TIMEOUT = 30;
+    const CHILD_UDP_TIMEOUT = 20;
     
     private $Mode = qcEvents_Socket_Server::MODE_TCP;
     
@@ -169,7 +169,7 @@
           $this->Clients [$Remote] = $Client;
           
           if (!$this->haveUDPTimer) {
-            $this->addTimeout (self::CHILD_UDP_TIMEOUT, true, array ($this, 'checkUDPChildren'));
+            $this->addTimeout (max (2, intval (self::CHILD_UDP_TIMEOUT / 4)), true, array ($this, 'checkUDPChildren'));
             $this->haveUDPTimer = true;
           }
         } else
@@ -177,8 +177,6 @@
         
         // Forward the data to the client
         $Client->readUDPServer ($Data);
-        
-        # TODO: Add a timeout to destroy UDP-Clients?
         
         return;
       

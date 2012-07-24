@@ -175,6 +175,9 @@
       if ($Mode !== null)
         $this->Mode = $Mode;
       
+      if ($this->isUDPServerClient ())
+        $this->Online = true;
+      
       return true;
     }
     // }}}
