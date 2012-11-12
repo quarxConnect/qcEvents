@@ -93,6 +93,34 @@
     }
     // }}}
     
+    // {{{ scanCreated
+    /**
+     * Scan a watched directory for dirs and files and fake callback-events
+     * 
+     * @access public
+     * @return void
+     **/
+    public function scanCreated () {
+      // Make sure this is a directory
+      if (!is_dir ($this->inotifyPath))
+        return;
+      
+      // Open Directory
+      if (!is_object ($d = dir ($this->inotifyPath)))
+        return;
+      
+      while ($f = $d->read ())
+        if (($f != '.') && ($f != '..')) {
+          if ($this->___callback ('inotifyEvent', self::MASK_CREATE, 0, $f) === true)
+            continue;
+          
+          $this->___callback ('directoryCreate', $f, 0);
+        }
+      
+      $d->close ();
+    }
+    // }}}
+    
     // {{{ setHandler
     /**
      * Store handle of our event-base
@@ -166,42 +194,44 @@
         }
         
         // Fire up the event
-        if (self::$inotifyEvents [$this->inotifyGeneration][$Event ['wd']]->inotifyEvent ($Event ['mask'], $Event ['cookie'], $Event ['name']) === true)
+        $H = self::$inotifyEvents [$this->inotifyGeneration][$Event ['wd']];
+        
+        if ($H->___callback ('inotifyEvent', $Event ['mask'], $Event ['cookie'], $Event ['name']) === true)
           continue;
         
         // Directory-Events
         if ((($Event ['mask'] & self::MASK_MOVE_FROM) == self::MASK_MOVE_FROM) ||
             (($Event ['mask'] & self::MASK_REMOVE) == self::MASK_REMOVE))
-          $this->directoryRemove ($Event ['name'], $Event ['cookie']);
+          $H->___callback ('directoryRemove', $Event ['name'], $Event ['cookie']);
         
         if ((($Event ['mask'] & self::MASK_MOVE_TO) == self::MASK_MOVE_TO) ||
             (($Event ['mask'] & self::MASK_CREATE) == self::MASK_CREATE))
-          $this->directoryCreate ($Event ['name'], $Event ['cookie']);
+          $H->___callback ('directoryCreate', $Event ['name'], $Event ['cookie']);
         
         // File-Events
         if (($Event ['mask'] & self::MASK_ACCESS) == self::MASK_ACCESS)
-          $this->fileAccess ($Event ['name'], $Event ['cookie']);
+          $H->___callback ('fileAccess', $Event ['name'], $Event ['cookie']);
         
         if (($Event ['mask'] & self::MASK_MODIFY) == self::MASK_MODIFY)
-          $this->fileModify ($Event ['name'], $Event ['cookie']);
+          $H->___callback ('fileModify', $Event ['name'], $Event ['cookie']);
         
         if (($Event ['mask'] & self::MASK_ATTRIB) == self::MASK_ATTRIB)
-          $this->fileMetaChange ($Event ['name'], $Event ['cookie']);
+          $H->___callback ('fileMetaChange', $Event ['name'], $Event ['cookie']);
         
         if (($Event ['mask'] & self::MASK_CLOSE_WRITE) == self::MASK_CLOSE_WRITE)
-          $this->fileClose ($Event ['name'], $Event ['cookie']);
+          $H->___callback ('fileClose', $Event ['name'], $Event ['cookie']);
         
         if (($Event ['mask'] & self::MASK_CLOSE_READ) == self::MASK_CLOSE_READ)
-          $this->fileClose ($Event ['name'], $Event ['cookie']);
+          $H->___callback ('fileClose', $Event ['name'], $Event ['cookie']);
         
         if (($Event ['mask'] & self::MASK_OPEN) == self::MASK_OPEN)
-          $this->fileOpen ($Event ['name'], $Event ['cookie']);
+          $H->___callback ('fileOpen', $Event ['name'], $Event ['cookie']);
         
         if (($Event ['mask'] & self::MASK_DELETE) == self::MASK_DELETE)
-          $this->fileDelete ($Event ['name'], $Event ['cookie']);
+          $H->___callback ('fileDelete', $Event ['name'], $Event ['cookie']);
         
         if (($Event ['mask'] & self::MASK_MOVE) == self::MASK_MOVE)
-          $this->fileMove ($Event ['name'], $Event ['cookie']);
+          $H->___callback ('fileMove', $Event ['name'], $Event ['cookie']);
       }
     }
     // }}}

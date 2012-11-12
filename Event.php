@@ -42,6 +42,7 @@
     private $monitorRead = false;
     private $monitorWrite = false;
     private $Callback = null;
+    private $Hooks = array ();
     
     // Information about our status and parent
     private $Bound = false;
@@ -418,6 +419,37 @@
     }
     // }}}
     
+    // {{{ addHook
+    /**
+     * Register a hook for a callback-function
+     * 
+     * @param string $Hook
+     * @param callback $Callback
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function addHook ($Name, $Callback) {
+      // Check if this is a valid callback
+      if (!is_callable ($Callback))
+        return false;
+      
+      // Check if this is a valid hook
+      $Name = strtolower ($Name);
+      
+      if (!is_callable (array ($this, $Name)))
+        return false;
+      
+      // Register the hook
+      if (!isset ($this->Hooks [$Name]))
+        $this->Hooks [$Name] = array ($Callback);
+      else
+        $this->Hooks [$Name][] = $Callback;
+      
+      return true;
+    }
+    // }}}
+    
     // {{{ __callback
     /**
      * Issue a callback
@@ -431,7 +463,17 @@
     protected function ___callback ($Name) {
       // Retrive all given parameters
       $Args = func_get_args ();
-      $Name = array_shift ($Args);
+      $Name = strtolower (array_shift ($Args));
+      
+      // Check hooks
+      if (isset ($this->Hooks [$Name])) {
+        $hArgs = $Args;
+        array_unshift ($hArgs, $this);
+        
+        foreach ($this->Hooks [$Name] as $Callback)
+          if (call_user_func_array ($Callback, $hArgs) === false)
+            return false;
+      }
       
       // Check if the callback is available
       $Callback = array ($this, $Name);
