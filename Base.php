@@ -178,6 +178,18 @@
     }
     // }}}
     
+    // {{{ getEvents
+    /**
+     * Retrive all registered events for this handler
+     * 
+     * @access public
+     * @return array
+     **/
+    public function getEvents () {
+      return $this->Events;
+    }
+    // }}}
+    
     // {{{ quitOnEmpty
     /**
      * Leave the loop if there are no events on the queue
