@@ -425,11 +425,12 @@
      * 
      * @param string $Hook
      * @param callback $Callback
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return bool
      **/
-    public function addHook ($Name, $Callback) {
+    public function addHook ($Name, $Callback, $Private = null) {
       // Check if this is a valid callback
       if (!is_callable ($Callback))
         return false;
@@ -442,9 +443,9 @@
       
       // Register the hook
       if (!isset ($this->Hooks [$Name]))
-        $this->Hooks [$Name] = array ($Callback);
+        $this->Hooks [$Name] = array (array ($Callback, $Private));
       else
-        $this->Hooks [$Name][] = $Callback;
+        $this->Hooks [$Name][] = array ($Callback, $Private);
       
       return true;
     }
@@ -470,9 +471,13 @@
         $hArgs = $Args;
         array_unshift ($hArgs, $this);
         
-        foreach ($this->Hooks [$Name] as $Callback)
-          if (call_user_func_array ($Callback, $hArgs) === false)
+        foreach ($this->Hooks [$Name] as $Callback) {
+          $cArgs = $hArgs;
+          $cArgs [] = $Callback [1];
+          
+          if (call_user_func_array ($Callback [0], $cArgs) === false)
             return false;
+        }
       }
       
       // Check if the callback is available

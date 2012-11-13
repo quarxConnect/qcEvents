@@ -93,6 +93,47 @@
     }
     // }}}
     
+    // {{{ getWatchedPath
+    /**
+     * Retrive the path being watched
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getWatchedPath () {
+      return $this->inotifyPath;
+    }
+    // }}}
+    
+    // {{{ setWatchedPath
+    /**
+     * Change the path being watched
+     * 
+     * @param string $Path
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setWatchedPath ($Path) {
+      // Make sure the path exists
+      if (!file_exists ($Path))
+        return false;
+      
+      // Unregister any current watcher
+      if ($this->inotifyDescriptor !== null)
+        inotify_rm_watch ($this->inotify, $this->inotifyDescriptor);
+      
+      // Change the path
+      $this->inotifyPath = $Path;
+      
+      // Register again (if possible)
+      if (is_resource ($this->inotify))
+        $this->inotifyDescriptor = inotify_add_watch ($this->inotify, $this->inotifyPath, $this->inotifyMask);
+      
+      return true;
+    }
+    // }}}
+    
     // {{{ scanCreated
     /**
      * Scan a watched directory for dirs and files and fake callback-events
@@ -153,6 +194,13 @@
       
       $this->inotifyDescriptor = null;
       $this->inotify = null;
+      
+      // Check if our target exists
+      if (!file_exists ($this->inotifyPath)) {
+        trigger_error ('Watched filesystem-object does not exist: ' . $this->inotifyPath);
+        
+        return $rc;
+      }
       
       // Find a new inotify
       foreach ($Handler->getEvents () as $Event)
