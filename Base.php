@@ -235,6 +235,10 @@
       $this->onLoop = true;
       $this->loopContinue = true;
       
+      // Check if there are any events queued
+      if ((count ($this->readFDs) == 0) && (count ($this->writeFDs) == 0))
+        trigger_error ('Entering Event-Loop without FDs');
+      
       // Handle libEvent-Support
       if (self::checkLibEvent ()) {
         $rc = 0;
@@ -310,6 +314,12 @@
       $readFDs = $this->loopReadFDs;
       $writeFDs = $this->loopWriteFDs;
       $n = null;
+      
+      if ((count ($readFDs) == 0) && (count ($writeFDs) == 0)) {
+        usleep ($Timeout);
+        
+        return null;
+      }
       
       // Wait for events
       if (@stream_select ($readFDs, $writeFDs, $n, 0, $Timeout) == 0) {
