@@ -236,7 +236,7 @@
       $this->loopContinue = true;
       
       // Check if there are any events queued
-      if ((count ($this->readFDs) == 0) && (count ($this->writeFDs) == 0))
+      if ((count ($this->readFDs) == 0) && (count ($this->writeFDs) == 0) && (count ($this->timeoutEvents) == 0))
         trigger_error ('Entering Event-Loop without FDs');
       
       // Handle libEvent-Support
@@ -317,6 +317,7 @@
       
       if ((count ($readFDs) == 0) && (count ($writeFDs) == 0)) {
         usleep ($Timeout);
+        $this->signalHandler ();
         
         return null;
       }
