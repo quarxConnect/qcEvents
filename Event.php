@@ -78,11 +78,12 @@
      * @param resource $fd
      * @param bool $monitorRead (optional) Monitor read-events (default)
      * @param bool $monitorWrite (optional) Monitor write-events
+     * @param bool $monitorError (optional) Montor error-events
      * 
      * @access public
      * @return bool
      **/
-    public function setFD ($fd, $monitorRead = true, $monitorWrite = false) {
+    public function setFD ($fd, $monitorRead = true, $monitorWrite = false, $monitorError = false) {
       // Cleanup first
       if ($wasBound = $this->isBound ())
         $this->unbind ();
@@ -95,6 +96,7 @@
       $this->fd = $fd;
       $this->monitorRead = $monitorRead;
       $this->monitorWrite = $monitorWrite;
+      $this->monitorError = $monitorError;
       
       if ($wasBound)
         $this->bind ();
@@ -139,10 +141,15 @@
     /**
      * Check or set wheter to watch for read-events
      * 
+     * @param bool $Toggle (optional) Set new status
+     * 
      * @access public
      * @return bool
      **/
-    public function watchRead () {
+    public function watchRead ($Toggle = null) {
+      if (($Toggle !== null) && $this->setFD ($this->getFD (), $Toggle, $this->watchWrite (), $this->watchError ()))
+        return true;
+      
       return $this->monitorRead;
     }
     // }}}
@@ -151,10 +158,15 @@
     /**
      * Check or set wheter to watch for write-events
      * 
+     * @param bool $Toggle (optional) Set new status
+     * 
      * @access public
      * @return bool
      **/
-    public function watchWrite () {
+    public function watchWrite ($Toggle = null) {
+      if (($Toggle !== null) && $this->setFD ($this->getFD (), $this->watchRead (), $Toggle, $this->watchError ()))
+        return true;
+      
       return $this->monitorWrite;
     }
     // }}}
@@ -163,10 +175,15 @@
     /**
      * Check or set wheter to watch for error-events
      * 
+     * @param bool $Toggle (optional) Set new status
+     * 
      * @access public
      * @return bool
      **/
-    public function watchError () {
+    public function watchError ($Toggle = null) {
+      if (($Toggle !== null) && $this->setFD ($this->getFD (), $this->watchRead (), $this->watchWrite (), $Toggle))
+        return true;
+      
       return $this->monitorError;
     }
     // }}}
