@@ -92,7 +92,12 @@
         return false;
       
       // Remove the event from its previous base
-      $Event->unbind ();
+      if ($Event->haveEventBase ()) {
+        if ($Event->getEventBase () === $this)
+          return true;
+        
+        $Event->unbind ();
+      }
       
       // Append the Event to our ones
       $this->Events [] = $Event;
@@ -107,6 +112,24 @@
         $this->updateEventFD ($Index, $fd);
       
       return true;
+    }
+    // }}}
+    
+    // {{{ updateEvent
+    /**
+     * Update the watched events for a given handle
+     * 
+     * @param object $Event
+     * 
+     * @access public
+     * @return void
+     **/
+    public function updateEvent ($Event) {
+      // Lookup the event
+      if (($key = array_search ($Event, $this->Events)) === false)
+        return false;
+      
+      return $this->updateEventFD ($key);
     }
     // }}}
     

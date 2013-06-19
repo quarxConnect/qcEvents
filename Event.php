@@ -41,7 +41,7 @@
     private $Hooks = array ();
     
     // Information about our status and parent
-    private $Bound = false;
+    private $isBound = false;
     private $eventBase = null;
     
     // {{{ __construct
@@ -84,10 +84,6 @@
      * @return bool
      **/
     public function setFD ($fd, $monitorRead = true, $monitorWrite = false, $monitorError = false) {
-      // Cleanup first
-      if ($wasBound = $this->isBound ())
-        $this->unbind ();
-      
       // Check wheter FD is a valid resource
       if (!is_resource ($fd))
         return false;
@@ -98,8 +94,8 @@
       $this->monitorWrite = $monitorWrite;
       $this->monitorError = $monitorError;
       
-      if ($wasBound)
-        $this->bind ();
+      if ($this->isBound && is_object ($this->eventBase))
+        $this->eventBase->updateEvent ($this);
       
       return true;
     }
@@ -220,7 +216,7 @@
      * @return bool
      **/
     public function isBound () {
-      return $this->Bound;
+      return $this->isBound;
     }
     // }}}
     
@@ -233,14 +229,14 @@
      **/
     public function bind () {
       // Don't bind twice
-      if ($this->isBound ())
+      if ($this->isBound)
         return true;
       
       // Make sure we have a base assigned
       if (!is_object ($this->eventBase))
         return false;
       
-      return ($this->Bound = $this->eventBase->addEvent ($this));
+      return ($this->isBound = $this->eventBase->addEvent ($this));
     }
     // }}}
     
@@ -253,11 +249,11 @@
      **/
     public function unbind () {
       // Check if this event is unbound
-      if (!$this->Bound)
+      if (!$this->isBound)
         return true;
       
       // Now really unbind
-      $this->Bound = false;
+      $this->isBound = false;
       
       if (is_object ($this->eventBase))
         $this->eventBase->removeEvent ($this);
@@ -306,7 +302,7 @@
       $this->eventBase = $Base;
       
       if ($setBound)
-        $this->Bound = true;
+        $this->isBound = true;
       
       return true;
     }
