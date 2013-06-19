@@ -88,7 +88,7 @@
      **/
     public function setHandler ($Handler, $markBound = false) {
       // Forward the event to our parent
-      if (!parent::setHandler ($Handler, $markBound))
+      if (!parent::setEventBase ($Handler, $markBound))
         return false;
       
       // Make sure that we set any timeouts

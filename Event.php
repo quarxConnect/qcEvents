@@ -42,7 +42,7 @@
     
     // Information about our status and parent
     private $Bound = false;
-    private $Handler = null;
+    private $eventBase = null;
     
     // {{{ __construct
     /**
@@ -220,10 +220,10 @@
         return true;
       
       // Make sure we have a base assigned
-      if (!is_object ($this->Handler))
+      if (!is_object ($this->eventBase))
         return false;
       
-      return ($this->Bound = $this->Handler->addEvent ($this));
+      return ($this->Bound = $this->eventBase->addEvent ($this));
     }
     // }}}
     
@@ -242,8 +242,54 @@
       // Now really unbind
       $this->Bound = false;
       
-      if (is_object ($this->Handler))
-        $this->Handler->removeEvent ($this);
+      if (is_object ($this->eventBase))
+        $this->eventBase->removeEvent ($this);
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ haveEventBase
+    /**
+     * Check if we have an event-base assigned
+     * 
+     * @access public
+     * @return bool
+     **/
+    public final function haveEventBase () {
+      return is_object ($this->eventBase);
+    }
+    // }}}
+    
+    // {{{ getEventBase
+    /**
+     * Retrive our assigned event-base
+     * 
+     * @access public
+     * @return qcEvents_Base
+     **/
+    public final function getEventBase () {
+      return $this->eventBase;
+    }
+    // }}}
+    
+    // {{{ setEventBase
+    /**
+     * Set an event-base for this event
+     * 
+     * @access public
+     * @return bool
+     **/
+    public final function setEventBase (qcEvents_Base $Base, $setBound = false) {
+      // Make sure we are registered on this handler
+      if (!$Base->haveEvent ($this))
+        return $Base->addEvent ($this);
+      
+      // Set this handler
+      $this->eventBase = $Base;
+      
+      if ($setBound)
+        $this->Bound = true;
       
       return true;
     }
@@ -257,7 +303,9 @@
      * @return object
      **/
     public function getBase () {
-      return $this->getHandler ();
+      trigger_error ('qcEvents_Event::getBase() is deprecated, use qcEvents_Event::getEventBase() instead', E_USER_DEPRECATED);
+      
+      return $this->getEventBase ();
     }
     // }}}
     
@@ -271,7 +319,9 @@
      * @return bool
      **/
     public function setBase ($Base) {
-      return $Base->addEvent ($this);
+      trigger_error ('qcEvents_Event::setBase() is deprecated, use qcEvents_Event::setEventBase() instead', E_USER_DEPRECATED);
+      
+      return $this->setEventBase ($Base);
     }
     // }}}
     
@@ -286,21 +336,9 @@
      * @return bool
      **/
     public final function setHandler ($Handler, $markBound = false) {
-      // Make sure the handler is an event-base
-      if (!($Handler instanceof qcEvents_Base))
-        return false;
+      trigger_error ('qcEvents_Event::setHandler() is deprecated, use qcEvents_Event::setEventBase() instead', E_USER_DEPRECATED);
       
-      // Make sure we are registered on this handler
-      if (!$Handler->haveEvent ($this))
-        return false;
-      
-      // Set this handler
-      $this->Handler = $Handler;
-      
-      if ($markBound)
-        $this->Bound = true;
-      
-      return true;
+      return $this->setEventBase ($Handler, $markBound);
     }
     // }}}
     
@@ -312,9 +350,12 @@
      * @return object
      **/
     public function getHandler () {
-      return $this->Handler;
+      trigger_error ('qcEvents_Event::getHandler() is deprecated, use qcEvents_Event::getEventBase() instead', E_USER_DEPRECATED);
+      
+      return $this->getEventBase ();
     }
     // }}}
+    
     
     // {{{ readEvent
     /**
@@ -378,8 +419,8 @@
      * @return void
      **/
     public function loopOnce ($Timeout = 250) {
-      if (is_object ($this->Handler))
-        $this->Handler->loopOnce ($Timeout);
+      if (is_object ($this->eventBase))
+        $this->eventBase->loopOnce ($Timeout);
     }
     // }}}
     
@@ -392,11 +433,11 @@
      **/
     public function forceOnNextIteration ($Event = self::EVENT_TIMER) {
       // Check if we have a parent assigned
-      if (!is_object ($this->Handler))
+      if (!is_object ($this->eventBase))
         return false;
       
       // Queue the event on our parent
-      return $this->Handler->queueForNextIteration ($this, $Event);
+      return $this->eventBase->queueForNextIteration ($this, $Event);
     }
     // }}}
     
@@ -412,10 +453,10 @@
      * @return bool
      **/
     public function addTimeout ($Timeout, $Repeat = false, $Callback = null) {
-      if (!is_object ($H = $this->getHandler ()))
+      if (!is_object ($B = $this->getEventBase ()))
         return false;
       
-      return $H->addTimeout ($this, $Timeout, $Repeat, $Callback);
+      return $B->addTimeout ($this, $Timeout, $Repeat, $Callback);
     }
     // }}}
     

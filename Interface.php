@@ -40,13 +40,13 @@
     /**
      * Store the Event-Base-Hanlder on this event
      * 
-     * @param qcEvents_Base $Handler
-     * @param bool $markBound (optional) Mark this event as bound
+     * @param qcEvents_Base $Base
+     * @param bool $setBound (optional) Mark this event as bound
      * 
      * @access public
      * @return void
      **/
-    public function setHandler ($Handler, $markBound = false);
+    public function setEventBase (qcEvents_Base $Base, $setBound = false);
     // }}}
     
     // {{{ unbind

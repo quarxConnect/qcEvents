@@ -101,7 +101,7 @@
       $Index = array_search ($Event, $this->Events, true);
       
       // Register ourself on the event
-      $Event->setHandler ($this, true);
+      $Event->setEventBase ($this, true);
       
       if (is_resource ($fd = $Event->getFD ()))
         $this->updateEventFD ($Index, $fd);
