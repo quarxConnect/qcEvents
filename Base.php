@@ -50,7 +50,7 @@
     private $loopBreak = false;
     private $loopExit = false;
     private $loopContinue = false;
-    private $loopEmpty = true;
+    private $loopEmpty = false;
     
     // Signal-Handling
     private $handleSignals = null;
@@ -347,18 +347,19 @@
       }
       
       // Wait for events
-      if (@stream_select ($readFDs, $writeFDs, $errorFDs, 0, $Timeout) == 0) {
-        $this->signalHandler ();
-        
-        return null;
-      }
-      
+      $Count = @stream_select ($readFDs, $writeFDs, $errorFDs, 0, $Timeout);
       $this->signalHandler ();
+      
+      if ($Count == 0)  
+        return null;
       
       // Handle the events
       $this->loopBreak = false;
       
       foreach ($readFDs as $Index=>$FD) {
+        if (!isset ($this->Events [$Index]))
+          continue;
+        
         $this->Events [$Index]->readEvent ();
         
         if ($this->loopBreak)
@@ -366,6 +367,9 @@
       }
       
       foreach ($writeFDs as $Index=>$FD) {
+        if (!isset ($this->Events [$Index]))
+          continue;
+        
         $this->Events [$Index]->writeEvent ();
         
         if ($this->loopBreak)
@@ -373,6 +377,9 @@
       }
       
       foreach ($errorFDs as $Index=>$FD) {
+        if (!isset ($this->Events [$Index]))
+          continue;
+        
         $this->Events [$Index]->errorEvent ();
         
         if ($this->loopBreak)
