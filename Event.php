@@ -19,6 +19,7 @@
    **/
   
   require_once ('qcEvents/Base.php');
+  require_once ('qcEvents/Interface.php');
   
   /**
    * Event
@@ -29,18 +30,13 @@
    * @package qcEvents
    * @revision 01   
    **/
-  class qcEvents_Event {
-    const EVENT_READ = 0;
-    const EVENT_WRITE = 1;
-    const EVENT_TIMER = 2;
-    
-    // libEvent-Support
-    private $evPtr = null;
-    
+  class qcEvents_Event implements qcEvents_Interface {
     // Informations on this event
     private $fd = null;
     private $monitorRead = false;
     private $monitorWrite = false;
+    private $monitorError = false;
+    private $monitorTimer = false;
     private $Callback = null;
     private $Hooks = array ();
     
@@ -61,16 +57,15 @@
      * @return void
      **/
     function __construct ($fd, $monitorRead, $monitorWrite, $Callback = null) {
-      // Validate our parameters
-      if (!($monitorRead || $monitorWrite))
-        throw new Exception ('Nothing to monitor');
-      
+      // Make sure we have a valid stream
       if (!is_resource ($fd))
         throw new Exception ('Invalid fd');
       
+      // Check wheter to set a callback
       if ($Callback !== null)
         $this->setCallback ($Callback);
       
+      // Setup ourself
       if (!$this->setFD ($fd, $monitorRead, $monitorWrite))
         throw new Exception ('Could not create event');
     }
@@ -95,21 +90,6 @@
       // Check wheter FD is a valid resource
       if (!is_resource ($fd))
         return false;
-      
-      // Handle libEvent-Support
-      if (qcEvents_Base::checkLibEvent ()) {
-        if (!is_resource ($this->evPtr) && !is_resource ($this->evPtr = event_new ()))
-          return false;
-        
-        $flags = ($monitorRead ? EV_READ : 0) |
-                 ($monitorWrite ? EV_WRITE : 0) |
-                 EV_PERSIST;
-        
-        if ($wasBound)
-          $this->bind ();
-        
-        return event_set ($this->evPtr, $fd, $flags, array ($this, 'evCallback'), null);
-      } 
       
       // Store informations in our object   
       $this->fd = $fd;
@@ -143,18 +123,6 @@
     }
     // }}}
     
-    // {{{ getPtr
-    /**
-     * Retrive libEvent-Pointer
-     * 
-     * @access public
-     * @return resource
-     **/
-    public function getPtr () {
-      return $this->evPtr;
-    }
-    // }}}
-    
     // {{{ getFD
     /**
      * Retrive our file-descriptor
@@ -164,6 +132,42 @@
      **/
     public function getFD () {
       return $this->fd;
+    }
+    // }}}
+    
+    // {{{ watchRead
+    /**
+     * Check or set wheter to watch for read-events
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function watchRead () {
+      return $this->monitorRead;
+    }
+    // }}}
+    
+    // {{{ watchWrite
+    /**
+     * Check or set wheter to watch for write-events
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function watchWrite () {
+      return $this->monitorWrite;
+    }
+    // }}}
+    
+    // {{{ watchError
+    /**
+     * Check or set wheter to watch for error-events
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function watchError () {
+      return $this->monitorError;
     }
     // }}}
     
@@ -235,10 +239,6 @@
       if (!$this->Bound)
         return true;
       
-      // Handle libEvent-Support
-      if (qcEvents_Base::checkLibEvent () && !event_del ($this->evPtr))
-        return false;
-      
       // Now really unbind
       $this->Bound = false;
       
@@ -280,17 +280,21 @@
      * Store handle of our event-base
      * 
      * @param object $Handler
+     * @param bool $markBound (optional)
      * 
      * @access public
      * @return bool
      **/
-    public function setHandler ($Handler, $markBound = false) {
+    public final function setHandler ($Handler, $markBound = false) {
+      // Make sure the handler is an event-base
       if (!($Handler instanceof qcEvents_Base))
         return false;
       
+      // Make sure we are registered on this handler
       if (!$Handler->haveEvent ($this))
         return false;
       
+      // Set this handler
       $this->Handler = $Handler;
       
       if ($markBound)
@@ -309,23 +313,6 @@
      **/
     public function getHandler () {
       return $this->Handler;
-    }
-    // }}}
-    
-    // {{{ evCallback
-    /**
-     * Callback function for libEvent-Support
-     * 
-     * @access public
-     * @return void
-     **/ 
-    public function evCallback ($fd, $event, $arg) {
-      if ($event == EV_READ)
-        $this->readEvent ();
-      elseif ($event == EV_WRITE)
-        $this->writeEvent ();
-      else
-        trigger_error ('Unknown Event ' . $event, E_USER_NOTICE);
     }
     // }}}
     
@@ -352,6 +339,19 @@
     public function writeEvent () {
       if ($this->Callback !== null)
         call_user_func ($this->Callback, $this, self::EVENT_WRITE);
+    }
+    // }}}
+    
+    // {{{ errorEvent
+    /**
+     * Handle an error-event
+     * 
+     * @access public
+     * @return void
+     **/
+    public function errorEvent () {
+      if ($this->Callback !== null)
+        call_user_func ($this->Callback, $this, self::EVENT_ERROR);
     }
     // }}}
     

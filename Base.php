@@ -18,6 +18,8 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
+  require_once ('qcEvents/Interface.php');
+  
   /**
    * Event-Base
    * ----------
@@ -31,13 +33,17 @@
     // libEvent-Support
     private $evBase = null;
     
-    // List of associated events
+    /* List of all events on this handler */
     private $Events = array ();
+    
+    /* List of events that should run on the next iteration */
     private $forceEvents = array ();
     
-    private $FDs = array ();
+    /* Queued FDs */
     private $readFDs = array ();
     private $writeFDs = array ();
+    private $errorFDs = array ();
+    private $eventFDs = array ();
     
     // Loop-Handling
     private $onLoop = false;
@@ -45,9 +51,6 @@
     private $loopExit = false;
     private $loopContinue = false;
     private $loopEmpty = true;
-    
-    private $loopReadFDs = array ();
-    private $loopWriteFDs = array ();
     
     // Signal-Handling
     private $handleSignals = null;
@@ -65,15 +68,10 @@
      **/
     function __construct () {
       // Handle libEvent-Support
-      if (self::checkLibEvent ()) {
-        if (!is_resource ($this->evBase = event_base_new ()))
-          throw new Exception ("Could not create event-base");
+      if (self::checkLibEvent () && !is_resource ($this->evBase = event_base_new ()))
+        throw new Exception ("Could not create event-base");
       
-      // Run our own implementation
-      } else {
-        # TODO?
-      }
-      
+      // Check if we may handle signals
       if (!($this->handleSignals = extension_loaded ('pcntl')))
         trigger_error ('No PCNTL Extension found, using manual timer-events', E_USER_WARNING);
     }
@@ -90,7 +88,7 @@
      **/
     public function addEvent ($Event) {
       // Make sure this is a valid Event
-      if (!($Event instanceof qcEvents_Event))
+      if (!($Event instanceof qcEvents_Interface))
         return false;
       
       // Remove the event from its previous base
@@ -99,38 +97,76 @@
       // Append the Event to our ones
       $this->Events [] = $Event;
       
-      // Handle libEvent-Support
-      if (self::checkLibEvent ()) {
-        $ptr = $Event->getPtr ();
-        
-        return event_base_set ($ptr, $this->evBase) &&
-               event_add ($ptr);
-      
-      // Handle our own implementation
-      } elseif (is_resource ($fd = $Event->getFD ())) {
-        if ($Event->getRead ()) {
-          if (!isset ($this->readFDs [$fd]))
-            $this->readFDs [$fd] = array ();
-          
-          $this->readFDs [$fd][] = $Event;
-          $this->loopReadFDs [$fd] = $fd;
-        }
-        
-        if ($Event->getWrite ()) {
-          if (!isset ($this->writeFDs [$fd]))
-            $this->writeFDs [$fd] = array ();
-          
-          $this->writeFDs [$fd][] = $Event;
-          $this->loopWriteFDs [$fd] = $fd;
-        }
-        
-        $this->FDs [$fd] = $fd;
-      }
+      // Retrive internal ID of this event
+      $Index = array_search ($Event, $this->Events, true);
       
       // Register ourself on the event
       $Event->setHandler ($this, true);
       
+      if (is_resource ($fd = $Event->getFD ()))
+        $this->updateEventFD ($Index, $fd);
+      
       return true;
+    }
+    // }}}
+    
+    // {{{ updateEventFD
+    /**
+     * Update the event-watchers for a given event
+     * 
+     * @param int $Index
+     * @param resource $fd (optional)
+     * 
+     * @access private
+     * @return void
+     **/
+    private function updateEventFD ($Index, $fd = null) {
+      // Make sure the event is available
+      if (!isset ($this->Events [$Index]))
+        return false;
+      
+      // Make sure we have an fd or clean up and exit
+      if (!is_resource ($fd) && !is_resource ($fd = $this->Events [$Index]->getFD ())) {
+        if (isset ($this->eventFDs [$Index]) && is_resource ($this->eventFDs [$Index]))
+          event_del ($this->eventFDs [$Index]);
+        
+        unset ($this->readFDs [$Index], $this->writeFDs [$Index], $this->errorFDs [$Index], $this->eventFDs [$Index]);
+        
+        return false;
+      }
+      
+      // Handle libEvent-Support
+      if (self::checkLibEvent ()) {
+        // Make sure we have an libevent-Event available
+        if ((!isset ($this->eventFDs [$Index]) || !is_resource ($this->eventFDs [$Index])) &&
+            !($this->eventFDs [$Index] = event_new ()))
+          return false;
+        
+        // Generate flags for libevent
+        $flags = ($this->Events [$Index]->watchRead () ? EV_READ : 0) |
+                 ($this->Events [$Index]->watchWrite () ? EV_WRITE : 0) |
+                 EV_PERSIST;
+        
+        // Update the Event
+        event_set ($this->eventFDs [$Index], $fd, $flags, array ($this, 'libeventHandler'), $Index);
+        
+      // Handle our own implementation
+      } else {
+        if ($this->Events [$Index]->watchRead ())
+          $this->readFDs [$Index] = $fd;
+        else
+          unset ($this->readFDs [$Index]);
+        
+        if ($this->Events [$Index]->watchWrite ())
+          $this->writeFDs [$Index] = $fd;
+        else
+          unset ($this->writeFDs [$Index]);
+        
+        if ($this->Events [$Index]->watchError ())
+          $this->errorFDs [$Index] = $fd;
+        else
+          unset ($this->errorFDs [$Index]);
+      }
     }
     // }}}
     
@@ -148,29 +184,16 @@
       if (($key = array_search ($Event, $this->Events)) === false)
         return true;
       
-      if (!self::checkLibEvent () && is_resource ($fd = $Event->getFD ())) {
-        if ($Event->getRead ()) {
-          if (count ($this->readFDs [$fd]) == 1) {
-            unset ($this->readFDs [$fd]);
-            unset ($this->loopReadFDs [$fd]);
-          } elseif (($k = array_search ($Event, $this->readFDs [$fd])) !== false)
-            unset ($this->readFDs [$fd][$k]);
-        }
-        
-        if ($Event->getWrite ()) {
-          if (count ($this->writeFDs [$fd]) == 1) {
-            unset ($this->writeFDs [$fd]);
-            unset ($this->loopWriteFDs [$fd]);
-          } elseif (($k = array_search ($Event, $this->writeFDs [$fd])) !== false)
-            unset ($this->writeFDs [$fd][$k]);
-        }
-        
-        unset ($this->FDs [$fd]);
-      }
+      // Remove all references
+      if (isset ($this->eventFDs [$key]) && is_resource ($this->eventFDs [$key]))
+        event_del ($this->eventFDs [$key]);
       
-      unset ($this->Events [$key]);
+      unset ($this->Events [$key], $this->readFDs [$key], $this->writeFDs [$key], $this->errorFDs [$key], $this->eventFDs [$key]);
+      
+      // Tell the event that it has to unbind
       $Event->unbind ();
       
+      // Check wheter to exit the loop if there are no remaining events
       if (!$this->loopEmpty && (count ($this->Events) == 0))
         $this->loopExit ();
       
@@ -219,7 +242,7 @@
      * @return bool
      **/
     public function haveEvent ($Event) {
-      return in_array ($Event, $this->Events);
+      return in_array ($Event, $this->Events, true);
     }
     // }}}
     
@@ -236,7 +259,7 @@
       $this->loopContinue = true;
       
       // Check if there are any events queued
-      if ((count ($this->readFDs) == 0) && (count ($this->writeFDs) == 0) && (count ($this->timeoutEvents) == 0))
+      if ((count ($this->readFDs) == 0) && (count ($this->writeFDs) == 0) && (count ($this->errorFDs) == 0) && (count ($this->timeoutEvents) == 0))
         trigger_error ('Entering Event-Loop without FDs');
       
       // Handle libEvent-Support
@@ -310,12 +333,13 @@
      * @return void
      **/
     private function loopOnceInternal ($Timeout) {
-      // Retrive a list of FDs to poll
-      $readFDs = $this->loopReadFDs;
-      $writeFDs = $this->loopWriteFDs;
-      $n = null;
+      // Copy arrays for select()
+      $readFDs = $this->readFDs;
+      $writeFDs = $this->writeFDs;
+      $errorFDs = $this->errorFDs;
       
-      if ((count ($readFDs) == 0) && (count ($writeFDs) == 0)) {
+      // Check if we should run stream select
+      if ((count ($readFDs) == 0) && (count ($writeFDs) == 0) && (count ($errorFDs) == 0)) {
         usleep ($Timeout);
         $this->signalHandler ();
         
@@ -323,7 +347,7 @@
       }
       
       // Wait for events
-      if (@stream_select ($readFDs, $writeFDs, $n, 0, $Timeout) == 0) {
+      if (@stream_select ($readFDs, $writeFDs, $errorFDs, 0, $Timeout) == 0) {
         $this->signalHandler ();
         
         return null;
@@ -334,23 +358,59 @@
       // Handle the events
       $this->loopBreak = false;
       
-      foreach ($readFDs as $fd)
-        foreach ($this->readFDs [$fd] as $Event) {
-          $Event->readEvent ();
-          
-          if ($this->loopBreak)
-            return false;
-        }
+      foreach ($readFDs as $Index=>$FD) {
+        $this->Events [$Index]->readEvent ();
+        
+        if ($this->loopBreak)
+          return false;
+      }
       
-      foreach ($writeFDs as $fd)
-        foreach ($this->writeFDs [$fd] as $Event) {
-          $Event->writeEvent ();
-          
-          if ($this->loopBreak)
-            return false;
-        }
+      foreach ($writeFDs as $Index=>$FD) {
+        $this->Events [$Index]->writeEvent ();
+        
+        if ($this->loopBreak)
+          return false;
+      }
+      
+      foreach ($errorFDs as $Index=>$FD) {
+        $this->Events [$Index]->errorEvent ();
+        
+        if ($this->loopBreak)
+          return false;
+      }
       
       return true;
+    }
+    // }}}
+    
+    // {{{ libeventHandler
+    /**
+     * Handle an incoming callback from libevent
+     * 
+     * @param resource $fd
+     * @param enum $Event
+     * @param int $arg
+     * 
+     * @access public
+     * @return void
+     **/
+    public function libeventHandler ($fd, $Event, $arg) {
+      // Check if the given event exists
+      if (!isset ($this->Events [$arg])) {
+        trigger_error ('Event for non-existing handle captured', E_USER_NOTICE);
+        
+        return;
+      }
+      
+      // Handle the event
+      if (($Event & EV_READ) == EV_READ)
+        $this->Events [$arg]->readEvent ();
+      
+      if (($Event & EV_WRITE) == EV_WRITE)
+        $this->Events [$arg]->writeEvent ();
+      
+      if (($Event & EV_TIMEOUT) == EV_TIMEOUT)
+        $this->Events [$arg]->errorEvent ();
     }
     // }}}
     
@@ -385,18 +445,24 @@
         return null;
       
       // Run all pending events
+      $this->loopBreak = false;
+      
       foreach ($this->forceEvents as $ID=>$Ev) {
         // Run the event
         switch ($Ev [1]) {
-          case qcEvents_Event::EVENT_READ:
+          case qcEvents_Interface::EVENT_READ:
             $Ev [0]->readEvent ();
             break;
           
-          case qcEvents_Event::EVENT_WRITE:
+          case qcEvents_Interface::EVENT_WRITE:
             $Ev [0]->writeEvent ();
             break;
-            
-          case qcEvents_Event::EVENT_TIMER:
+          
+          case qcEvents_Interface::EVENT_ERROR:
+            $Ev [0]->errorEvent ();
+            break;
+          
+          case qcEvents_Interface::EVENT_TIMER:
             $Ev [0]->timerEvent ();
             break;
         }
@@ -503,7 +569,7 @@
      * @access public
      * @return bool
      **/
-    public function queueForNextIteration ($Handle, $Event = qcEvents_Event::EVENT_TIMER) {
+    public function queueForNextIteration ($Handle, $Event = qcEvents_Interface::EVENT_TIMER) {
       // Check if this event belongs to us
       if (!$this->haveEvent ($Handle))
         return false;
