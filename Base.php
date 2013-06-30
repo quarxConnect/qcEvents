@@ -92,21 +92,25 @@
         return false;
       
       // Remove the event from its previous base
+      $Index = false;
+      
       if ($Event->haveEventBase ()) {
         if ($Event->getEventBase () === $this)
-          return true;
-        
-        $Event->unbind ();
+          $Index = array_search ($Event, $this->Events, true);
+        else
+          $Event->unbind ();
       }
       
       // Append the Event to our ones
-      $this->Events [] = $Event;
-      
-      // Retrive internal ID of this event
-      $Index = array_search ($Event, $this->Events, true);
-      
-      // Register ourself on the event
-      $Event->setEventBase ($this, true);
+      if ($Index === false) {
+        $this->Events [] = $Event;
+        
+        // Register ourself on the event   
+        $Event->setEventBase ($this, true);
+        
+        // Retrive internal ID of this event
+        $Index = array_search ($Event, $this->Events, true);
+      }
       
       if (is_resource ($fd = $Event->getFD ()))
         $this->updateEventFD ($Index, $fd);
