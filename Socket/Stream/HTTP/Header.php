@@ -86,8 +86,53 @@
           continue;
         
         // Store the header
-        $this->Headers [strtolower (substr ($Line, 0, $p))] = trim (substr ($Line, $p + 1));
+        $Name = substr ($Line, 0, $p);
+        $this->Headers [strtolower ($Name)] = array ($Name, trim (substr ($Line, $p + 1)));
       }
+    }
+    // }}}
+    
+    // {{{ __toString
+    /**
+     * Convert the header into a string
+     * 
+     * @access friendly
+     * @return string
+     **/
+    function __toString () {
+      if ($this->Type == self::TYPE_RESPONSE)
+        $buf = $this->Version . ' ' . $this->Code . ' ' . $this->Message . "\r\n";
+      else
+        $buf = $this->Method . ' ' . $this->URI . ' ' . $this->Version . "\r\n";
+      
+      foreach ($this->Headers as $Header)
+        $buf .= $Header [0] . ': ' . $Header [1] . "\r\n";
+      
+      return $buf . "\r\n";
+    }
+    // }}}
+    
+    // {{{ getType
+    /**
+     * Retrive the type of this header
+     * 
+     * @access public
+     * @return enum
+     **/
+    public function getType () {
+      return $this->Type;
+    }
+    // }}}
+    
+    // {{{ isRequest
+    /**
+     * Check if this header is a http-request
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isRequest () {
+      return ($this->Type == self::TYPE_REQUEST);
     }
     // }}}
     
@@ -120,9 +165,44 @@
       
       // Check if the field is present
       if (isset ($this->Headers [$Key]))
-        return $this->Headers [$Key];
+        return $this->Headers [$Key][1];
       
       return null;
+    }
+    // }}}
+    
+    // {{{ setField
+    /**
+     * Set the content of a field on this header
+     * 
+     * @param string $Name
+     * @param string $Value
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setField ($Name, $Value) {
+      // Retrive the key for that field
+      $Key = strtolower ($Name);
+      
+      // Store the value
+      $this->Headers [$Key] = array ($Name, $Value);
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ unsetField
+    /**
+     * Remove a field from this header
+     * 
+     * @param string $Name
+     * 
+     * @access public
+     * @return void
+     **/
+    public function unsetField ($Name) {
+      unset ($this->Headers [strtolower ($Name)]);
     }
     // }}}
     

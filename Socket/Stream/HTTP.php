@@ -93,6 +93,20 @@
     }
     // }}}
     
+    // {{{ httpHeaderWrite
+    /**
+     * Transmit a set of HTTP-Headers over the wire
+     * 
+     * @param qcEvents_Socket_Stream_HTTP_Header $Header
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function httpHeaderWrite (qcEvents_Socket_Stream_HTTP_Header $Header) {
+      $this->write (strval ($Header));
+    }
+    // }}}
+    
     // {{{ socketReceive
     /**
      * Internal Callback: Data was received over the wire
