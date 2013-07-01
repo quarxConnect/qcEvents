@@ -208,6 +208,7 @@
      * @param qcEvents_Base $newBase (optional) Try to bind to this event-base
      * 
      * @remark This function is asyncronous! If it returns true this does not securly mean that a connection was established!
+     * @todo Add support for "bindto"-Option
      * 
      * @access public
      * @return bool
@@ -387,27 +388,35 @@
     }
     // }}}
     
-    // {{{ connectUDPServerSlave
+    // {{{ connectServer
     /**
-     * Use this connection as UDP-Server-Slave
+     * Use this connection as Server-Slave
      * 
      * @param qcEvents_Socket_Server $Server
-     * @param string $Peer
+     * @param string $Remote
+     * @param resource $Connection (optional)
      * 
      * @remark This is for internal use only!
      * 
      * @access public
      * @return void
      **/
-    public final function connectUDPServerSlave (qcEvents_Socket_Server $Server, $Remote) {
+    public final function connectServer (qcEvents_Socket_Server $Server, $Remote, $Connection = null) {
       // Set our internal buffer-size
-      $this->bufferSize = self::READ_UDP_BUFFER;
+      if ($Connection === null) {
+        $this->bufferSize = self::READ_UDP_BUFFER;
+        
+        // Store short-hand for UDP-Writes
+        $this->removeName = $Remote;
+      } else {
+        $this->bufferSize = self::READ_TCP_BUFFER;
+        
+        // Store the connection
+        $this->setFD ($Connection, true, false);
+      }
       
       // Store our parent server-handle
       $this->serverParent = $Server;
-      
-      // Store short-hand for UDP-Writes
-      $this->removeName = $Remote;
       
       // Fake remote socket-settings
       $p = strrpos ($Remote, ':');
@@ -416,7 +425,7 @@
         substr ($Remote, 0, $p),
         substr ($Remote, 0, $p),
         intval (substr ($Remote, $p + 1)),
-        self::TYPE_UDP_SERVER
+        ($Connection === null ? self::TYPE_UDP_SERVER : self::TYPE_TCP)
       );
       
       // Put ourself into connected state
@@ -720,8 +729,12 @@
         $this->serverParent->disconnectChild ($this);
       
       // Close our own connection
-      } else
+      } else {
         @fclose ($this->getFD ());
+        
+        if (is_object ($this->serverParent))
+          $this->serverParent->___callback ('serverClientClosed', $this->getRemoteName (), $this);
+      }
       
       $this->Connected = false;
       
@@ -814,6 +827,18 @@
      **/
     public function getRemotePort () {
       return $this->remotePort;
+    }
+    // }}}
+    
+    // {{{ getRemoteName
+    /**
+     * 
+     **/
+    public function getRemoteName () {
+      if ($this->remoteName !== null)
+        return $this->remoteName;
+      
+      return $this->remoteHost . ':' . $this->remotePort;
     }
     // }}}
     
