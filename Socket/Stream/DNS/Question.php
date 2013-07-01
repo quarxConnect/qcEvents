@@ -125,8 +125,8 @@
       $this->setLabel (qcEvents_Socket_Stream_DNS_Message::getLabel ($Data, $Offset));
       
       // Retrive type and class
-      $this->setType (ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]);
-      $this->setClass (ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]);
+      $this->setType ((ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]));
+      $this->setClass ((ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]));
       
       return true;
     }

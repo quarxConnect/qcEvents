@@ -255,15 +255,15 @@
       
       // Append Answer-Section
       foreach ($this->Answer as $A)
-        $Data .= $Q->toString (strlen ($Data), $Labels);
+        $Data .= $A->toString (strlen ($Data), $Labels);
       
       // Append Authority-Section
       foreach ($this->Authority as $A)
-        $Data .= $Q->toString (strlen ($Data), $Labels);
+        $Data .= $A->toString (strlen ($Data), $Labels);
       
       // Append Additional-Section
       foreach ($this->Additional as $A)
-        $Data .= $Q->toString (strlen ($Data), $Labels);
+        $Data .= $A->toString (strlen ($Data), $Labels);
       
       // Return the buffer
       return $Data;
