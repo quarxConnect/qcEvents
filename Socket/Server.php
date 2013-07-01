@@ -62,21 +62,32 @@
     /**
      * Create a new server-process
      * 
-     * @param qcEvents_Base $Base (optional)
-     * @param string $Host (optional)
-     * @param int $Port (optional)
-     * @param enum $Type (optional)
+     * @param qcEvents_Base $Base (optional) Event-Base to bind to
+     * @param string $Host (optional) Hostname to listen on (may be null)
+     * @param int $Port (optional) Port to listen on
+     * @param enum $Type (optional) Type of socket to use (TCP/UDP)
+     * @param string $Class (optional) Class for Child-Connections
+     * @param array $Hooks (optional) Hooks for Child-Connections
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Base $Base = null, $Host = null, $Port = null, $Type = null) {
+    function __construct (qcEvents_Base $Base = null, $Host = null, $Port = null, $Type = null, $Class = null, $Hooks = null) {
       // Don't do anything withour an events-base
       if ($Base === null)
         return;
       
       // Set our handler
       $this->setEventBase ($Base);
+      
+      // Set child-class
+      if ($Class !== null)
+        $this->setChildClass ($Class);
+      
+      // Register any hooks
+      if (is_array ($Hooks))
+        foreach ($Hooks as $Hook=>$Callback)
+          $this->addChildHook ($Hook, $Callback);
       
       // Check wheter to setup
       if (($Type === null) || ($Port === null))
