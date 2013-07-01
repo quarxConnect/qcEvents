@@ -169,10 +169,10 @@
         $Host = '0.0.0.0';
       
       // Create the socket
-      if ($Mode == self::TYPE_UDP) {
+      if ($Type == self::TYPE_UDP) {
         $Proto = 'udp';
         $Flags = STREAM_SERVER_BIND;
-      } elseif ($Mode == self::TYPE_TCP) {
+      } elseif ($Type == self::TYPE_TCP) {
         $Proto = 'tcp';
         $Flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
       } else
@@ -209,7 +209,7 @@
     public final function readEvent () {
       // Handle UDP-Events
       if ($this->Type == self::TYPE_UDP) {
-        if (($Data = stream_socket_recvfrom ($fd = $this->getFD (), self::READ_UDP_BUFFER, 0, $Remote)) === false)
+        if (($Data = stream_socket_recvfrom ($fd = $this->getFD (), qcEvents_Socket::READ_UDP_BUFFER, 0, $Remote)) === false)
           # TODO: What to do here?
           return false;
         
@@ -233,7 +233,7 @@
           $Client = $this->Clients [$Remote];
         
         // Forward the data to the client
-        return $Client->readUDPServer ($Data);
+        return $Client->readUDPServer ($Data, $this);
       
       // Handle TCP-Events (accept an incoming connection)
       } elseif ($this->Type == self::TYPE_TCP) {

@@ -407,7 +407,7 @@
         $this->bufferSize = self::READ_UDP_BUFFER;
         
         // Store short-hand for UDP-Writes
-        $this->removeName = $Remote;
+        $this->remoteName = $Remote;
       } else {
         $this->bufferSize = self::READ_TCP_BUFFER;
         
@@ -959,7 +959,7 @@
     private function writeInternal ($Data) {
       // Make sure we have a socket available
       if ((($this->Type == self::TYPE_UDP_SERVER) && (!is_object ($this->serverParent) || !is_resource ($fd = $this->serverParent->getFD ()))) ||
-          !is_resource ($fd = $this->getFD ()))
+          (($this->Type != self::TYPE_UDP_SERVER) && !is_resource ($fd = $this->getFD ())))
         return false;
       
       // Perform a normal unbuffered write
