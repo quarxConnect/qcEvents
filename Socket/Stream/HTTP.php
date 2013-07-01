@@ -19,8 +19,7 @@
    **/
   
   require_once ('qcEvents/Socket.php');
-  require_once ('qcEvents/Socket/Stream/HTTP/Request.php');
-  require_once ('qcEvents/Socket/Stream/HTTP/Response.php');
+  require_once ('qcEvents/Socket/Stream/HTTP/Header.php');
   
   /**
    * HTTP-Stream
@@ -30,240 +29,289 @@
    * @class qcEvents_Socket_Stream_HTTP
    * @extends qcEvents_Socket
    * @package qcEvents
-   * @revision 01
+   * @revision 02
    **/
   abstract class qcEvents_Socket_Stream_HTTP extends qcEvents_Socket {
-    private $requestBuffer = '';
-    private $requestHandle = null;
+    /* HTTP States */
+    const HTTP_STATE_WAITING = 0;
+    const HTTP_STATE_HEADER = 1;
+    const HTTP_STATE_BODY = 2;
+    const HTTP_STATE_FINISHED = 3;
     
-    private $Buffer = null;
-    private $Request = null;
-    private $Response = null;
+    /* Our current state */
+    private $State = qcEvents_Socket_Stream_HTTP::HTTP_STATE_WAITING;
+    
+    /* Don't try to read any body-data */
+    private $bodySuppressed = false;
+    
+    /* Our Read-Buffer */
+    private $bufferRead = '';
+    
+    /* Buffer for header-lines */
+    private $bufferHeader = array ();
+    
+    /* Buffer for our body */
+    private $bufferBody = '';
+    
+    /* Use the whole data as body */
+    private $bufferCompleteBody = false;
+    
+    /* Encoding of body */
+    private $bodyEncodings = array ();
+    
+    // {{{ __construct   
+    /**
+     * Create a new HTTP-Stream
+     * 
+     * @access friendly
+     * @return void
+     **/
+    function __construct () {
+      // Inherit to our parent
+      call_user_func_array ('parent::__construct', func_get_args ());
+        
+      // Register hooks
+      $this->addHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
+    }
+    // }}}
     
     // {{{ reset
     /**
-     * Reset internal variables   
-     * 
-     * @access protected
-     * @return void      
-     **/
-    protected function reset () {
-      $this->Request = null;
-      $this->Response = null;
-    }
-    // }}}
-    
-    // {{{ bufferRequest
-    /**
-     * Buffer data for a HTTP-Request
-     * 
-     * @param string $Data
-     * 
-     * @access protected
-     * @return bool TRUE if a request was parsed completely, FALSE if this isn't a HTTP-Request, NULL if there is not enough data available
-     **/
-    protected function bufferRequest ($Data) {
-      // Append the Data to our internal buffer
-      $this->Buffer .= $Data;
-      unset ($Data);
-      
-      // Check if we already received an initial line
-      if (!is_object ($this->Request)) {
-        // Search the end-of-line
-        if (($p = strpos ($this->Buffer, "\n")) === false)
-          return null;
-        
-        // Get the line from buffer
-        $Line = rtrim (substr ($this->Buffer, 0, $p));
-        $this->Buffer = substr ($this->Buffer, $p + 1);
-        
-        // Check for spaces on the line
-        if ((($p1 = strpos ($Line, ' ')) === false) ||
-            (($p2 = strrpos ($Line, ' ')) === false) || ($p1 == $p2))
-          return false;
-        
-        // Parse the request line
-        $Method = strtoupper (substr ($Line, 0, $p1));
-        $Protocol = strtoupper (substr ($Line, $p2 + 1));
-        $URI = substr ($Line, $p1 + 1, $p2 - $p1 - 1);
-            
-        if (substr ($Protocol, 0, 5) != 'HTTP/')
-          return false;
-        
-        // Create a new request-object
-        $this->Request = new qcEvents_Socket_Stream_HTTP_Request ($Method, $URI, $Protocol);
-      }
-      
-      // Parse additional headers    
-      if (($rc = $this->bufferHeader ($this->Request)) !== true)
-        return $rc;
-      
-      // Check if we are expecting payload
-      if ($this->Request->expectPayload ()) {
-        // Check if there is enough data available
-        if (strlen ($this->Buffer) < ($l = $this->Request->getPayloadLength ()))
-          return null;
-        
-        // Truncate the payload
-        $this->Request->setPayload (substr ($this->Buffer, 0, $l));
-        $this->Buffer = substr ($this->Buffer, $l + 1);
-      }
-      
-      // Indicate a success
-      return true;
-    }
-    // }}}
-    
-    // {{{ bufferResponse
-    /**
-     * Buffer a HTTP-Response
-     * 
-     * @param string $Input
-     * 
-     * @access protected
-     * @return bool
-     **/
-    protected function bufferResponse ($Input) {
-      // Append to local buffer
-      $this->Buffer .= $Input;
-      unset ($Input);
-      
-      // Check if we have received an inital line
-      if (!is_object ($this->Response)) {
-        // Check if there is an initial line
-        if (($p = strpos ($this->Buffer, "\n")) === false)
-          return null;
-        
-        // Get the initial line from buffer
-        $Line = rtrim (substr ($this->Buffer, 0, $p));
-        $this->Buffer = substr ($this->Buffer, $p + 1);
-        
-        // Parse the line
-        $Protocol = substr ($Line, 0, ($p = strpos ($Line, ' ')));
-        $Code = intval (substr ($Line, $p + 1, 3));
-        $Msg = substr ($Line, $p + 5);
-        
-        // Create a Response-object
-        $this->Response = new qcEvents_Socket_Stream_HTTP_Response ($Protocol, $Code, $Msg);
-      }
-      
-      // Parse additional headers
-      return $this->bufferHeader ($this->Response);
-    }
-    // }}}
-    
-    // {{{ bufferHeader
-    /**
-     * Fetch HTTP-Headers from buffer
-     * 
-     * @param object $Header
-     * 
-     * @access private
-     * @return bool
-     **/
-    private function bufferHeader ($Header) {
-      // Check if the header is already received
-      if ($Header->headerComplete ())
-        return true;
-      
-      // Get new header-entries from the buffer
-      while (($p = strpos ($this->Buffer, "\n")) !== false) {
-        // Get the next line from Buffer
-        $Line = rtrim (substr ($this->Buffer, 0, $p));
-        $this->Buffer = substr ($this->Buffer, $p + 1);
-        
-        // Check for end-of-header
-        if (strlen ($Line) == 0) {
-          $Header->headerComplete (true);
-          
-          return true;
-        }
-        
-        // Check if this is a valid header
-        if (($p = strpos ($Line, ':')) === false)
-          return false;
-        
-        $Header->appendHeader (substr ($Line, 0, $p), trim (substr ($Line, $p + 1)));
-      }
-      
-      return null;
-    }
-    // }}}
-    
-    // {{{ bufferPayload
-    /**
-     * Buffer and receive Payload
-     * 
-     * @param string $Input
-     * 
-     * @access protected
-     * @return bool
-     **/
-    protected function bufferPayload ($Input) {
-      // Append to local buffer
-      $this->Buffer .= $Input;
-      unset ($Input);
-      
-      // Check if we are handling a response
-      if (is_object ($this->Response))
-        return $this->Response->receivePayload ($this->Buffer);
-      
-      // Check if we are handling a request
-      elseif (is_object ($this->Request))
-        return $this->Response->receivePayload ($this->Buffer);
-      
-      return false;
-    }
-    // }}}
-    
-    // {{{ writeRequest
-    /**
-     * Submit a request over the wire
-     * 
-     * @param object $Request
+     * Reset our internal data
      * 
      * @access protected
      * @return void
      **/
-    protected function writeRequest ($Request) {
-      // Store the request
-      $this->Request = $Request;
-      
-      // Write out the request-line
-      $this->mwrite ($Request->getMethod (), ' ', $Request->getURI (), ' ', $Request->getProtocol (), "\r\n");
-      
-      // Write out all headers
-      foreach ($Request->getHeaders () as $Key=>$Value)
-        $this->mwrite ($Key, ': ', $Value, "\r\n");
-      
-      $this->mwrite ("\r\n");
-      
-      # TODO: What about payload?!
+    protected function reset () {
+      $this->State = qcEvents_Socket_Stream_HTTP::HTTP_STATE_WAITING;
+      $this->bodySuppressed = false;
+      $this->bufferRead = '';
+      $this->bufferHeader = array ();
+      $this->bufferBody = '';
+      $this->bufferCompleteBody = false;
+      $this->bodyEncodings = array ();
     }
     // }}}
     
-    // {{{ getRequest
+    // {{{ socketReceive
     /**
-     * Retrive the current request
+     * Internal Callback: Data was received over the wire
      * 
-     * @access public
-     * @return object
+     * @param string $Data
+     * 
+     * @access protected
+     * @return void
      **/
-    public function getRequest () {
-      return $this->Request;
+    protected function socketReceive ($Data) {
+      // Check if we are just waiting for the connection to be closed
+      if ($this->bufferCompleteBody) {
+        $this->bufferBody .= $Data;
+        
+        return;
+      }
+      
+      // Append data to our internal buffer
+      $this->bufferRead .= $Data;
+      
+      // Leave waiting-state if neccessary
+      if ($this->State == self::HTTP_STATE_WAITING)
+        $this->httpSetState (self::HTTP_STATE_HEADER);
+      
+      // Read the header
+      if ($this->State == self::HTTP_STATE_HEADER) {
+        while (($p = strpos ($this->bufferRead, "\r\n")) !== false) {
+          // Retrive the current line
+          $Line = substr ($this->bufferRead, 0, $p);
+          $this->bufferRead = substr ($this->bufferRead, $p + 2);
+          
+          // Check if header is finished
+          if (strlen ($Line) == 0) {
+            // Create the header
+            $this->Header = new qcEvents_Socket_Stream_HTTP_Header ($this->bufferHeader);
+            $this->bufferHeader = array ();
+            
+            // Fire a callback for this event
+            $this->___callback ('httpHeaderReady', $this->Header);
+            
+            // Switch states
+            if ($this->bodySuppressed || !$this->Header->hasBody ()) {
+              $this->httpSetState (self::HTTP_STATE_FINISHED);
+              
+              return $this->___callback ('httpFinished', $this->Header, null);
+            }
+            
+            $this->httpSetState (self::HTTP_STATE_BODY);
+            
+            // Prepare to retrive the body
+            if (!$this->Header->hasField ('transfer-encoding'))
+              $this->bodyEncodings = array ('identity');
+            else
+              $this->bodyEncodings = explode (' ', trim ($this->Header->getField ('transfer-encoding')));
+            
+            return;
+          }
+          
+          // Push the line to header-buffer
+          $this->bufferHeader [] = $Line;
+        }
+      
+      // Read Payload
+      } elseif ($this->State == self::HTTP_STATE_BODY)
+        // Handle chunked transfer
+        if ($this->bodyEncodings [0] != 'identity') {
+          // Check if we see the length of next chunk
+          while (($p = strpos ($this->bufferRead, "\r\n")) !== false) {
+            // Read the chunk-size
+            $Chunk = substr ($this->bufferRead, 0, $p);
+            
+            if (($p2 = strpos ($Chunk, ';')) !== false)
+              $Chunk = substr ($Chunk, 0, $p2);
+            
+            $Length = hexdec ($Chunk);
+            
+            // Check if the buffer is long enough
+            if (strlen ($this->bufferRead) < $p + $Length + 4)
+              return;
+            
+            // Copy the chunk to body buffer
+            if ($Length > 0)
+              $this->bufferBody .= substr ($this->bufferRead, $p + 2, $Length);
+            
+            $this->bufferRead = substr ($this->bufferRead, $p + $Length + 4);
+            
+            if ($Length == 0)
+              return $this->httpBodyReceived ();
+          }
+        
+        // Check if there is a content-length given
+        } elseif (($Length = $this->Header->getField ('content-length')) !== null) {
+          // Check if the buffer is big enough
+          if (strlen ($this->bufferRead) < $Length)
+            return;
+          
+          // Copy the buffer to local body
+          $this->bufferBody = substr ($this->bufferRead, 0, $Length);
+          $this->bufferRead = substr ($this->bufferRead, $Length);
+          
+          return $this->httpBodyReceived ();
+        
+        // Wait until connection is closed
+        } else {
+          $this->bufferCompleteBody = true;
+          $this->bufferBody = $this->bufferRead;
+          $this->bufferRead = '';
+        }
     }
     // }}}
     
-    // {{{ getResponse
+    // {{{ socketReadable
     /**
-     * Retrive the current response
+     * Internal Callback: Data is available on local buffer
      * 
-     * @access public
-     * @return object
+     * @access protected
+     * @return void
      **/
-    public function getResponse () {
-      return $this->Response;
+    protected function socketReadable () {
+      if ($this->State != self::HTTP_STATE_FINISHED)
+        return $this->socketReceive ($this->readBuffer ());
     }
+    // }}}
+    
+    // {{{ httpSetState
+    /**
+     * Change the state of the HTTP-Parser
+     * 
+     * @param enum $State
+     * 
+     * @access private
+     * @return void
+     **/
+    private function httpSetState ($State) {
+      // Switch the state
+      $oState = $this->State;
+      $this->State = $State;
+      
+      // Fire up a callback
+      $this->___callback ('httpStateChanged', $State, $oState);
+    }
+    // }}}
+    
+    // {{{ httpBodyReceived
+    /**
+     * Body was received completly
+     * 
+     * @access private
+     * @return void
+     **/
+    private function httpBodyReceived () {
+      // Sanity-Check encodings
+      if (count ($this->bodyEncodings) > 1)
+        trigger_error ('More than one encoding found, this is unimplemented');
+      
+      // Change our state
+      $this->httpSetState (self::HTTP_STATE_FINISHED);
+      
+      // Fire the callback
+      $this->___callback ('httpFinished', $this->Header, $this->bufferBody);
+      
+      // Release the buffer
+      $this->bufferBody = '';
+    }
+    // }}}
+    
+    // {{{ httpStreamClosed
+    /** 
+     * Hook: Connection was closed
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function httpStreamClosed () {
+      // Check wheter to use this function
+      if (!$this->bufferCompleteBody)
+        return;
+      
+      $this->httpBodyReceived ();
+    }
+    // }}}
+    
+    
+    // {{{ httpStateChanged
+    /**
+     * Callback: The HTTP-State was changed
+     * 
+     * @param enum $newState
+     * @param enum $oldState
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function httpStateChanged ($newState, $oldState) { }
+    // }}}
+    
+    // {{{ httpHeaderReady
+    /**
+     * Callback: The header was received completly
+     * 
+     * @param qcEvents_Socket_Stream_HTTP_Header $Header
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function httpHeaderReady ($Header) { }
+    // }}}
+    
+    // {{{ httpFinished
+    /**
+     * Callback: Single HTTP-Request/Response was finished
+     * 
+     * @param qcEvents_Socket_Stream_HTTP_Header $Header
+     * @param string $Body
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function httpFinished (qcEvents_Socket_Stream_HTTP_Header $Header, $Body) { }
     // }}}
   }
 

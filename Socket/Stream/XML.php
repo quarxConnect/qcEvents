@@ -19,7 +19,7 @@
    **/
   
   require_once ('qcEvents/Socket.php');
-  require_once ('qcEvents/Socket/Stream/XML/Tag.php');
+  require_once ('qcEvents/Socket/Stream/XML/Node.php');
   
   /**
    * XML-Stream
@@ -28,86 +28,56 @@
    * 
    * @class qcEvents_Socket_Stream_XML
    * @package qcEvents
-   * @revision 01
+   * @revision 02
    **/
   class qcEvents_Socket_Stream_XML extends qcEvents_Socket {
-    private $tagBuffer = null;
-    private $tagRoot = null;
-    private $tagCurrent = null;
-    private $tagNext = null;
-    private $tagDebug = false;
-    private $tagWaiting = null;
+    /* Default Class for XML-Nodes */
+    const DEFAULT_XML_NODE = 'qcEvents_Socket_Stream_XML_Node';
+    
+    /* Buffer for unparsed XML */
+    private $xmlBuffer = null;
+    
+    /* XML-Root-Node of the current node */
+    private $xmlNodeRoot = null;
+    
+    /* Current XML-Node */
+    private $xmlNodeCurrent = null;
     
     private $rootLocal = null;
-    private $rootRemote = null;
+    private $xmlRootRemote = null;
     
     private $streamStarted = false;
     
-    // {{{ startStream
+    // {{{ sendXML
     /**
-     * Callback: Connection is established and stream is started
+     * Submit XML to other side
      * 
-     * @access protected
-     * @return void
-     **/
-    protected function startStream () { }
-    // }}}
-    
-    // {{{ receiveRoot
-    /**
-     * Callback: The root-element of the remote stream was received
+     * @param qcEvents_Socket_Stream_XML_Node $XML
+     * @param bool $returnLength (optional)
      * 
-     * @param object $Tag
-     * 
-     * @access protected
-     * @return void
-     **/
-    protected function receiveRoot ($Tag) { }
-    // }}}
-    
-    // {{{ receiveTag
-    /**
-     * Receive a complete XML-Tag (including children)
-     * 
-     * @param object $Tag
-     * 
-     * @access protected  
-     * @return void
-     **/
-    protected function receiveTag ($Tag) { }
-    // }}}
-    
-    // {{{ enableDebug
-    /**
-     * Set Debug-Status
-     * 
-     * @param bool $Status (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function enableDebug ($Status = true) {
-      $this->tagDebug = $Status;
-    }
-    // }}}
-    
-    // {{{ setStream
-    /**
-     * Set stream for our parser
-     * 
-     * @param resource $Stream
-     * 
-     * @access public
-     * @return void
-     **/
-    public function setStream ($Stream) {
-      if (!is_resource ($Stream))
+     * @access public  
+     * @return bool  
+     */
+    public function sendXML (qcEvents_Socket_Stream_XML_Node $XML, $returnLength = false) {
+      // Check if our socket is really open
+      if (!$this->isConnected ())
         return false;
       
-      if ($this->isOnline ())
-        $this->disconnect ();
+      // Normalize Array to String   
+      $Data = $XML->toString ();
       
-      $this->setConnection ($Stream);
+      self::__debug (self::DEBUG_PACKETS, 'Sending ' . $Data, __FUNCTION__, __LINE__, __CLASS__, __FILE__);
+      
+      $this->_LastPacket = time ();
+      
+      // Try to write to the stream
+      if (!$this->write ($Data))
+        return false;
+      
+      if ($returnLength)
+        return strlen ($Data);
+      
+      return true;
     }
     // }}}
     
@@ -128,386 +98,360 @@
         return false;
       
       $this->streamStarted = true;
-      $this->rootRemote = null;
+      $this->xmlRootRemote = null;
       
       // Fire up the callback
-      $this->startStream ();
+      $this->___callback ('xmlStreamStarted');
     }
     // }}}
     
-    // {{{ setRootTag
+    // {{{ xmlSetRootNode
     /**
-     * Set our local root-tag
+     * Set our local root-node
      * 
-     * @param object $Tag
+     * @param qcEvents_Socket_Stream_XML_Node $xmlNode
      * 
      * @access public
      * @return bool
      **/
-    public function setRootTag ($Tag) {
-      if (!($Tag instanceof qcEvents_Socket_Stream_XML_Tag))
+    public function xmlSetRootNode (qcEvents_Socket_Stream_XML_Node $xmlNode) {
+      if ($this->isConnected ())
         return false;
       
-      if ($this->isOnline ())
-        return false;
-      
-      $this->rootLocal = $Tag;
+      $this->rootLocal = $xmlNode;
       $this->rootLocal->forceOpen ();
       
       return true;
     }
     // }}}
     
-    
-    // {{{ connected
-    /**
-     * Start the XML-Stream when the connection becomes ready
-     * 
-     * @access public
-     * @return void
-     **/
-    protected function connected () {
-      $this->write ('<?xml version="1.0"?>' . "\n");
-      $this->restartStream ();
-    }
-    // }}}
-    
-    // {{{ closed
-    /**
-     * Callback: Connection was closed
-     * 
-     * @access protected
-     * @return void
-     **/
-    protected function closed () {
-      trigger_error ('Unexpected connection-close');
-    }
-    // }}}
-    
-    // {{{ receive
-    /**
-     * Callback: Invoked whenever incoming data is received
-     * 
-     * @param string $Data
-     * 
-     * @access protected
-     * @return void
-     **/
-    protected function receive ($Data) {
-      $this->bufferInsert ($Data);
-    }
-    // }}}
-    
-    // {{{ bufferInsert
+    // {{{ xmlBufferInsert
     /**
      * Insert a string into our XML-Buffer
      * 
      * @param string $buf
      * 
-     * @access public
+     * @access private
      * @return void
      **/
-    public function bufferInsert ($buf) {
+    private function xmlBufferInsert ($buf) {
       // Append the new data to our internal buffer
-      if ($this->tagBuffer === null) {
+      if ($this->xmlBuffer === null) {
         if (($p = strpos ($buf, '<')) === false)
           return;
         
-        $this->tagBuffer = substr ($buf, $p);
+        $this->xmlBuffer = substr ($buf, $p);
       } else
-        $this->tagBuffer .= $buf;
+        $this->xmlBuffer .= $buf;
       
-      $buf = &$this->tagBuffer;
+      // Try to find new XML-Nodes  
+      $buf = &$this->xmlBuffer;
       
       while (strlen ($buf) > 0) {
-        // Start a new tag
-        if (!is_object ($this->tagCurrent) || $this->tagCurrent->isReady ()) {
+        // Check wheter to start a new XML-Node
+        if (!is_object ($this->xmlNodeCurrent) || $this->xmlNodeCurrent->isReady ()) {
+          // Make sure the next XML-Node starts at first byte of buffer
           if ($buf [0] != '<') {
+            // Check if we are able to see the next node
             if (($p = strpos ($buf, '<')) === false)
               break;
             
-            if (is_object ($this->tagCurrent)) {
-              $this->tagCurrent->setValue ($val = substr ($buf, 0, $p));
-              
-              if ($this->tagDebug)
-                echo '  Content ', $val, "\n";
-            }
+            // Use the stuff as value if an XML-Node is available
+            if (is_object ($this->xmlNodeCurrent))
+              $this->xmlNodeCurrent->setValue ($val = substr ($buf, 0, $p));
             
+            // Truncate the buffer
             $buf = substr ($buf, $p);
           }
           
+          // Check if this is an XML-Processing-Instruction
           if (substr ($buf, 1, 4) == '?xml') {
             if (($p = strpos ($buf, '?>')) === false)
               break;
             
+            // Just discard it
             $buf = substr ($buf, $p + 2);
             
             continue;
           }
-          
-          // Get the name of the tag
-          $p1 = strpos ($buf, ' ');
-          
-          if (($p2 = strpos ($buf, '>')) === false)
+           
+          // Get the name of the node
+          if (($pte = strpos ($buf, '>')) === false)
             break;
           
-          if (($p1 < $p2) && ($p1 !== false)) {
-            $Name = substr ($buf, 1, $p1 - 1);
-            $buf = substr ($buf, $p1 + 1);
-          } else {
-            $Name = substr ($buf, 1, $p2 - 1);
+          if ((($psp = strpos ($buf, ' ')) === false) || ($psp > $pte)) {
+            $p = $pte;
             
-            if ($buf [$p2 - 1] == '/')
-              $buf = substr ($buf, $p2 - 1);
-            else
-              $buf = substr ($buf, $p2);
-          }
+            if ($buf [$p - 1] == '/')
+              $p--;
+          } else
+            $p = $psp;
           
-          if ($Name [strlen ($Name) - 1] == '/') {
-            # $buf = '/' . $buf;
-            $Name = substr ($Name, 0, -1);
-          }
+          $Name = substr ($buf, 1, $p - 1);
           
+          while (($buf [$p] == ' ') || ($buf [$p] == "\t") || ($buf [$p] == "\n") || ($buf [$p] == "\r"))
+            $p++;
+          
+          $buf = substr ($buf, $p);
+          
+          # WHY THIS?!
+          # if ($Name [strlen ($Name) - 1] == '/') {
+          #   # $buf = '/' . $buf;
+          #   $Name = substr ($Name, 0, -1);
+          # }
+          
+          // Check if the name indicates the end of an XML-Node-Block
           if ($Name [0] == '/') {
             // Truncate / from name
             $Name = substr ($Name, 1);
             
-            if (!is_object ($this->tagCurrent)) {
-              $tag = null;
-              trigger_error ('Closing XML-Tag without an open one');
-            } elseif ($this->tagCurrent->isOpen ())
-              $tag = $this->tagCurrent;
+            // Make sure we have a current node assigned, its open and names match
+            if (!is_object ($this->xmlNodeCurrent) ||
+                !$this->xmlNodeCurrent->isOpen () ||
+                !($this->xmlNodeCurrent->getName () == $Name)) {
+              $this->___callback ('xmlError');
+              return $this->disconnect ();
+            }
+            
+            // Close the XML-Node
+            $this->xmlNodeCurrent->isOpen (false);
+            
+            // Fire callback
+            $this->___callback ('xmlNodeReady', $this->xmlNodeCurrent);
+            
+            // Check if the current node was our current root-node
+            if ($this->xmlNodeCurrent === $this->xmlNodeRoot)
+              $this->xmlBlockReady ();
+            
+            // Switch to its parent
             else
-              $tag = $this->tagCurrent->getParent ();
+              $this->xmlNodeCurrent = $this->xmlNodeCurrent->getParent ();
             
-            if (is_object ($tag)) {
-              if ($tag->getName () != $Name)
-                trigger_error ('Open tag does not match closing tag: ' . $tag->getName () . ' vs. ' . $Name);
-              
-              $tag->isOpen (false);
-              $this->tagCurrent = $tag->getParent ();
-              
-              if ($this->tagDebug)
-                echo 'Closing tag', "\n";
-              
-              if ((!is_object ($this->tagCurrent) || ($tag == $this->tagRoot)) && $this->forwardEvent ())
-                break;
-            }
+            $buf = substr ($buf, strpos ($buf, '>') + 1);
             
+            continue;
+            
+          // ... or if a new XML-Node is beginning
           } else {
-            if ($this->tagDebug)
-              echo 'Creating tag ', $Name, "\n";
+            // Create a new XML-Node-Object
+            $this->xmlNodeCurrent = $this->xmlBuildNode ($Name);
+            $this->xmlNodeCurrent->isReady (false);
             
-            $this->tagCurrent = self::buildTag ($Name);
-            $this->tagCurrent->isReady (false);
-            
-            if (is_object ($P = $this->tagCurrent->getParent ()) && $this->tagDebug)
-              echo '  - Parent ', $P->getName (), "\n";
-          
-            if (!is_object ($this->tagRoot) && $this->tagAcceptRoot ($this->tagCurrent)) {
-              $this->tagRoot = $this->tagCurrent;
-              
-              if ($this->tagDebug)
-                echo '  - Using as root', "\n";
-            }
+            // Check wheter to use this XML-Node as root
+            if (!is_object ($this->xmlNodeRoot) && ($this->___callback ('xmlNodeAcceptRoot', $this->xmlNodeCurrent) !== false))
+              $this->xmlNodeRoot = $this->xmlNodeCurrent;
           }
         }
         
-        // Parse attributes of tag
-        $p1 = strpos ($buf, '=');
-        $p2 = strpos ($buf, ' ');
-        
-        // Check if the tag is closed
+        // Check if the node is closed
         if ($buf [0] == '>') { 
-          if (is_object ($this->tagCurrent) && !$this->tagCurrent->isReady ()) {
-            $this->tagCurrent->isOpen (true);
-            $this->tagCurrent->isReady (true);
-            $this->tagReady ($this->tagCurrent);
+          if (is_object ($this->xmlNodeCurrent)) {
+            // Set Status of the current XML-Node
+            $this->xmlNodeCurrent->isOpen (true);
+            $this->xmlNodeCurrent->isReady (true);
             
-            if ($this->tagDebug)
-              echo '  Close tag [open]', "\n";
+            // Fire callback
+            $this->___callback ('xmlNodeStart', $this->xmlNodeCurrent);
           }
            
-          $this->tagBuffer = $buf = ltrim (substr ($buf, 1));
+          $this->xmlBuffer = $buf = substr ($buf, 1);
           
           // Forward the root-object
-          if (is_object ($this->rootLocal) && !is_object ($this->rootRemote)) {
-            $this->rootRemote = $this->tagCurrent;
-            $this->tagCurrent = null;
-            $this->tagRoot = null;
-            $this->receiveRoot ($this->rootRemote);
+          if (is_object ($this->rootLocal) && !is_object ($this->xmlRootRemote)) {
+            $this->xmlRootRemote = $this->xmlNodeCurrent;
+            $this->xmlNodeCurrent = null;
+            $this->xmlNodeRoot = null;   
+            
+            $this->___callback ('xmlReceiveRoot', $this->xmlRootRemote);
           }
-        
-        // Check if the tag is closed and there is data pending
-        } elseif (substr ($buf, 0, 2) == "/>") {
-          if (is_object ($this->tagCurrent) && !$this->tagCurrent->isReady ()) {
-            $this->tagCurrent->isOpen (false);
-            $this->tagCurrent->isReady (true);
-            $this->tagReady ($this->tagCurrent);
+           
+        // Check if the node is closed (and does not carry any contents)
+        } elseif (($buf [0] == '/') && ($buf [1] == '>')) {
+          if (is_object ($this->xmlNodeCurrent) && !$this->xmlNodeCurrent->isReady ()) {
+            // Mark this node as ready
+            $this->xmlNodeCurrent->isOpen (false);
+            $this->xmlNodeCurrent->isReady (true);
             
-            if ($this->tagDebug)
-              echo '  Close tag [closed]', "\n";
+            // Fire callback
+            $this->___callback ('xmlNodeReady', $this->xmlNodeCurrent);
             
-            if ($this->tagCurrent == $this->tagRoot) {
-              if ($this->forwardEvent ())
-                break;
+            // Check if the node is our root-node
+            if ($this->xmlNodeCurrent == $this->xmlNodeRoot) {
+              if ($this->xmlBlockReady ())
+                continue;
+            
+            // Move to parent node
             } else
-              $this->tagCurrent = $this->tagCurrent->getParent ();
+              $this->xmlNodeCurrent = $this->xmlNodeCurrent->getParent ();
           }
            
           $buf = ltrim (substr ($buf, 2));
           
         // Append a key-value attribute
-        } elseif ((($p1 < $p2) && ($p1 !== false)) || (($p1 !== false) && ($p2 == false))) {
-          $Property = substr ($buf, 0, $p1);
-          $Sep = $buf [$p1 + 1];
-          
-          if (($Sep == "'") || ($Sep == '"')) {
-            $s = $p1 + 2;
-            $e = strpos ($buf, $Sep, $s);
-            
-            $Value = substr ($buf, $s, $e - $s);
-            $buf = ltrim (substr ($buf, $e + 1));
-          } else {
-            $p3 = strpos ($buf, '>');
-            
-            if (($p2 < $p3) && ($p3 !== false)) {
-              $Value = substr ($buf, $p1 + 1, $p2 - $p1 - 1);
-              $buf = ltrim (substr ($buf, $p2 + 1));
-            } else {
-              if ($buf [$p3 - 1] == '/')
-                $p3--;
-              
-              $Value = substr ($buf, $p1 + 1, $p3 - $p1 - 2);
-              $buf = ltrim (substr ($buf, $p3));
-            }
-          }
-          
-          if (is_object ($this->tagCurrent) && !$this->tagCurrent->isReady ()) {
-            if ($this->tagDebug)
-              echo '  Attribute ', $Property, ' = ', $Value, "\n";
-            
-            $this->tagCurrent->setAttribute ($Property, $Value);
-          }
-        
-        // Just set a stand-alone attribute
         } else {
-          if ($p2 === false)
-            $p2 = strpos ($buf, '>');
+          $l = strlen ($buf);
           
-          if ($p2 === false)
+          // Find Stop-Words
+          if (($psp = strpos ($buf, ' ')) === false)
+            $psp = $l;
+          
+          if (($peq = strpos ($buf, '=')) === false)
+            $peq = $l;
+          
+          if (($pte = strpos ($buf, '>')) === false)
+            $pte = $l;
+          
+          // Check if there is an attribute available
+          if (($psp == $peq) && ($psp == $pte))
             break;
           
-          if ($buf [$p2 - 1] == '/')
-            $p2--;
+          // Check type of attribute
+          $next = min ($psp, $peq, $pte);
           
-          $Property = substr ($buf, 0, $p2);
-          $buf = ltrim (substr ($buf, $p2));
-          
-          if (is_object ($this->tagCurrent) && !$this->tagCurrent->isReady ()) {
-            if ($this->tagDebug)
-              echo '  Attribute ', $Property, "\n";
+          // Standalone attribute without any value
+          if (($next == $psp) || ($next == $pte)) {
+            if (($next == $pte) && ($buf [$next - 1] == '/'))
+              $next--;
             
-            $this->tagCurrent->setAttribute ($Property, true);
+            $Attribute = substr ($buf, 0, $next);
+            $Value = null;
+            
+            $buf = ltrim (substr ($buf, $next));
+          
+          // Attribute with value
+          } else {
+            // Check if there is enough data on the buffer
+            if ($psp == $pte)
+              break;
+            
+            // Start of attribute-value
+            $v = $next + 1;
+            
+            // Check if the value is escaped
+            if (($buf [$v] == '"') || ($buf [$v] == "'")) {
+              if (($ve = strpos ($buf, $buf [$v], $v + 1)) === false)
+                break;
+              
+              $v++;
+              $p = 1;
+            } else {
+              $p = 0;
+              $ve = min ($psp, $pte);
+            }
+            
+            // Retrive the name and value
+            $Attribute = substr ($buf, 0, $next);
+            $Value = substr ($buf, $v, $ve - $v);
+            
+            // Truncate the buffer
+            $buf = ltrim (substr ($buf, $ve + $p));
           }
+          
+          // Store the attribute
+          if (is_object ($this->xmlNodeCurrent) && !$this->xmlNodeCurrent->isReady ())
+            $this->xmlNodeCurrent->setAttribute ($Attribute, $Value);
         }
       }
       
       // Store our buffer
-      $this->tagBuffer = $buf;
+      $this->xmlBuffer = $buf;
     }
     // }}}
     
-    // {{{ buildTag
+    // {{{ xmlBuildNode
     /**
-     * Create a new XML-Tag Object
+     * Create a new XML-Node Object
      * 
      * @param string $Name
      * 
      * @access private
      * @return object
      **/
-    private function buildTag ($Name) {
-      if (is_object ($this->tagCurrent))
-        return $this->tagCurrent->createSubtag ($Name);
+    private function xmlBuildNode ($Name) {
+      // Check if there is an XML-Node to which we may offload this request
+      if (is_object ($this->xmlNodeCurrent))
+        return $this->xmlNodeCurrent->createChild ($Name);
       
+      // Try to find a matching class for this Node-name
       $Classes = get_declared_classes ();
       $Candidates = array ();
       
       foreach ($Classes as $Class)
-        if (is_subclass_of ($Class, 'qcEvents_Socket_Stream_XML_Tag') &&
-            defined ($Class . '::TAG_NAME') &&
-            (constant ($Class . '::TAG_NAME') == $Name))
+        if (is_subclass_of ($Class, 'qcEvents_Socket_Stream_XML_Node') &&
+            defined ($Class . '::NODE_NAME') &&
+            (constant ($Class . '::NODE_NAME') == $Name))
           $Candidates [] = $Class;
       
-      if (count ($Candidates) > 0) {
+      // Check if a candidate was found or try to use some default stuff
+      if (count ($Candidates) == 0) {
+        $Class = $this::DEFAULT_XML_NODE;
+        
+        if (!is_subclass_of ($Class, 'qcEvents_Socket_Stream_XML_Node'))
+          $Class = 'qcEvents_Socket_Stream_XML_Node';
+      } else
         # TODO: Check how to proceed if c>1
         $Class = array_shift ($Candidates);
-      } else {
-        $cls = get_class ($this);
-        
-        if (defined ($cls . '::DEFAULT_XML_TAG'))
-          $Class = constant ($cls . '::DEFAULT_XML_TAG');
-        
-        if (!is_subclass_of ($Class, 'qcEvents_Socket_Stream_XML_Tag'))
-          $Class = 'qcEvents_Socket_Stream_XML_Tag';
-      }
       
-      if ($this->tagDebug)
-        echo 'Creating ', $Class, ' for ', $Name, "\n";
-      
-      return $Class::createXMLTag ($Name, null);
+      return $Class::createXMLNode ($Name);
     }
     // }}}
     
-    // {{{ forwardEvent
+    // {{{ xmlBlockReady
     /**
-     * Forward a stream-block
+     * An XML-Block was parsed completly any may be forwarded
      * 
      * @access private
      * @return void
      **/
-    private function forwardEvent () {
-      // Remember the tag and reset
-      $Tag = $this->tagRoot;
-      $this->tagRoot = null;   
-      $this->tagCurrent = null;
+    private function xmlBlockReady () {
+      // Remember the node and reset
+      $xmlNode = $this->xmlNodeRoot;
+      $this->xmlNodeRoot = null;   
+      $this->xmlNodeCurrent = null;
       
       // Handle the forward
-      $this->receiveTag ($Tag);
-      
-      return $this->tagWaiting;
+      $this->___callback ('xmlReceiveNode', $xmlNode);
     }
     // }}}
     
-    // {{{ tagAcceptRoot
+    // {{{ socketConnected
     /**
-     * Check wheter to use a given tag as root
+     * Occupied Callback: Start the XML-Stream when the connection becomes ready
+     * 
+     * @access public
+     * @return void
+     **/
+    protected final function socketConnected () {
+      $this->write ('<?xml version="1.0"?>' . "\n");
+      $this->restartStream ();
+    }
+    // }}}
+    
+    // {{{ socketReceive
+    /**
+     * Occupied Callback: Invoked whenever incoming data is received
+     * 
+     * @param string $Data
      * 
      * @access protected
-     * @return bool
+     * @return void
      **/
-    protected function tagAcceptRoot ($Tag) {
-      return true;
+    protected final function socketReceive ($Data) {
+      $this->xmlBufferInsert ($Data);
     }
     // }}}
     
-    protected function tagReady ($Tag) {
-      if ($this->tagNext === true)
-        $this->tagNext = $Tag;
+    // {{{ socketReadable
+    /**
+     * Occupied Callback: Incoming data is available on underlying buffer
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected final function socketReadable () {
+      $this->xmlBufferInsert ($this->readBuffer ());
     }
-    
-    protected function tagReadNext () {
-      $this->tagNext = true;
-      
-      while (!is_object ($this->tagNext) && $this->isOnline ())
-        $this->readBlock ();
-      
-      $rc = $this->tagNext;
-      $this->tagNext = null;
-      
-      return $rc;
-    }
+    // }}}
     
     
     /* Debug types */
@@ -558,186 +502,85 @@
     }
     // }}}
     
-    // {{{ readBlock
-    /**
-     * Try to read the next XML-Block from stream
-     * 
-     * @access public
-     * @return void
-     **/
-    public function readBlock () {
-      // Check if our socket is open
-      if (!$this->isOnline ())
-        return;
-      
-      # TODO!
-      
-      // Check wheter to auto-create an event-handler
-      if (!$this->isBound ()) {
-        trigger_error ('This XML_Stream is not bound to a qcEvents_Base, auto-creating one');
-        
-        require_once ('qcEvents/Base.php');
-        
-        $Base = new qcEvents_Base;
-        $Base->addEvent ($this);
-      }
-      
-      // Run one single loop
-      parent::loopOnce ();
-    }
-    // }}}
     
-    // {{{ waitBlock
+    // {{{ xmlStreamStarted
     /**
-     * Block until an expected XML-Tag appears
-     * 
-     * @param mixed $Types (optional) Wait for this tag-name(s)
-     * @param mixed $IDs (optional) Wait for this tag-id(s)
-     * 
-     * @access public
-     * @return object
-     **/
-    public function waitBlock ($Types = null, $IDs = null) {
-      $this->tagWaiting = true;
-      
-      if (!is_array ($Types))
-        $Types = ($Types !== null ? array ($Types) : array ());
-      
-      if (!is_array ($IDs))
-        $IDs = ($IDs !== null ? array ($IDs) : array ());
-      
-      while (is_object ($Next = $this->tagReadNext ()))
-        if (is_object ($Block = $this->waitBlockMatch ($Next, $Types, $IDs))) {
-          $this->tagWaiting = null;
-          
-          return $Block;
-        }
-      
-      $this->tagWaiting = null;
-      
-      return false;
-    }
-    // }}}
-    
-    // {{{ waitBlockMatch
-    /**
-     * Check if a given XML-Tag matches the one we are waiting for
+     * Callback: XML-Stream was started
      * 
      * @access protected
-     * @return object
+     * @return void
      **/
-    protected function waitBlockMatch ($Tag, $Types, $IDs) {
-      if (in_array ($Tag->getName (), $Types) ||
-          (($ID = $Tag->getAttribute ('id', false)) && in_array ($ID, $IDs)))
-        return $Tag;
-      
-      return false;
-    }
+    protected function xmlStreamStarted () { echo 'XML-Stream: Started', "\n"; }
     // }}}
     
-    // {{{ toXML
+    // {{{ xmlError
     /**
-     * Convert an object or array to XML
+     * Callback: An XML-Error occured on the stream
      * 
-     * @param mixed $Data Object or Array to convert
-     * 
-     * @access public
-     * @return string
-     */
-    public function toXML ($Data) {
-      // Verify data-integry
-      if (is_object ($Data)) {
-        if ($Data instanceof qcEvents_Socket_Stream_XML_Tag)
-          return $Data->toString ();
-        
-        $Data = (array)$Data;
-      }
-       
-      if (!is_array ($Data))
-        return false;
-      
-      // Start XML-Tag
-      $buf = '<' . str_replace ('__', ':', $Data ['Name']) . ' ';
-      
-      // Put properties into Tag
-      foreach ($Data as $Name=>$Value) {
-        if (in_array ($Name, array ('Name', 'Subtags', 'Value', 'Parent')))
-          continue;
-        
-        if (is_object ($Value)) {
-          if (!isset ($Data ['Subtags'][$Name]))
-            $Data ['Subtags'][$Name] = array ();
-          
-          $Data ['Subtags'][$Name][] = $Value;
-          
-          continue;
-        }
-         
-        $buf .= str_replace ('__', ':', $Name) . '="' . addslashes ($Value) . '" ';
-      }
-       
-      // Close tag
-      if (!isset ($Data ['Value']) && (!isset ($Data ['Subtags']) || (count ($Data ['Subtags']) < 1)))
-        $buf .= '/>';
-      else {
-        $buf = rtrim ($buf) . '>';
-        
-        // Include value or subtags
-        if (isset ($Data ['Value'])) {
-          $xml = $Data ['Value'];
-          $xml = str_replace ('&', '&amp;', $xml);
-          $xml = str_replace (array ('<', '>'), array ('&lt;', '&gt;'), $xml);
-          #$buf .= $xml;
-          # $buf .= htmlentities ($Data ["Value"], ENT_COMPAT, "UTF-8");
-          $buf .= $xml;
-        } elseif (isset ($Data ['Subtags']))
-          foreach ($Data ['Subtags'] as $Tags) {
-            if (!is_array ($Tags))
-              $Tags = array ($Tags);
-            
-            foreach ($Tags as $Tag)
-              $buf .= $this->toXML ($Tag);
-          }
-           
-        // Close tag again ;)
-        $buf .= '</' . str_replace ('__', ':', $Data ['Name']) . '>';
-      }
-       
-      // Return XML
-      return $buf; 
-    }
+     * @access protected
+     * @return void
+     **/
+    protected function xmlError () { echo 'XML-Stream: Error', "\n"; }
     // }}}
     
-    // {{{ sendXML
+    // {{{ xmlNodeAcceptRoot
     /**
-     * Submit XML to other side
+     * Callback: Accept an XML-Node as Root-Node for an XML-Block
      * 
-     * @param mixed $Data Data to submit
+     * @param qcEvents_Socket_Stream_XML_Node $xmlNode
      * 
-     * @access public
-     * @return bool  
-     */
-    public function sendXML ($Data, $returnLength = false) {
-      // Check if our socket is really open
-      if (!$this->isOnline ())
-        return false;
-      
-      // Normalize Array to String   
-      if (is_array ($Data) || is_object ($Data))
-        $Data = $this->toXML ($Data);
-      
-      self::__debug (self::DEBUG_PACKETS, 'Sending ' . $Data, __FUNCTION__, __LINE__, __CLASS__, __FILE__);
-      
-      $this->_LastPacket = time ();
-      
-      if (!$this->write ($Data))
-        return false;
-      
-      if ($returnLength)
-        return strlen ($Data);
-      
-      return true;
-    }
+     * @access protected
+     * @return bool
+     **/
+    protected function xmlNodeAcceptRoot (qcEvents_Socket_Stream_XML_Node $xmlNode) { echo 'XML-Stream: Accept ', $xmlNode->getName (), ' as root', "\n"; }
+    // }}}
+    
+    // {{{ xmlNodeStart
+    /**
+     * Callback: Parsing of a node was started
+     * 
+     * @param qcEvents_Socket_Stream_XML_Node $xmlNode
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function xmlNodeStart (qcEvents_Socket_Stream_XML_Node $xmlNode) { echo 'XML-Stream: Start parsing ', $xmlNode->getName (), "\n"; }
+    // }}}
+    
+    // {{{ xmlNodeReady
+    /**
+     * Callback: A single XML-Node was parsed including its children
+     * 
+     * @param qcEvents_Socket_Stream_XML_Node $xmlNode
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function xmlNodeReady (qcEvents_Socket_Stream_XML_Node $xmlNode) { echo 'XML-Stream: ', $xmlNode->getName (), ' ready', "\n"; }
+    // }}}
+    
+    // {{{ xmlReceiveRoot
+    /**
+     * Callback: XML-Node for this stream was received
+     * 
+     * @param qcEvents_Socket_Stream_XML_Node $xmlNode
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function xmlReceiveRoot (qcEvents_Socket_Stream_XML_Node $xmlNode) { echo 'XML-Stream: ', $xmlNode->getName (), ' is root-node of stream', "\n"; }
+    // }}}
+    
+    // {{{ xmlReceiveNode
+    /**
+     * Callback: An XML-Node/Block was received
+     * 
+     * @param qcEvents_Socket_Stream_XML_Node $xmlNode
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function xmlReceiveNode (qcEvents_Socket_Stream_XML_Node $xmlNode) { echo 'XML-Stream: ', $xmlNode->getName (), ' received', "\n"; }
     // }}}
   }
 

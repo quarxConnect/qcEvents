@@ -1,7 +1,7 @@
 <?PHP
 
   /**
-   * qcEvents - Buffered Socket
+   * qcEvents - Common Client Functions
    * Copyright (C) 2012 Bernd Holzmueller <bernd@quarxconnect.de>
    *
    * This program is free software: you can redistribute it and/or modify
@@ -21,36 +21,47 @@
   require_once ('qcEvents/Socket.php');
   
   /**
-   * Buffered socket
+   * Abstract Client
    * ---------------
+   * Implementation of some generic client-functionality
    * 
-   * @class qcEvents_Socket_Buffer
+   * @class qcEvents_Socket_Client
    * @extends qcEvents_Socket
    * @package qcEvents
    * @revision 01
    **/
-  class qcEvents_Socket_Buffer extends qcEvents_Socket {
-    const METHOD_LINE = 0;
+  abstract class qcEvents_Socket_Client extends qcEvents_Socket {
+    const USE_LINE_BUFFER = false;
     
-    /* Internal buffer */
     private $Buffer = '';
     
-    /* Buffer-Method */
-    private $BufferMethod = qcEvents_Socket_Buffer::METHOD_LINE;
-    
-    // {{{ receive
-    /**   
-     * Callback: Invoked whenever incoming data is received
-     *  
-     * @param string $Data  
+    // {{{ socketReceive
+    /**
+     * Internal Callback: Receive data from the wire
+     * 
+     * @param string $Data
      * 
      * @access protected
-     * @return void   
+     * @return void
      **/
-    protected function receive ($Data) {
-      // We expect lines
-      if ($this->BufferMethod == self::METHOD_LINE)
-        $this->receiveLine ($Data);
+    protected function socketReceive ($Data) {
+      // Check wheter to forward this data to the per-line-parser
+      if ($this::USE_LINE_BUFFER)
+        return $this->receiveLine ($Data);
+    }
+    // }}}
+    
+    // {{{ socketReadable
+    /**
+     * Internal Callback: Data is available on the read-buffer
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function socketReadable () {
+      // Check wheter to forward this data to the per-line-parser
+      if ($this::USE_LINE_BUFFER)
+        return $this->receiveLine ($this->readBuffer ());
     }
     // }}}
     
@@ -76,6 +87,33 @@
         if ($this->___callback ('receivedLine', $Line) === false)
           break;
       }
+    }
+    // }}}
+    
+    // {{{ getLineBuffer
+    /**
+     * Retrive contents of our line-buffer
+     * 
+     * @access protected
+     * @return string
+     **/
+    protected function getLineBuffer () {
+      return $this->Buffer;
+    }
+    // }}}
+    
+    // {{{ getLineBufferClean
+    /**
+     * Retrive contents of our line-buffer and clean it
+     * 
+     * @access protected
+     * @return string
+     **/
+    protected function getLineBufferClean () {
+      $rc = $this->Buffer;
+      $this->Buffer = '';
+      
+      return $rc;
     }
     // }}}
     

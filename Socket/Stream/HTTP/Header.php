@@ -2,8 +2,8 @@
 
   /**
    * qcEvents - HTTP-Stream Header Object
-   * Copyright (C) 2012 Bernd Holzmueller <bernd@quarxconnect.de>
-   *   
+   * Copyright (C) 2013 Bernd Holzmueller <bernd@quarxconnect.de>
+   * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
@@ -11,9 +11,9 @@
    * 
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
-   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
-   *
+   * 
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
@@ -25,182 +25,122 @@
    * 
    * @class qcEvents_Socket_Stream_HTTP_Header
    * @package qcEvents
-   * @revision 01
+   * @revision 02
    **/
-  abstract class qcEvents_Socket_Stream_HTTP_Header {
-    // All headers
+  class qcEvents_Socket_Stream_HTTP_Header {
+    /* Request-Types */
+    const METHOD_GET = 'GET';
+    const METHOD_POST = 'POST';
+    
+    /* Type of this header */
+    const TYPE_REQUEST = 0;
+    const TYPE_RESPONSE = 1;
+    
+    private $Type = qcEvents_Socket_Stream_HTTP_Header::TYPE_REQUEST;
+    
+    /* Version of this header */
+    private $Version = '';
+    
+    /* Properties for a request */
+    private $Method = qcEvents_Socket_Stream_HTTP_Header::METHOD_GET;
+    private $URI = '';
+    
+    /* Properties for a response */
+    private $Code = '';
+    private $Message = '';
+    
+    /* All header-values */
     private $Headers = array ();
-    private $Complete = false;
     
-    // Payload-Buffers
-    private $Encodings = null;
-    private $Buffer = '';
-    
-    // {{{ appendHeader
+    // {{{ __construct
     /**
-     * Store a Header/Value on this request
+     * Create a new HTTP-Header
      * 
-     * @param string $Name
-     * @param string $Value
+     * @param array $Data
      * 
-     * @access public
-     * @return void  
+     * @access friendly
+     * @return void
      **/
-    public function appendHeader ($Name, $Value) {
-      $this->Headers [strtolower ($Name)] = $Value;
-    }
-    // }}}
-    
-    // {{{ getHeaders
-    /**
-     * Retrive all HTTP-headers
-     * 
-     * @access public
-     * @return array
-     **/
-    public function getHeaders () {
-      return $this->Headers;
-    }
-    // }}}
-    
-    // {{{ getHeader
-    /**
-     * Retrive a header from this request
-     * 
-     * @param string $Name
-     * 
-     * @access public
-     * @return string
-     **/
-    public function getHeader ($Name) {
-      $Name = strtolower ($Name);
+    function __construct ($Data) {
+      // Check the type of this header
+      $Identifier = array_shift ($Data);
       
-      if (!isset ($this->Headers [$Name]))
-        return null;
+      if (substr ($Identifier, 0, 5) == 'HTTP/') {
+        $this->Type = self::TYPE_RESPONSE;
+        
+        $this->Version = substr ($Identifier, 0, 8);
+        $this->Code = intval (substr ($Identifier, 9, 3));
+        $this->Message = substr ($Identifier, 13);
+      } else {
+        $this->Type = self::TYPE_REQUEST;
+        
+        $this->Method = substr ($Identifier, 0, ($p = strpos ($Identifier, ' ')));
+        $this->Version = substr ($Identifier, ($p2 = strrpos ($Identifier, ' ')) + 1);
+        $this->URI = substr ($Identifier, $p + 1, $p2 - $p - 1);
+      }
       
-      return $this->Headers [$Name];
+      // Parse all additional lines
+      foreach ($Data as $Line) {
+        // Check for colon (this should always be present)
+        if (($p = strpos ($Line, ':')) === false)
+          continue;
+        
+        // Store the header
+        $this->Headers [strtolower (substr ($Line, 0, $p))] = trim (substr ($Line, $p + 1));
+      }
     }
     // }}}
     
-    // {{{ getContentLength
+    // {{{ hasField
     /**
-     * Retrive the length of the payload
+     * Check if a field is present on this header
      * 
-     * @access public
-     * @return int
-     **/
-    public function getContentLength () {
-      if (!isset ($this->Headers ['content-length']))
-        return null;
-      
-      return intval ($this->Headers ['content-length']);
-    }
-    // }}}
-    
-    // {{{ headerComplete
-    /**
-     * Check if the header was received completely
-     * 
-     * @param bool $Set (optional) Mark the header as complete
-     * 
-     * @access public
-     * @return bool  
-     **/
-    public function headerComplete ($Set = null) {
-      if ($Set === true)
-        $this->Complete = true;
-      
-      return $this->Complete;
-    }
-    // }}}
-    
-    // {{{ receivePayload
-    /**
-     * Try to receive any payload from a buffer
-     * 
-     * @param string $Buffer
-     * @param bool $Final (optional) Do we have to expect more data
+     * @param string $Field
      * 
      * @access public
      * @return bool
      **/
-    public function receivePayload (&$Buffer, $Final = false) {
-      // Check if we are ready to receive
-      if (!$this->headerComplete ())
-        return false;
+    public function hasField ($Field) {
+      return isset ($this->Headers [strtolower ($Field)]);
+    }
+    // }}}
+    
+    // {{{ getField
+    /**
+     * Retrive a field from this header
+     * 
+     * @param string $Field
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getField ($Field) {
+      // Retrive the key for that field
+      $Key = strtolower ($Field);
       
-      // Check if we were set up
-      if ($this->Encodings === null) {
-        if (!isset ($this->Headers ['transfer-encoding']))
-          $this->Encodings = array ('identity');
-        else
-          $this->Encodings = explode (' ', trim ($this->Headers ['transfer-encoding']));
-        
-        $this->Buffer = '';
-      }
+      // Check if the field is present
+      if (isset ($this->Headers [$Key]))
+        return $this->Headers [$Key];
       
-      // Check if we can receive payload
-      $Ready = false;
+      return null;
+    }
+    // }}}
+    
+    // {{{ hasBody
+    /**
+     * Check if a body is expected
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function hasBody () {
+      // Check rules as of RFC 1945 7.2 / RFC 2616 4.3
+      if ($this->Type == self::TYPE_REQUEST)
+        return ($this->hasField ('content-length') || $this->hasField ('transfer-encoding'));
       
-      switch ($this->Encodings [0]) {
-        // Use chunked transfer
-        case 'chunked':
-          // Keep on reading
-          while (($p = strpos ($Buffer, "\n")) !== false) {
-            // Get the length from buffer
-            $Length = substr ($Buffer, 0, $p);
-            
-            if (($p1 = strpos ($Length, ' ')) !== false)
-              $Length = substr ($Length, 0, $p1);
-            
-            $Length = hexdec ($Length);
-            
-            // Check if this is the last chunk
-            if ($Ready = ($Length == 0))
-              break;
-            
-            // Check if there is enough data available
-            if (strlen ($Buffer) < $Length + $p + 1)
-              break;
-            
-            $this->Buffer .= substr ($Buffer, $p + 1, $Length);
-            $Buffer = substr ($Buffer, $p + $Length + 3);
-          }
-          
-          break;
-        case 'gzip':
-        case 'compress':
-        case 'deflate':
-        case 'identity':
-          // Try to determine the length of the payload
-          if (($L = $this->getContentLength ()) === null) {
-            // Expect more data
-            if (!$Final)
-              return null;
-            
-            // Take the whole buffer
-            $L = strlen ($Buffer);
-          }
-          
-          // Get the payload
-          $this->Buffer = substr ($Buffer, 0, $L);
-          $Buffer = substr ($BUffer, $L);
-          $Ready = true;
-      }
-      
-      // Check if we are ready
-      if (!$Ready)
-        return null;
-      
-      // Check wheter to apply more transfer-encodings
-      if (count ($this->Encodings) > 0) {
-        # TODO
-      }
-      
-      $this->Payload = $this->Buffer;
-      $this->Buffer = null;
-      
-      return true;
+      // Decide depending on Status-Code
+      # TODO: This does not honor Responses to HEAD-Requests (as we do not have this information here)
+      return (($this->Code > 199) && ($this->Code != 204) && ($this->Code != 304));
     }
     // }}}
   }

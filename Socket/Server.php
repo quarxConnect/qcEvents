@@ -1,253 +1,280 @@
-<?PHP
+eserved',
+	'rightImgACT': 'reserved',
+	'rightImgCUR': 'reserved',
+	'rightImgNO': 'reserved',
+	'rightjoin': 'reserved',
+	'rm': 'reserved',
+	'rmTagIfNoAttrib': 'reserved',
+	'RO_chBgColor': 'reserved',
+	'rotate': 'reserved',
+	'rows': 'reserved',
+	'rowSpace': 'reserved',
+	'RTEfullScreenWidth': 'reserved',
+	'rules': 'reserved',
+	'sample': 'reserved',
+	'saveClipboard': 'reserved',
+	'saveDocNew': 'reserved',
+	'secondRow': 'reserved',
+	'section': 'reserved',
+	'sectionIndex': 'reserved',
+	'select': 'reserved',
+	'select_key': 'reserved',
+	'selectFields': 'reserved',
+	'separator': 'reserved',
+	'set': 'reserved',
+	'setContentToCurrent': 'reserved',
+	'setCurrent': 'reserved',
+	'setfixed': 'reserved',
+	'setFixedHeight': 'reserved',
+	'setFixedWidth': 'reserved',
+	'setJS_mouseOver': 'reserved',
+	'setJS_openPic': 'reserved',
+	'setOnly': 'reserved',
+	'shadow': 'reserved',
+	'sharpen': 'reserved',
+	'shear': 'reserved',
+	'short': 'reserved',
+	'shortcut': 'reserved',
+	'shortcut_onEditId_dontSetPageTree': 'reserved',
+	'shortcut_onEditId_keepExistingExpanded': 'reserved',
+	'shortcutFrame': 'reserved',
+	'shortcutGroups': 'reserved',
+	'shortcutIcon': 'reserved',
+	'show': 'reserved',
+	'showAccessRestrictedPages': 'reserved',
+	'showActive': 'reserved',
+	'showClipControlPanelsDespiteOfCMlayers': 'reserved',
+	'showFirst': 'reserved',
+	'showHiddenPages': 'reserved',
+	'showHiddenRecords': 'reserved',
+	'showHistory': 'reserved',
+	'showPageIdWithTitle': 'reserved',
+	'showTagFreeClasses': 'reserved',
+	'simulateDate': 'reserved',
+	'simulateStaticDocuments': 'reserved',
+	'simulateStaticDocuments_addTitle': 'reserved',
+	'simulateStaticDocuments_dontRedirectPathInfoError': 'reserved',
+	'simulateStaticDocuments_noTypeIfNoTitle': 'reserved',
+	'simulateStaticDocuments_pEnc': 'reserved',
+	'simulateStaticDocuments_pEnc_onlyP': 'reserved',
+	'simulateUserGroup': 'reserved',
+	'singlePid': 'reserved',
+	'site_author': 'reserved',
+	'site_reserved': 'reserved',
+	'sitetitle': 'reserved',
+	'siteUrl': 'reserved',
+	'size': 'reserved',
+	'smallFormFields': 'reserved',
+	'solarize': 'reserved',
+	'sorting': 'reserved',
+	'source': 'reserved',
+	'space': 'reserved',
+	'spaceAfter': 'reserved',
+	'spaceBefore': 'reserved',
+	'spaceBelowAbove': 'reserved',
+	'spaceLeft': 'reserved',
+	'spaceRight': 'reserved',
+	'spacing': 'reserved',
+	'spamProtectEmailAddresses': 'reserved',
+	'spamProtectEmailAddresses_atSubst': 'reserved',
+	'spamProtectEmailAddresses_lastDotSubst': 'reserved',
+	'special': 'reserved',
+	'splitChar': 'reserved',
+	'splitRendering': 'reserved',
+	'src': 'reserved',
+	'startInTaskCenter': 'reserved',
+	'stayFolded': 'reserved',
+	'stdheader': 'reserved',
+	'stdWrap': 'reserved',
+	'stdWrap2': 'reserved',
+	'strftime': 'reserved',
+	'stripHtml': 'reserved',
+	'styles': 'reserved',
+	'stylesheet': 'reserved',
+	'submenuObjSuffixes': 'reserved',
+	'subMenuOffset': 'reserved',
+	'submit': 'reserved',
+	'subst_elementUid': 'reserved',
+	'substMarksSeparately': 'reserved',
+	'substring': 'reserved',
+	'swirl': 'reserved',
+	'sword': 'reserved',
+	'sword_noMixedCase': 'reserved',
+	'SWORD_PARAMS': 'reserved',
+	'sword_standAlone': 'reserved',
+	'sys_language_mode': 'reserved',
+	'sys_language_overlay': 'reserved',
+	'sys_language_softMergeIfNotBlank': 'reserved',
+	'sys_language_uid': 'reserved',
+	'table': 'reserved',
+	'tableCellColor': 'reserved',
+	'tableParams': 'reserved',
+	'tables': 'reserved',
+	'tableStdWrap': 'reserved',
+	'tableStyle': 'reserved',
+	'tableWidth': 'reserved',
+	'tags': 'reserved',
+	'target': 'reserved',
+	'TDparams': 'reserved',
+	'templateContent': 'reserved',
+	'templateFile': 'reserved',
+	'text': 'reserved',
+	'textarea': 'reserved',
+	'textMargin': 'reserved',
+	'textMargin_outOfText': 'reserved',
+	'textMaxLength': 'reserved',
+	'textObjNum': 'reserved',
+	'textPos': 'reserved',
+	'textStyle': 'reserved',
+	'thickness': 'reserved',
+	'thumbnailsByDefault': 'reserved',
+	'tile': 'reserved',
+	'time_stdWrap': 'reserved',
+	'tipafriendLib': 'reserved',
+	'title': 'reserved',
+	'titleLen': 'reserved',
+	'titleTagFunction': 'reserved',
+	'titleText': 'reserved',
+	'tm': 'reserved',
+	'token': 'reserved',
+	'topOffset': 'reserved',
+	'totalWidth': 'reserved',
+	'transparentBackground': 'reserved',
+	'transparentColor': 'reserved',
+	'trim': 'reserved',
+	'tsdebug_tree': 'reserved',
+	'type': 'reserved',
+	'typeNum': 'reserved',
+	'types': 'reserved',
+	'typolinkCheckRootline': 'reserved',
+	'uidInList': 'reserved',
+	'unset': 'reserved',
+	'uploadFieldsInTopOfEB': 'reserved',
+	'uploads': 'reserved',
+	'upper': 'reserved',
+	'useCacheHash': 'reserved',
+	'useLargestItemX': 'reserved',
+	'useLargestItemY': 'reserved',
+	'user': 'reserved',
+	'userdefined': 'reserved',
+	'userfunction': 'reserved',
+	'userid': 'reserved',
+	'userIdColumn': 'reserved',
+	'USERNAME_substToken': 'reserved',
+	'userProc': 'reserved',
+	'value': 'reserved',
+	'valueArray': 'reserved',
+	'wave': 'reserved',
+	'where': 'reserved',
+	'width': 'reserved',
+	'wiz': 'reserved',
+	'wordSpacing': 'reserved',
+	'workArea': 'reserved',
+	'wrap': 'reserved',
+	'wrap1': 'reserved',
+	'wrap2': 'reserved',
+	'wrap3': 'reserved',
+	'wrapAfterTags': 'reserved',
+	'wrapAlign': 'reserved',
+	'wrapFieldName': 'reserved',
+	'wrapItemAndSub': 'reserved',
+	'wrapNonWrappedLines': 'reserved',
+	'wraps': 'reserved',
+	'xhtml_cleaning': 'reserved',
+	'xmlprologue': 'reserved',
+	'xPosOffset': 'reserved',
+	'yPosOffset': 'reserved',
 
-  /**
-   * qcEvents - Multi-Purpose Server Interface
-   * Copyright (C) 2012 Bernd Holzmueller <bernd@quarxconnect.de>
-   *
-   * This program is free software: you can redistribute it and/or modify
-   * it under the terms of the GNU General Public License as published by
-   * the Free Software Foundation, either version 3 of the License, or
-   * (at your option) any later version.
-   * 
-   * This program is distributed in the hope that it will be useful,
-   * but WITHOUT ANY WARRANTY; without even the implied warranty of
-   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   * GNU General Public License for more details.
-   *
-   * You should have received a copy of the GNU General Public License
-   * along with this program.  If not, see <http://www.gnu.org/licenses/>.
-   **/
-  
-  require_once ('qcEvents/Event.php');
-  require_once ('qcEvents/Socket.php');
-  
-  /**
-   * Server-Socket
-   * -------------
-   * Event-based Server-Sockets
-   * 
-   * @class qcEvents_Socket_Server
-   * @package qcEvents
-   * @revision 01
-   **/
-  class qcEvents_Socket_Server extends qcEvents_Event {
-    const MODE_TCP = qcEvents_Socket::MODE_TCP;
-    const MODE_UDP = qcEvents_Socket::MODE_UDP;
-    
-    const READ_UDP_BUFFER = 1500;
-    const CHILD_UDP_TIMEOUT = 20;
-    
-    private $Mode = qcEvents_Socket_Server::MODE_TCP;
-    
-    // Internal stored class for connections
-    private $connectionClass = 'qcEvents_Socket';
-    
-    // Are we listening at the moment
-    private $Online = false;
-    
-    // All connections we handle (only in UDP-Mode)
-    private $Clients = array ();
-    
-    // Do we have an Timer set to timeout UDP-Children
-    private $haveUDPTimer = false;
-    
-    // {{{ __construct
-    /**
-     * Create a new server-process
-     * 
-     * @param enum $Mode (optional)
-     * @param int $Port (optional)
-     * @param string $IP (optional)
-     * 
-     * @access friendly
-     * @return void
-     **/
-    function __construct ($Mode = null, $Port = null, $IP = null) {
-      // Check wheter to setup
-      if (($Mode === null) || ($Port === null))
-        return;
-      
-      // Put ourself into listenng-state
-      $this->listen ($Mode, $Port, $IP);
-    }
-    // }}}
-    
-    // {{{ setClass
-    /**
-     * Set class to use for incoming connections
-     * 
-     * @param string $Classname
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function setClass ($Classname) {
-      // Verify the class
-      if (($Classname == 'qcEvents_Socket') ||
-          !is_subclass_of ($Classname, 'qcEvents_Socket'))
-        return false;
-      
-      // Set the class
-      $this->connectionClass = $Classname;
-      
-      return true;
-    }
-    // }}}
-    
-    // {{{ listen
-    /**
-     * Create a the server-process
-     * 
-     * @param enum $Mode
-     * @param int $Port
-     * @param string $IP (optional)
-     * @param int $Backlog (optional)
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function listen ($Mode, $Port, $IP = null, $Backlog = null) {
-      // Handle Context
-      if ($Backlog !== null)
-        # bindto : Bind socket to ipaddr:port
-        $Context = stream_context_create (array ('backlog' => $Backlog));
-      else
-        $Context = stream_context_create (array ());
-      
-      if ($IP === null)
-        $IP = '0.0.0.0';
-      
-      // Create the socket
-      if ($Mode == self::MODE_UDP) {
-        $Proto = 'udp';
-        $Flags = STREAM_SERVER_BIND;
-      } elseif ($Mode == self::MODE_TCP) {
-        $Proto = 'tcp';
-        $Flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
-      } else
-        return false;
-      
-      if (!is_resource ($Socket = stream_socket_server ($Proto . '://' . $IP . ':' . $Port, $ErrNo, $ErrStr, $Flags, $Context)))
-        return false;
-      
-      // Setup the event-handler
-      if (!$this->setFD ($Socket, true, false)) {
-        fclose ($Socket);
-        
-        return false;
-      }
-      
-      // Set ourself to online
-      $this->Mode = $Mode;
-      
-      return ($this->Online = true);
-    }
-    // }}}
-    
-    // {{{ readEvent
-    /**
-     * Handle events on our server-socket
-     * 
-     * @access public
-     * @return void
-     **/
-    public function readEvent () {
-      // Handle UDP-Events
-      if ($this->Mode == self::MODE_UDP) {
-        if (($Data = stream_socket_recvfrom ($fd = $this->getFD (), self::READ_UDP_BUFFER, 0, $Remote)) === false)
-          # TODO: What to do here?
-          return false;
-        
-        // Create a client-handle if there is none yet
-        if (!isset ($this->Clients [$Remote])) {
-          $Client = new $this->connectionClass;
-          
-          // Setup the client
-          $Client->setServer ($this);
-          $Client->setConnection ($fd, $Remote, $this->Mode);
-          
-          $this->Clients [$Remote] = $Client;
-          
-          if (!$this->haveUDPTimer) {
-            $this->addTimeout (max (2, intval (self::CHILD_UDP_TIMEOUT / 4)), true, array ($this, 'checkUDPChildren'));
-            $this->haveUDPTimer = true;
-          }
-        } else
-          $Client = $this->Clients [$Remote];
-        
-        // Forward the data to the client
-        $Client->readUDPServer ($Data);
-        
-        return;
-      
-      // Handle TCP-Events (accept an incoming connection)
-      } elseif ($this->Mode == self::MODE_TCP) {
-        // Accept incoming connection
-        if (!is_resource ($Connection = stream_socket_accept ($this->getFD ())))
-          return false;
-        
-      // This should never happen
-      } else
-        return false;
-      
-      // Create new Client if neccessary
-      $Client = new $this->connectionClass;
-        
-      // Remember this client here
-      # Do we really care?!
-      # $this->Clients [] = $Client;
-      
-      // Setup the client
-      $Client->setServer ($this);
-      $Client->setConnection ($Connection);
-      
-      // Add the client to our event-handler
-      if (is_object ($Handler = $this->getHandler ()))
-        $Handler->addEvent ($Client);
-    }
-    // }}}
-    
-    // {{{ disconnectChild
-    /**
-     * Remove a child-handle from an UDP-Server
-     * 
-     * @param object $Child
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function disconnectChild ($Child) {
-      // This only applies to UDP-Mode
-      if ($this->Mode != self::MODE_UDP)
-        return false;
-      
-      // Retrive name of the peer on the child
-      $Peer = $Child->getPeer ();
-      
-      // Check if we know it
-      if (isset ($this->Clients [$Peer]))
-        unset ($this->Clients [$Peer]);
-      
-      return true;
-    }
-    // }}}
-    
-    // {{{ checkUDPChildren
-    /**
-     * Check if one of our children timed out
-     * 
-     * @access public
-     * @return void
-     **/
-    public function checkUDPChildren () {
-      // Retrive the actual time
-      $t = time ();
-      
-      foreach ($this->Clients as $C)
-        if ($t - $C->getLastEvent () > self::CHILD_UDP_TIMEOUT)
-          $C->disconnect ();
-    }
-    // }}}
-  }
-
-?>
+	'admPanel': 'keyword2',
+	'alt_print': 'keyword2',
+	'auth': 'keyword2',
+	'browser': 'keyword2',
+	'cache': 'keyword2',
+	'CHECK': 'keyword2',
+	'cObj': 'keyword2',
+	'cObject': 'keyword2',
+	'COMMENT': 'keyword2',
+	'config': 'keyword2',
+	'content': 'keyword2',
+	'copy': 'keyword2',
+	'CSS_inlineStyle': 'keyword2',
+	'cut': 'keyword2',
+	'dataArray': 'keyword2',
+	'dayofmonth': 'keyword2',
+	'dayofweek': 'keyword2',
+	'db_list': 'keyword2',
+	'device': 'keyword2',
+	'dynCSS': 'keyword2',
+	'edit': 'keyword2',
+	'edit_access': 'keyword2',
+	'edit_pageheader': 'keyword2',
+	'folder': 'keyword2',
+	'folderTree': 'keyword2',
+	'foldoutMenu': 'keyword2',
+	'Functions': 'keyword2',
+	'gmenu_foldout': 'keyword2',
+	'gmenu_layers': 'keyword2',
+	'hostname': 'keyword2',
+	'hour': 'keyword2',
+	'imgList': 'keyword2',
+	'imgResource': 'keyword2',
+	'imgText': 'keyword2',
+	'info': 'keyword2',
+	'IP': 'keyword2',
+	'jsmenu': 'keyword2',
+	'JSwindow': 'keyword2',
+	'LABEL': 'keyword2',
+	'layout': 'keyword2',
+	'lib': 'keyword2',
+	'loginUser': 'keyword2',
+	'marks': 'keyword2',
+	'minute': 'keyword2',
+	'mod': 'keyword2',
+	'module': 'keyword2',
+	'month': 'keyword2',
+	'move_wizard': 'keyword2',
+	'new': 'keyword2',
+	'new_wizard': 'keyword2',
+	'noResultObj': 'keyword2',
+	'numRows': 'keyword2',
+	'options': 'keyword2',
+	'page': 'keyword2',
+	'pageTree': 'keyword2',
+	'paste': 'keyword2',
+	'perms': 'keyword2',
+	'PIDinRootline': 'keyword2',
+	'PIDupinRootline': 'keyword2',
+	'plugin': 'keyword2',
+	'postform': 'keyword2',
+	'postform_newThread': 'keyword2',
+	'preview': 'keyword2',
+	'publish': 'keyword2',
+	'RADIO': 'keyword2',
+	'renderObj': 'keyword2',
+	'REQ': 'keyword2',
+	'RTE': 'keyword2',
+	'RTE_compliant': 'keyword2',
+	'select': 'keyword2',
+	'setup': 'keyword2',
+	'split': 'keyword2',
+	'stat': 'keyword2',
+	'stat_apache': 'keyword2',
+	'stat_apache_logfile': 'keyword2',
+	'stat_apache_noHost': 'keyword2',
+	'stat_apache_notExtended': 'keyword2',
+	'stat_apache_pagenames': 'keyword2',
+	'stat_excludeBEuserHits': 'keyword2',
+	'stat_excludeIPList': 'keyword2',
+	'stat_mysql': 'keyword2',
+	'stat_titleLen': 'keyword2',
+	'stat_typeNumList': 'keyword2',
+	'stdWrap': 'keyword2',
+	'subparts': 'keyword2',
+	'system': 'keyword2',
+	'temp': 'keyword2',
+	'template': 'keyword2',
+	'treeLevel': 'keyword2',
+	'tsdebug': 'keyword2',
+	'typolink': 'keyword2',
+	'url': 'keyword2',
+	'us

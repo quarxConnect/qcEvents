@@ -21,130 +21,161 @@
   require_once ('qcEvents/Socket/Stream/HTTP.php');
   
   class qcEvents_Socket_Client_HTTP extends qcEvents_Socket_Stream_HTTP {
+    /* Current Request */
     private $Request = null;
+    
+    /* Pending requests */
     private $Requests = array ();
-    private $Response = null;
+    
+    // {{{ __construct   
+    /**
+     * Create a new server-client
+     * 
+     * @access friendly
+     * @return void
+     **/
+    function __construct () {   
+      // Inherit to our parent
+      call_user_func_array ('parent::__construct', func_get_args ());
+      
+      // Register hooks
+      $this->addHook ('socketConnected', array ($this, 'httpSocketConnected'));
+      $this->addHook ('httpFinished', array ($this, 'httpReqeustFinished'));
+    }
+    // }}}
     
     // {{{ addRequest
     /**
-     * Append a request to our queue
+     * Enqueue an HTTP-Request
      * 
-     * @param string $Host
      * @param string $URL
-     * @param enum $Method
+     * @param enum $Method (optional)
+     * @param array $Headers (optional)
+     * @param string $Body (optional)
+     * @param callback $Callback (optional)
      * 
      * @access public
      * @return void
      **/
-    public function addRequest ($Host, $URL, $Method = qcEvents_Socket_Stream_HTTP_Request::METHOD_GET) {
-      $R = new qcEvents_Socket_Stream_HTTP_Request ($Method, $URL, 'HTTP/1.1');
-      $R->appendHeader ('host', $Host);
+    public function addRequest ($URL, $Method = 'GET', $Headers = array (), $Body = null, $Callback = null) {
+      // Enqueue the request
+      $this->Requests [] = array (
+        0 => $URL,
+        1 => parse_url ($URL),
+        2 => $Method,
+        3 => $Headers,
+        4 => $Body,
+        5 => $Callback
+      );
       
-      $this->Requests [] = $R;
-      $this->submitRequest ();
+      // Try to submit it
+      $this->submitPendingRequest ();
     }
     // }}}
     
-    // {{{ connected
+    // {{{ submitPendingRequest
     /**
-     * Internal Callback: Connection was established
+     * Submit a pending request over the wire
      * 
-     * @access protected
-     * @return void
-     **/
-    protected function connected () {
-      $this->submitRequest ();
-    }
-    // }}}
-    
-    // {{{ receive
-    /**
-     * Receive an incoming request
-     * 
-     * @param string $Data
-     * 
-     * @access protected
-     * @return void
-     **/
-    protected function receive ($Data) {
-      // Try to receive response-headers
-      if (!is_object ($this->Response)) {
-        if (($rc = $this->bufferResponse ($Data)) === false)
-          return $this->handleReceiveError ();
-        
-        elseif ($rc === null)
-          return null;
-        
-        $this->Response = $this->getResponse ();
-      }
-      
-      // Receive payload from the response
-      if (($rc = $this->bufferPayload ($Data)) === false)
-        return $this->handleReceiveError ();
-        
-      elseif ($rc === null)
-        return null;
-      
-      // Fire up the callback
-      $this->___callback ('responseReceived', $this->Request, $this->Response);
-      
-      // Head over to the next request
-      $this->Request = null;
-      $this->submitRequest ();
-    }
-    // }}}
-    
-    // {{{ submitRequest
-    /**
-     * Submit a request
-     *
-     * @access protected
-     * @return void
-     **/
-    protected function submitRequest () {
-      // Check if we are connected
-      if (!$this->isOnline ())
-        return false;
-      
-      // Check if there is a request pending
-      if (is_object ($this->Request))
-        return false;
-      
-      // Check if there are queued events
-      if (count ($this->Requests) == 0)
-        return true;
-      
-      // Move the next request into the active queue
-      $this->Request = array_shift ($this->Requests);
-      
-      // Write the request to the wire
-      $this->writeRequest ($this->Request);
-    }
-    // }}}
-    
-    // {{{ handleReceiveError
-    /**
-     * An error occured upon receiving
-     *
      * @access private
      * @return void
      **/
-    private function handleReceiveError () {
-      # TODO
+    private function submitPendingRequest () {
+      // Check if there is an active request
+      if ($this->Request !== null)
+        return;
+      
+      // Check if there are no more events pending
+      if (count ($this->Requests) == 0) {
+        $this->disconnect ();
+        
+        return;
+      }
+      
+      // Reset the HTTP-Stream
+      $this->reset ();
+      
+      // Retrive the next request
+      $this->Request = array_shift ($this->Requests);
+      
+      $Host = $this->Request [1]['host'];
+      $Port = (isset ($this->Request [1]['port']) ? $this->Request [1]['port'] : 80);
+      
+      // Check if to connect to remote host
+      if ($this->isConnected () &&
+          ($this->getRemoteHost () == $Host) &&
+          ($this->getRemotePort () == $Port))
+        return $this->httpSocketConnected ();
+      
+      if ($this->isDisconnected ())
+        $this->connect ($Host, $Port, self::TYPE_TCP);
     }
     // }}}
     
-    // {{{ responseReceived
+    // {{{ httpSocketConnected
     /**
-     * Callback: HTTP-Response was received
-     * 
-     * @param object $Request
-     * @param object $Response
+     * Internal Callback: Our underlying socket was connected
      * 
      * @access protected
      * @return void
      **/
-    protected function responseReceived ($Request, $Response) { }
+    protected final function httpSocketConnected () {
+      // Check if a request is pending
+      if ($this->Request === null)
+        return $this->submitPendingRequest ();
+      
+      if (!isset ($this->Request [3]['Host']))
+        $this->Request [3]['Host'] = $this->Request [1]['host'];
+      
+      $this->mwrite ($this->Request [2], ' ', $this->Request [1]['path'], (isset ($this->Request [1]['query']) ? '?' . $this->Request [1]['query'] : ''), ' HTTP/1.1', "\r\n");
+      
+      foreach ($this->Request [3] as $Key=>$Value)
+        $this->mwrite ($Key, ': ', $Value, "\r\n");
+      
+      $this->write ("\r\n");
+    }
+    // }}}
+    
+    // {{{ httpReqeustFinished
+    /** 
+     * Internal Callback: HTTP-Request was finished
+     * 
+     * @param qcEvents_Socket_Stream_HTTP_Header $Header
+     * @param string $Body
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected final function httpReqeustFinished ($Self, $Header, $Body) {
+      // Check if a request is pending
+      if ($this->Request !== null) {
+        // Fire callbacks
+        if (is_callable ($this->Request [5]))
+          call_user_func ($this->Request [5], $this, $this->Request [0], $Header, $Body);
+        
+        $this->___callback ('httpRequestResult', $this->Request [0], $Header, $Body);
+        
+        // Remove the current request
+        $this->Request = null;
+      }
+      
+      // Submit the next request
+      $this->submitPendingRequest ();
+    }
+    // }}}
+    
+    // {{{ httpRequestResult
+    /**
+     * Callback: HTTP-Request is finished
+     * 
+     * @param string $URL
+     * @param qcEvents_Socket_Stream_HTTP_Header $Header
+     * @param string $Body
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function httpRequestResult ($URL, qcEvents_Socket_Stream_HTTP_Header $Header, $Body) { }
     // }}}
   }
 

@@ -293,21 +293,21 @@
     }
     // }}}
     
-    // {{{ connected
+    // {{{ socketConnected
     /**   
      * Callback: Invoked whenever the connection is established
      * 
      * @access protected
      * @return void  
      **/  
-    protected function connected () {
+    protected function socketConnected () {
       $this->Status = self::STATUS_CONNECTED;
       
       # TODO: Add timeout for greeting
     }
     // }}}
     
-    // {{{ receive
+    // {{{ socketReceive
     /**
      * Callback: Invoked whenever incoming data is received
      * 
@@ -316,7 +316,7 @@
      * @access protected
      * @return void
      **/
-    protected function receive ($Data) {
+    protected function socketReceive ($Data) {
       // Push the received data to our buffer
       $this->Buffer .= $Data;
       unset ($Data);
