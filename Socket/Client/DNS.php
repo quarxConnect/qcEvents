@@ -42,7 +42,7 @@
     
     // {{{ __construct   
     /**
-     * Create a new HTTP-Stream   
+     * Create a new DNS-Client
      * 
      * @access friendly
      * @return void
@@ -226,13 +226,12 @@
     /**
      * Internal Callback: DNS-Response was received
      * 
-     * @param object $Self
      * @param qcEvents_Socket_Stream_DNS_Message $Message
      * 
      * @access protected
      * @return void
      **/
-    protected final function dnsClientResult ($Self, $Message) {
+    protected final function dnsClientResult ($Message) {
       // Retrive the ID of this one
       $ID = $Message->getID ();
       

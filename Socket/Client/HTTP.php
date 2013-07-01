@@ -146,7 +146,7 @@
      * @access protected
      * @return void
      **/
-    protected final function httpReqeustFinished ($Self, $Header, $Body) {
+    protected final function httpReqeustFinished ($Header, $Body) {
       // Check if a request is pending
       if ($this->Request !== null) {
         // Fire callbacks

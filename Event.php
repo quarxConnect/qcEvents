@@ -521,18 +521,17 @@
       $Name = strtolower (array_shift ($Args));
       
       // Check hooks
-      if (isset ($this->Hooks [$Name])) {
-        $hArgs = $Args;
-        array_unshift ($hArgs, $this);
-        
+      if (isset ($this->Hooks [$Name]))
         foreach ($this->Hooks [$Name] as $Callback) {
-          $cArgs = $hArgs;
+          $cArgs = $Args;
           $cArgs [] = $Callback [1];
+          
+          if (!is_array ($Callback [0]) || ($Callback [0][0] !== $this))
+            array_unshift ($cArgs, $this);
           
           if (call_user_func_array ($Callback [0], $cArgs) === false)
             return false;
         }
-      }
       
       // Check if the callback is available
       $Callback = array ($this, $Name);
