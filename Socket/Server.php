@@ -43,8 +43,11 @@
     
     private $Type = qcEvents_Socket_Server::TYPE_TCP;
     
-    // Internal stored class for connections
-    private $connectionClass = qcEvents_Socket_Server::CHILD_CLASS_BASE;
+    /* Class for new child-connections (should be at least qcEvents_Socket) */
+    private $childClass = qcEvents_Socket_Server::CHILD_CLASS_BASE;
+    
+    /* Registered hooks for our children */
+    private $childHooks = array ();
     
     // Are we listening at the moment
     private $Listening = false;
@@ -84,7 +87,7 @@
     }
     // }}}
     
-    // {{{ setClass
+    // {{{ setChildClass
     /**
      * Set class to use for incoming connections
      * 
@@ -93,14 +96,40 @@
      * @access public
      * @return bool
      **/
-    public function setClass ($Classname) {
+    public function setChildClass ($Classname) {
       // Verify the class
       if (($Classname == $this::CHILD_CLASS_BASE) ||
           !is_subclass_of ($Classname, $this::CHILD_CLASS_BASE))
         return false;
       
       // Set the class
-      $this->connectionClass = $Classname;
+      $this->childClass = $Classname;
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ addChildHook
+    /**
+     * Register a hook for new children
+     * 
+     * @param string $Hook
+     * @param callback $Callback
+     * @param mixed $Private (optional)
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function addChildHook ($Name, $Callback, $Private = null) {
+      // Check if this is a valid callback
+      if (!is_callable ($Callback))
+        return false;
+      
+      // Register the hook
+      if (!isset ($this->childHooks [$Name]))
+        $this->childHooks [$Name] = array (array ($Callback, $Private));
+      else
+        $this->childHooks [$Name][] = array ($Callback, $Private);
       
       return true;
     }
@@ -180,8 +209,7 @@
             return;
           
           // Create the client
-          $this->Clients [$Remote] = $Client = new $this->connectionClass;
-          $Client->connectServer ($this, $Remote);
+          $this->Clients [$Remote] = $Client = $this->serverCreateChild ($Remote);
           
           // Make sure we have a timer
           if (!$this->haveUDPTimer) {
@@ -207,9 +235,34 @@
           return;
         
         // Create new Client if neccessary
-        $Client = new $this->connectionClass ($this->getEventBase ());
-        $Client->connectServer ($this, $Remote, $Connection);
+        $Client = $this->serverCreateChild ($Remote, $Connection);
       }
+    }
+    // }}}
+    
+    // {{{ serverCreateChild
+    /**
+     * Create a new child-class
+     * 
+     * @param string $Remote
+     * @param resource $Connection (optional)
+     * 
+     * @access private
+     * @return object
+     **/
+    private function serverCreateChild ($Remote, $Connection = null) {
+      // Create a new object of childClass
+      $Client = new $this->childClass ($this->getEventBase ());
+      
+      // Register hooks at the child
+      foreach ($this->childHooks as $Hook=>$Hooks)
+        foreach ($Hooks as $Info)
+          $Client->addHook ($Hook, $Info [0], $Info [1]);
+      
+      // Register ourself at the child
+      $Client->connectServer ($this, $Remote, $Connection);
+      
+      return $Client;
     }
     // }}}
     
