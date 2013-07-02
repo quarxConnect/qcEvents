@@ -3,7 +3,7 @@
   /**
    * qcEvents - Postfix Dictionary Server
    * Copyright (C) 2012 Bernd Holzmueller <bernd@quarxconnect.de>
-   *
+   * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
@@ -11,14 +11,14 @@
    * 
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
-   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
-   *
+   * 
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Socket/Buffer.php');
+  require_once ('qcEvents/Socket/Client.php');
   
   /**
    * Postfix Dictionary Server
@@ -30,7 +30,10 @@
    * @package qcEvents
    * @revision 01
    **/
-  class qcEvents_Socket_Server_Postfix_Dictionary extends qcEvents_Socket_Buffer {
+  class qcEvents_Socket_Server_Postfix_Dictionary extends qcEvents_Socket_Client {
+    /* Tell our parent controller to use the line-buffer */
+    const USE_LINE_BUFFER = true;
+    
     private $Function = array (
       'get' => 'lookupKey',
       'set' => 'updateKey',
