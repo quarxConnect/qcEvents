@@ -461,15 +461,16 @@
      * @param int $Timeout How many seconds to wait
      * @param bool $Repeat (optional) Keep the timeout
      * @param callback $Callback (optional) Use this function as Callback
+     * @param mixed $Privte (optional) Private data passed to the callback
      * 
      * @access public
      * @return bool
      **/
-    public function addTimeout ($Timeout, $Repeat = false, $Callback = null) {
+    public function addTimeout ($Timeout, $Repeat = false, $Callback = null, $Private = null) {
       if (!is_object ($B = $this->getEventBase ()))
         return false;
       
-      return $B->addTimeout ($this, $Timeout, $Repeat, $Callback);
+      return $B->addTimeout ($this, $Timeout, $Repeat, $Callback, $Private);
     }
     // }}}
     

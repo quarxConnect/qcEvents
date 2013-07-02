@@ -540,7 +540,7 @@
       foreach ($Events as $Event) {
         // Run the event
         if ($Event [3] !== null)
-          call_user_func ($Event [3]);
+          call_user_func ($Event [3], $Event [4]);
         else
           $Event [0]->timerEvent ();
         
@@ -630,11 +630,12 @@
      * @param int $Timeout How many seconds to wait
      * @param bool $Repeat (optional) Keep the timeout
      * @param callback $Callback (optional) Use this function as Callback
+     * @param mixed $Private (optional) Private data passed to the callback
      * 
      * @access public
      * @return bool
      **/
-    public function addTimeout ($Event, $Timeout, $Repeat = false, $Callback = null) {
+    public function addTimeout ($Event, $Timeout, $Repeat = false, $Callback = null, $Private = null) {
       // Check the callback
       if (($Callback !== null) && !is_callable ($Callback))
         $Callback = null;
@@ -644,11 +645,11 @@
       $N = $T + $Timeout;
       
       if (!isset ($this->timeoutEvents [$N])) {
-        $this->timeoutEvents [$N] = array (array ($Event, $Timeout, $Repeat, $Callback));
+        $this->timeoutEvents [$N] = array (array ($Event, $Timeout, $Repeat, $Callback, $Private));
         
         ksort ($this->timeoutEvents, SORT_NUMERIC);
       } else
-        $this->timeoutEvents [$N][] = array ($Event, $Timeout, $Repeat, $Callback);
+        $this->timeoutEvents [$N][] = array ($Event, $Timeout, $Repeat, $Callback, $Private);
       
       // Setup the timer
       if (($this->timeoutNext < $T) || ($this->timeoutNext > $N)) {
