@@ -1,98 +1,129 @@
 <?PHP
 
+  /**
+   * qcEvents - Asyncronous DNS Server
+   * Copyright (C) 2013 Bernd Holzmueller <bernd@quarxconnect.de>
+   * 
+   * This program is free software: you can redistribute it and/or modify
+   * it under the terms of the GNU General Public License as published by
+   * the Free Software Foundation, either version 3 of the License, or
+   * (at your option) any later version.
+   * 
+   * This program is distributed in the hope that it will be useful,
+   * but WITHOUT ANY WARRANTY; without even the implied warranty of
+   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+   * GNU General Public License for more details.
+   * 
+   * You should have received a copy of the GNU General Public License
+   * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   **/
+  
   require_once ('qcEvents/Socket/Stream/DNS.php');
   require_once ('qcEvents/Socket/Stream/DNS/Header.php');
   
   class qcEvents_Socket_Server_DNS extends qcEvents_Socket_Stream_DNS {
-    private $inputBuffer = '';
-    private $inputLength = null;
+    /* IDs of known DNS-Queries */
+    private $IDs = array ();
     
-    // {{{ receive
+    // {{{ __construct   
     /**
-     * Callback: Invoked whenever incoming data is received
+     * Create a new DNS Server
      * 
-     * @param string $Data
-     *  
-     * @access protected
+     * @access friendly
      * @return void
      **/
-    protected function receive ($Data) {
-      // Run in UDP-Mode and take the data as whole query
-      if ($this->isUDPServerClient ())
-        return $this->dispatchQuery ($Data);
-      
-      // Run in TCP-Mode
-      $this->inputBuffer .= $Data;
-      unset ($Data);
-      
-      while (strlen ($this->inputBuffer) > 0) {
-        // Check if we know the required length of the input-buffer
-        if ($this->inputLength === null) {
-          // We need at least two bytes
-          if (strlen ($this->inputBuffer) < 2)
-            break;
-          
-          // Retrive the desired length
-          $this->inputLength = (ord ($this->inputBuffer [0]) << 8) + ord ($this->inputBuffer [1]);
-          $this->inputBuffer = substr ($this->inputBuffer, 2);
-        }
+    function __construct () {
+      // Inherit to our parent
+      call_user_func_array ('parent::__construct', func_get_args ());
         
-        // Check if there is enough data for the query
-        if (strlen ($this->inputBuffer) < $this->inputLength)
-          break;
-        
-        // Retrive the query from the buffer
-        $Data = substr ($this->inputBuffer, 0, $this->inputLength);
-        
-        // Truncate the buffer
-        $this->inputBuffer = substr ($this->inputBuffer, $this->inputLength);
-        $this->inputLength = null;
-        
-        // Run the query
-        $this->dispatchQuery ($Data);
-        unset ($Data);
-      }
+      // Register hooks
+      $this->addHook ('dnsQuestionReceived', array ($this, 'dnsServerQuery'));
     }
     // }}}
     
-    // {{{ dispatchQuery
+    // {{{ dnsQueryReply
     /**
-     * Parse and run a query
+     * Generate the reply for a queued query
      * 
-     * @param string $Data
+     * @param qcEvents_Socket_Stream_DNS_Message $Message
+     * 
+     * @access public
+     * @return void
+     **/
+    public function dnsQueryReply (qcEvents_Socket_Stream_DNS_Message $Message) {
+      $ID = $Message->getID ();
+      
+      if (!isset ($this->IDs [$ID]))
+        return;
+      
+      unset ($this->IDs [$ID]);
+      
+      return $this->dnsSendMessage ($Message);
+    }
+    // }}}
+    
+    // {{{ dnsServerQuery
+    /**
+     * Internal Callback: A DNS-Query was received
+     * 
+     * @param qcEvents_Socket_Stream_DNS_Message $Message
      * 
      * @access protected
      * @return void
      **/
-    protected function dispatchQuery ($Data) {
-      // Try to parse the query (or discard it)
-      if (!is_object ($Message = $this->parseQuery ($Data)))
+    protected final function dnsServerQuery (qcEvents_Socket_Stream_DNS_Message $Message) {
+      // Store the ID as known
+      $this->IDs [$Message->getID ()] = $Message;
+      
+      // Setup a timeout for this Query
+      $this->addTimeout (4, false, array ($this, 'dnsServerQueryTimeout'), $Message->getID ());
+      
+      // Fire a callback
+      if (!is_object ($rc = $this->___callback ('dnsQueryReceived', $Message)) || !($rc instanceof qcEvents_Socket_Stream_DNS_Message))
         return;
       
-      // Discard responses (as we are a server)
-      if (!$Message->isQuery ())
-        return;
+      // Overwrite the ID
+      $rc->setID ($Message->getID ());
       
-      // Try to fetch an result
-      if (!is_object ($Response = $this->getResponse ($Message))) {
-        $Response = $Message->createClonedResponse ();
-        $Response->setError (qcEvents_Socket_Stream_DNS_Header::ERROR_REFUSED);
-      }
-      
-      $this->sendQuery ($Response);
+      // Write out the reply
+      $this->dnsQueryReply ($rc);
     }
     // }}}
     
-    // {{{ getResponse
-    /**
-     * Retrive the Response for a given query
+    // {{{ dnsServerQueryTimeout
+    /** 
+     * Generate a timeout for a queued DNS-Query
      * 
-     * @param object $Query
+     * @param int $ID
+     * 
+     * @access public
+     * @return void
+     **/
+    public final function dnsServerQueryTimeout ($ID) {
+      // Check if the query is still queued
+      if (!isset ($this->IDs [$ID]))
+        return;
+      
+      // Create a response
+      $Response = $this->IDs [$ID]->createClonedResponse ();
+      $Response->setError (qcEvents_Socket_Stream_DNS_Header::ERROR_SERVER);
+      
+      // Write out the response
+      $this->dnsQueryReply ($Response);
+    }
+    // }}}
+    
+    
+    // {{{ dnsQueryReceived
+    /**
+     * Callback: A DNS-Query was received
+     * 
+     * @param qcEvents_Socket_Stream_DNS_Message $Query
      * 
      * @access protected
-     * @return object
+     * @return qcEvents_Socket_Stream_DNS_Message If not NULL a direct reply is issued
      **/
-    protected function getResponse ($Query) { }
+    protected function dnsQueryReceived (qcEvents_Socket_Stream_DNS_Message $Query) { }
     // }}}
   }
 
