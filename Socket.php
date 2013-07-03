@@ -85,6 +85,9 @@
     /* Callback fired when tls-status was changed */
     private $tlsCallback = null;
     
+    /* Private Data for TLS-Callback */
+    private $tlsPrivate = null;
+    
     /* Size for Read-Requests */
     private $bufferSize = 0;
     
@@ -990,11 +993,12 @@
      * 
      * @param bool $Toggle (optional) Set the TLS-Status
      * @param callback $Callback (optional) Fire this callback after negotiation
+     * @param mixed $Private (optional) Private data passed to the callback
      * 
      * @access public
      * @return bool  
      **/
-    public function tlsEnable ($Toggle = null, $Callback = null) {
+    public function tlsEnable ($Toggle = null, $Callback = null, $Private = null) {
       // Check wheter to change the status
       if ($Toggle !== null) {
         // Check if we are in an unclean status at the moment
@@ -1020,6 +1024,7 @@
         
         $this->tlsEnabled = null;
         $this->tlsCallback = $Callback;
+        $this->tlsPrivate = $Private;
         
         # TODO: Add external API for this!
         if ($this->tlsStatus = $Toggle)
@@ -1084,9 +1089,10 @@
         $this->tlsEnabled = $this->tlsStatus;
         
         if ($this->tlsCallback !== null)
-          call_user_func ($this->tlsCallback, $this->tlsStatus);
+          call_user_func ($this->tlsCallback, $this->tlsStatus, $this->tlsPrivate);
         
         $this->tlsCallback = null;
+        $this->tlsPrivate = null;
         
         if ($this->tlsEnabled)
           $this->___callback ('tlsEnabled');
@@ -1098,9 +1104,10 @@
         $this->tlsEnabled = false;
         
         if ($this->tlsCallback !== null)
-          call_user_func ($this->tlsCallback, null);
+          call_user_func ($this->tlsCallback, null, $this->tlsPrivate);
         
         $this->tlsCallback = null;
+        $this->tlsPrivate = null;
         
         $this->___callback ('tlsFailed');
       }
