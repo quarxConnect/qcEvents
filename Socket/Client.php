@@ -48,6 +48,8 @@
       // Check wheter to forward this data to the per-line-parser
       if ($this::USE_LINE_BUFFER)
         return $this->receiveLine ($Data);
+      
+      trigger_error ('Receiving Data on client without line-buffer enabled');
     }
     // }}}
     
