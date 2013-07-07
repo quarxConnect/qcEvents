@@ -941,7 +941,7 @@
         $this->smtpSetState (self::SMTP_STATE_CONNECTED);
         
         // Fire the callback (only if not TLS was enabled)
-        if (!$this->tlsEnable () && !$this->authenticated)
+        if (($this->Command === null) || ($this->Command [4] === null))
           $this->___callback ('smtpConnected');
       }
       
