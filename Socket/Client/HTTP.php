@@ -99,7 +99,7 @@
       $this->Request = array_shift ($this->Requests);
       
       $Host = $this->Request [1]['host'];
-      $Port = (isset ($this->Request [1]['port']) ? $this->Request [1]['port'] : 80);
+      $Port = (isset ($this->Request [1]['port']) ? $this->Request [1]['port'] : ($this->Request [1]['scheme'] == 'https' ? 443 : 80));
       
       // Check if to connect to remote host
       if ($this->isConnected () &&
@@ -108,7 +108,7 @@
         return $this->httpSocketConnected ();
       
       if ($this->isDisconnected ())
-        $this->connect ($Host, $Port, self::TYPE_TCP);
+        $this->connect ($Host, $Port, self::TYPE_TCP, ($this->Request [1]['scheme'] == 'https'));
     }
     // }}}
     

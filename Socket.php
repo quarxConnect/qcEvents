@@ -58,7 +58,7 @@
     /* Any assigned server-handle */
     private $serverParent = null;
     
-    /* Set of addresses we are trying to connect to */
+    /* Set of addresses we are trying to connectl to */
     private $socketAddresses = null;
     
     /* The current address we are trying to connect to */
@@ -140,11 +140,12 @@
      * @param string $Host (optional)
      * @param int $Port (optional)
      * @param enum $Type (optional)
+     * @param bool $enableTLS (optional)
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Base $Base = null, $Host = null, $Port = null, $Type = null) {
+    function __construct (qcEvents_Base $Base = null, $Host = null, $Port = null, $Type = null, $enableTLS = false) {
       // Don't do anything withour an events-base
       if ($Base === null)
         return;
@@ -156,7 +157,7 @@
       if ($Host === null)
         return;
       
-      $this->connect ($Host, $Port, $Type);
+      $this->connect ($Host, $Port, $Type, $enableTLS);
     }
     // }}}
     
@@ -208,6 +209,7 @@
      * @param mixed $Hosts
      * @param int $Port
      * @param enum $Type (optional) TCP is used by default
+     * @param bool $enableTLS (optional) Enable TLS-Encryption on connect
      * @param qcEvents_Base $newBase (optional) Try to bind to this event-base
      * 
      * @remark This function is asyncronous! If it returns true this does not securly mean that a connection was established!
@@ -216,7 +218,7 @@
      * @access public
      * @return bool
      **/
-    public function connect ($Hosts, $Port = null, $Type = null, qcEvents_Base $newBase = null) {
+    public function connect ($Hosts, $Port = null, $Type = null, $enableTLS = false, qcEvents_Base $newBase = null) {
       // Check wheter to use the default socket-type
       if ($Type === null)
         $Type = $this::DEFAULT_TYPE;
@@ -250,6 +252,7 @@
       // Reset internal addresses
       $this->socketAddresses = null;
       $this->socketAddress = null;
+      $this->tlsStatus = ($enableTLS ? true : null);
       
       // Make sure hosts is an array
       if (!is_array ($Hosts))
@@ -293,12 +296,13 @@
      * @param string $Domain
      * @param string $Service
      * @param enum $Type (optional)
+     * @param bool $enableTLS (optional)
      * @param qcEvents_Base $newBase (optional)
      * 
      * @access public
      * @return void
      **/
-    public function connectService ($Domain, $Service, $Type = null, qcEvents_Base $newBase = null) {
+    public function connectService ($Domain, $Service, $Type = null, $enableTLS = false, qcEvents_Base $newBase = null) {
       // Check wheter to use the default socket-type
       if ($Type === null)
         $Type = $this::DEFAULT_TYPE;
@@ -321,6 +325,7 @@
       // Reset internal addresses
       $this->socketAddresses = null;
       $this->socketAddress = null;
+      $this->tlsStatus = ($enableTLS ? true : null);
       $this->Connected = null;
       $this->lastEvent = time ();
       
@@ -370,7 +375,7 @@
       
       if (!is_resource ($Socket = stream_socket_client ($URI, $errno, $err, 5, STREAM_CLIENT_ASYNC_CONNECT)))
         return false;
-      
+        
       // Set our new status
       if (!$this->setFD ($Socket, true, true, true))
         return false;
@@ -382,7 +387,7 @@
       $this->lastEvent = time ();
       
       // Set our connection-state
-      if ($this->Connected = ($this->socketAddress [3] === self::TYPE_UDP ? true : null))
+      if ($this->socketAddress [3] === self::TYPE_UDP ? true : null)
         $this->socketHandleConnected ();
       else
         $this->addTimeout (self::CONNECT_TIMEOUT, false, array ($this, 'socketConnectTimeout'));
@@ -398,13 +403,14 @@
      * @param qcEvents_Socket_Server $Server
      * @param string $Remote
      * @param resource $Connection (optional)
+     * @param bool $enableTLS (optional)
      * 
      * @remark This is for internal use only!
      * 
      * @access public
      * @return void
      **/
-    public final function connectServer (qcEvents_Socket_Server $Server, $Remote, $Connection = null) {
+    public final function connectServer (qcEvents_Socket_Server $Server, $Remote, $Connection = null, $enableTLS = false) {
       // Set our internal buffer-size
       if ($Connection === null) {
         $this->bufferSize = self::READ_UDP_BUFFER;
@@ -444,23 +450,29 @@
      * @return void
      **/
     private function socketHandleConnected () {
-      // Set connection-status
-      $this->Connected = true;
-      
-      // Set runtime-information
-      $this->Type = $this->socketAddress [3];
-      $this->remoteHost = $this->socketAddress [0];
-      $this->remoteAddr = $this->socketAddress [1];
-      $this->remotePort = $this->socketAddress [2];
-      
-      // Free some space now
-      $this->socketAddress = null;
-      $this->socketAddresses = null;
-      
-      // Destroy our resolver
-      if (is_object ($this->internalResolver)) {
-        $this->internalResolver->unbind ();
-        $this->internalResolver = true;
+      if ($this->Connected !== true) {
+        // Set connection-status
+        $this->Connected = true;
+        
+        // Set runtime-information
+        $this->Type = $this->socketAddress [3];
+        $this->remoteHost = $this->socketAddress [0];
+        $this->remoteAddr = $this->socketAddress [1];
+        $this->remotePort = $this->socketAddress [2];
+        
+        // Free some space now
+        $this->socketAddress = null;
+        $this->socketAddresses = null;
+        
+        // Destroy our resolver
+        if (is_object ($this->internalResolver)) {
+          $this->internalResolver->unbind ();
+          $this->internalResolver = true;
+        }
+        
+        // Check wheter to enable TLS
+        if (($this->tlsStatus === true) && !$this->tlsEnable ())
+          return $this->tlsEnable (true, array ($this, 'socketHandleConnected'));
       }
       
       // Fire the callback
@@ -1204,9 +1216,6 @@
     public final function writeEvent () {
       // Check if we are currently connecting
       if ($this->isConnecting ()) {
-        // Set ourslef to connected
-        $this->Connected = true;
-        
         // Remove the write-events
         if (!$this->isBuffered || (strlen ($this->writeBuffer) == 0))
           $this->watchWrite (false);
