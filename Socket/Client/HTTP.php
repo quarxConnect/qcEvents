@@ -53,11 +53,12 @@
      * @param array $Headers (optional)
      * @param string $Body (optional)
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function addRequest ($URL, $Method = 'GET', $Headers = array (), $Body = null, $Callback = null) {
+    public function addRequest ($URL, $Method = 'GET', $Headers = array (), $Body = null, $Callback = null, $Private = null) {
       // Enqueue the request
       $this->Requests [] = array (
         0 => $URL,
@@ -65,7 +66,8 @@
         2 => $Method,
         3 => $Headers,
         4 => $Body,
-        5 => $Callback
+        5 => $Callback,
+        6 => $Private
       );
       
       // Try to submit it
@@ -151,7 +153,7 @@
       if ($this->Request !== null) {
         // Fire callbacks
         if (is_callable ($this->Request [5]))
-          call_user_func ($this->Request [5], $this, $this->Request [0], $Header, $Body);
+          call_user_func ($this->Request [5], $this, $this->Request [0], $Header, $Body, $this->Request [6]);
         
         $this->___callback ('httpRequestResult', $this->Request [0], $Header, $Body);
         
