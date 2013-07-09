@@ -215,8 +215,6 @@
       
       // Check for a continuation-command
       if ($Line [0] == '+') {
-        echo 'IN-CONTINUE: ', $Line, "\n";
-        
         // Find the next command-callback with continuation-callback
         foreach ($this->Callbacks as $ID=>$Info)
           if ($Info [2] !== null) {
@@ -226,7 +224,6 @@
               continue;
             
             $this->write ($rc . "\r\n");
-            echo 'OUT-CONTINUE: ', trim ($rc), "\n";
             
             return;
           }
@@ -257,8 +254,6 @@
         
         $this->receivedCode ($Code, $Line);
       }
-      
-      echo 'IN: ', $Tag, ' / ', $Response, ' / ', implode (' - ', $Code), ' / ', $Line, "\n";
       
       // Handle command based on state
       if ($this->State == self::IMAP_STATE_CONNECTING) {
@@ -759,12 +754,13 @@
      * Request a list of capabilities of this server
      * 
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function getCapabilities ($Callback = null) {
-      return $this->imapCommand ('CAPABILITY', null, $Callback);
+    public function getCapabilities ($Callback = null, $Private = null) {
+      return $this->imapCommand ('CAPABILITY', null, $Callback, $Private);
     }
     // }}}
     
@@ -773,12 +769,13 @@
      * Issue an NoOp-Command to keep the connection alive or retrive any pending updates
      * 
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function noOp ($Callback = null) {
-      return $this->imapCommand ('NOOP', null, $Callback);
+    public function noOp ($Callback = null, $Private = null) {
+      return $this->imapCommand ('NOOP', null, $Callback, $Private);
     }
     // }}}
     
@@ -787,14 +784,15 @@
      * Request a logout from server
      * 
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function logout ($Callback = null) {
+    public function logout ($Callback = null, $Private = null) {
       $this->imapSetState (self::IMAP_STATE_DISCONNECTING);
       
-      return $this->imapCommand ('LOGOUT', null, $Callback);
+      return $this->imapCommand ('LOGOUT', null, $Callback, $Private);
     }
     // }}}
     
@@ -803,11 +801,12 @@
      * Enable TLS-encryption on this connection
      * 
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return bool
      **/
-    public function startTLS ($Callback = null) {
+    public function startTLS ($Callback = null, $Private) {
       // Check if STARTTLS is supported by the server
       if (!$this->haveCapability ('STARTTLS'))
         return false;
@@ -817,7 +816,7 @@
         # TODO: What if the connection was pre-authenticated?!
         return false;
       
-      return $this->imapCommand ('STARTTLS', null, array ($this, 'imapTLSHelper'), $Callback);
+      return $this->imapCommand ('STARTTLS', null, array ($this, 'imapTLSHelper'), array ($Callback, $Private));
     }
     // }}}
     
@@ -828,26 +827,22 @@
      * @param enum $Response
      * @param array $Code
      * @param string $Text
-     * @param callback $Callback
+     * @param array $Private
      * 
      * @access private
      * @return void
      **/
-    private function imapTLSHelper ($Response, $Code, $Text, $Callback) {
-      // Validate the callback
-      if (!is_callable ($Callback))
-        $Callback = null;
-      
+    private function imapTLSHelper ($Response, $Code, $Text, $Private) {
       // Check if the server is able to start TLS
       if ($Response != self::IMAP_STATUS_OK) {
-        if ($Callback !== null)
-          call_user_func ($Callback, $this, null);
+        if (($Private [0] !== null) && is_callable ($Private [0]))
+          call_user_func ($Private [0], $this, null, $Private [1]);
         
         return $this->___callback ('tlsFailed');
       }
       
       // Start TLS-Negotiation
-      $this->imapTLSCallback = $Callback;
+      $this->imapTLSCallback = $Private;
       $this->tlsEnable (true, array ($this, 'imapTLSReady'));
     }
     // }}}
@@ -870,12 +865,12 @@
       if ($Status === true) {
         $this->serverCapabilities = array ();
         
-        return $this->imapCommand ('CAPABILITY', null, array ($this, 'imapCallbackExt'), array ($Callback, false, true));
+        return $this->imapCommand ('CAPABILITY', null, array ($this, 'imapCallbackExt'), array ($Callback [0], false, true, $Callback [1]));
       }
       
       // Raise any registered callback
-      if ($Callback !== null)
-        call_user_func ($Callback, $this, $Status);
+      if (($Callback [0] !== null) && is_callable ($Callback [0]))
+        call_user_func ($Callback [0], $this, $Status, $Callback [1]);
     }
     // }}}
     
@@ -886,11 +881,12 @@
      * @param string $Username
      * @param string $Password
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function authenticate ($Username, $Password, $Callback = null) {
+    public function authenticate ($Username, $Password, $Callback = null, $Private = null) {
       // Check if we are in connected state
       if ($this->State !== self::IMAP_STATE_CONNECTED)
         return false;
@@ -911,7 +907,8 @@
         1 => null,
         2 => 0,
         3 => $Client->getMechanisms (),
-        4 => $Callback
+        4 => $Callback,
+        5 => $Private,
       ));
     }
     // }}}
@@ -935,13 +932,13 @@
         $this->imapSetState (self::IMAP_STATE_AUTHENTICATED);
         
         // Re-Request Capabilties and fire up all callbacks
-        return $this->imapCommand ('CAPABILITY', null, array ($this, 'imapAfterAuthentication'), $Private [4]);
+        return $this->imapCommand ('CAPABILITY', null, array ($this, 'imapAfterAuthentication'), array ($Private [4], $Private [5]));
       }
       
       // Check if there are mechanisms available
       if (count ($Private [3]) == 0) {
         if ($Private [4] !== null)
-          call_user_func ($Private [4], $this, false);
+          call_user_func ($Private [4], $this, false, $Private [5]);
         
         return $this->___callback ('imapAuthenticationFailed');
       }
@@ -996,11 +993,12 @@
      * @param string $Username
      * @param string $Password
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function login ($Username, $Password, $Callback = null) {
+    public function login ($Username, $Password, $Callback = null, $Private = null) {
       // Check if we are in connected state
       if ($this->State !== self::IMAP_STATE_CONNECTED)
         return false;
@@ -1008,7 +1006,7 @@
       if (($Callback !== null) && !is_callable ($Callback))
         $Callback = null;
       
-      $this->imapCommand ('LOGIN', array ($Username, $Password), array ($this, 'loginHandler'), $Callback);
+      $this->imapCommand ('LOGIN', array ($Username, $Password), array ($this, 'loginHandler'), array ($Callback, $Private));
     }
     // }}}
     
@@ -1035,8 +1033,8 @@
       }
       
       // Handle failure
-      if ($Callback !== null)
-        call_user_func ($Callback, $this, false);
+      if ($Callback [0] !== null)
+        call_user_func ($Callback [0], $this, false, $Callback [1]);
       
       return $this->___callback ('imapAuthenticationFailed');
     }
@@ -1055,8 +1053,8 @@
      * @return void
      **/
     private function imapAfterAuthentication ($Response, $Code, $Text, $Callback) {
-      if ($Callback !== null)
-        call_user_func ($Callback, $this, true);
+      if ($Callback [0] !== null)
+        call_user_func ($Callback [0], $this, true, $Callback [1]);
      
       return $this->___callback ('imapAuthenticated');
     }
@@ -1069,18 +1067,19 @@
      * 
      * @param string $Name
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function createMailbox ($Name, $Callback = null) {
+    public function createMailbox ($Name, $Callback = null, $Private = null) {
       // Check our state
       if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
           ($this->State != self::IMAP_STATE_ONMAILBOX))
         return false;
       
       // Issue the command
-      return $this->imapCommand ('CREATE', array ($Name), array ($this, 'mailboxAction'), array (0, $Callback, $Name));
+      return $this->imapCommand ('CREATE', array ($Name), array ($this, 'mailboxAction'), array (0, $Callback, $Name, $Private));
     }
     // }}}
    
@@ -1090,18 +1089,19 @@
      * 
      * @param string $Name
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function deleteMailbox ($Name, $Callback = null) {
+    public function deleteMailbox ($Name, $Callback = null, $Private = null) {
       // Check our state
       if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
           ($this->State != self::IMAP_STATE_ONMAILBOX))
         return false;
       
       // Issue the command
-      return $this->imapCommand ('DELETE', array ($Name), array ($this, 'mailboxAction'), array (1, $Callback, $Name));
+      return $this->imapCommand ('DELETE', array ($Name), array ($this, 'mailboxAction'), array (1, $Callback, $Name, $Private));
     }
     // }}}
     
@@ -1112,11 +1112,12 @@
      * @param string $Mailbox
      * @param array $Statuses (optional)
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function statusMailbox ($Mailbox, $Statuses = null, $Callback = null) {
+    public function statusMailbox ($Mailbox, $Statuses = null, $Callback = null, $Private = null) {
       // Check our state
       if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
           ($this->State != self::IMAP_STATE_ONMAILBOX))
@@ -1132,7 +1133,7 @@
           'UNSEEN',
         );
       
-      return $this->imapCommand ('STATUS', array ($Mailbox, $Statuses), $Callback);
+      return $this->imapCommand ('STATUS', array ($Mailbox, $Statuses), $Callback, $Private);
     }
     // }}}
     
@@ -1143,18 +1144,19 @@
      * @param string $Name
      * @param string $newName
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void  
      **/
-    public function renameMailbox ($Name, $newName, $Callback = null) {
+    public function renameMailbox ($Name, $newName, $Callback = null, $Private = null) {
       // Check our state
       if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
           ($this->State != self::IMAP_STATE_ONMAILBOX))
         return false;
       
       // Issue the command
-      return $this->imapCommand ('RENAME', array ($Name, $newName), array ($this, 'mailboxAction'), array (2, $Callback, $Name, $newName));
+      return $this->imapCommand ('RENAME', array ($Name, $newName), array ($this, 'mailboxAction'), array (2, $Callback, $Name, $newName, $Private));
     }
     // }}}
     
@@ -1164,18 +1166,19 @@
      * 
      * @param string $Name
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function subscribeMailbox ($Name, $Callback = null) {
+    public function subscribeMailbox ($Name, $Callback = null, $Private = null) {
       // Check our state
       if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
           ($this->State != self::IMAP_STATE_ONMAILBOX))
         return false;
       
       // Issue the command
-      return $this->imapCommand ('SUBSCRIBE', array ($Name, $newName), array ($this, 'mailboxAction'), array (3, $Callback, $Name));
+      return $this->imapCommand ('SUBSCRIBE', array ($Name, $newName), array ($this, 'mailboxAction'), array (3, $Callback, $Name, $Private));
     }
     // }}}
     
@@ -1185,18 +1188,19 @@
      * 
      * @param string $Name
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function unsubscribeMailbox ($Name, $Callback = null) {
+    public function unsubscribeMailbox ($Name, $Callback = null, $Private = null) {
       // Check our state
       if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&   
           ($this->State != self::IMAP_STATE_ONMAILBOX))
         return false;
       
       // Issue the command
-      return $this->imapCommand ('UNSUBSCRIBE', array ($Name, $newName), array ($this, 'mailboxAction'), array (4, $Callback, $Name));
+      return $this->imapCommand ('UNSUBSCRIBE', array ($Name, $newName), array ($this, 'mailboxAction'), array (4, $Callback, $Name, $Private));
     }
     // }}}
     
@@ -1209,11 +1213,12 @@
      * @param array $Flags (optional)
      * @param int $Timestamp (optional)
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function appendMailbox ($Mailbox, $Message, $Flags = null, $Timestamp = null, $Callback = null) {
+    public function appendMailbox ($Mailbox, $Message, $Flags = null, $Timestamp = null, $Callback = null, $Private = null) {
       // Check our state
       if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
           ($this->State != self::IMAP_STATE_ONMAILBOX))
@@ -1232,7 +1237,7 @@
       $Args [] = $Message;
       
       // Issue the command
-      return $this->imapCommand ('APPEND', $Args, array ($this, 'mailboxAction'), array (5, $Callback, $Mailbox));
+      return $this->imapCommand ('APPEND', $Args, array ($this, 'mailboxAction'), array (5, $Callback, $Mailbox, $Private));
     }
     // }}}
     
@@ -1298,18 +1303,19 @@
      * @param string $Name (optional)
      * @param string $Root (optional)
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function listMailboxes ($Name = '%', $Root = '', $Callback = null) {
+    public function listMailboxes ($Name = '%', $Root = '', $Callback = null, $Private = null) {
       // Check our state
       if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
           ($this->State != self::IMAP_STATE_ONMAILBOX))
         return false;
       
       // Issue the command
-      return $this->imapCommand ('LIST', array ($Root, $Name), array ($this, 'listHandler'), array (0, $Callback, $Name, $Root));
+      return $this->imapCommand ('LIST', array ($Root, $Name), array ($this, 'listHandler'), array (0, $Callback, $Name, $Root, $Private));
     }
     // }}}
     
@@ -1320,18 +1326,19 @@
      * @param string $Name (optional)
      * @param string $Root (optional)  
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void   
      **/
-    public function listSubscribedMailboxes ($Name = '%', $Root = '', $Callback = null) {
+    public function listSubscribedMailboxes ($Name = '%', $Root = '', $Callback = null, $Private = null) {
       // Check our state
       if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
           ($this->State != self::IMAP_STATE_ONMAILBOX))
         return false;
       
       // Issue the command
-      return $this->imapCommand ('LSUB', array ($Root, $Name), array ($this, 'listHandler'), array (1, $Callback, $Name, $Root));
+      return $this->imapCommand ('LSUB', array ($Root, $Name), array ($this, 'listHandler'), array (1, $Callback, $Name, $Root, $Private));
     }
     // }}}
     
@@ -1340,11 +1347,12 @@
      * Request a list of all namespaces on this server
      * 
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void   
      **/
-    public function listNamespaces ($Callback = null) {
+    public function listNamespaces ($Callback = null, $Private = null) {
       // Check our state
       if ((($this->State != self::IMAP_STATE_AUTHENTICATED) &&
            ($this->State != self::IMAP_STATE_ONMAILBOX)) ||
@@ -1352,7 +1360,7 @@
         return false;
       
       // Issue the command
-      return $this->imapCommand ('NAMESPACE', array (), array ($this, 'listHandler'), array (2, $Callback));
+      return $this->imapCommand ('NAMESPACE', array (), array ($this, 'listHandler'), array (2, $Callback, $Private));
     }
     // }}}
     
@@ -1370,8 +1378,13 @@
      **/
     private function listHandler ($Response, $Code, $Text, $Private) {
       # TODO: Improve this
-      if (($Private [1] !== null) && is_callable ($Private [1]))
-        call_user_func ($Private [1], $this);
+      
+      $Type = array_shift ($Private);
+      $Callback = $Private [0];
+      $Private [0] = $this;
+      
+      if (($Callback !== null) && is_callable ($Callback))
+        call_user_func_array ($Callback, $Private);
     }
     // }}}
     
@@ -1382,18 +1395,19 @@
      * @param string $Mailbox
      * @param bool $ReadOnly (optional)
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function selectMailbox ($Mailbox, $ReadOnly = false, $Callback = null) {
+    public function selectMailbox ($Mailbox, $ReadOnly = false, $Callback = null, $Private = null) {
       // Check our state
       if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
           ($this->State != self::IMAP_STATE_ONMAILBOX))
         return false;
       
       // Issue the command 
-      return $this->imapCommand (($ReadOnly ? 'EXAMINE' : 'SELECT'), array ($Mailbox), array ($this, 'selectHandler'), array ($Callback, $Mailbox));
+      return $this->imapCommand (($ReadOnly ? 'EXAMINE' : 'SELECT'), array ($Mailbox), array ($this, 'selectHandler'), array ($Callback, $Mailbox, $Private));
     }
     // }}}
     
@@ -1410,9 +1424,6 @@
      * @return void
      **/
     private function selectHandler ($Response, $Code, $Text, $Private) {
-      // Check the callback
-      $Callback = $Private [0];
-      
       // Check if the command was successfull
       if ($Response == self::IMAP_STATUS_OK) {
         $this->mailboxCurrent = $Private [1];
@@ -1422,7 +1433,7 @@
       }
       
       // Fire callbacks
-      $this->imapCallbackStatus (array ('imapMailboxOpened', 'imapMailboxOpenFailed'), $Callback, $Response == self::IMAP_STATUS_OK, $this->mailboxCurrent, !$this->mailboxReadOnly);
+      $this->imapCallbackStatus (array ('imapMailboxOpened', 'imapMailboxOpenFailed'), $Private [0], $Response == self::IMAP_STATUS_OK, $this->mailboxCurrent, !$this->mailboxReadOnly, $Private [2]);
     }
     // }}}
     
@@ -1432,16 +1443,17 @@
      * Issue a CHECK-Command
      * 
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function check ($Callback = null) {
+    public function check ($Callback = null, $Private = null) {
       // Check our state
       if ($this->State != self::IMAP_STATE_ONMAILBOX)
         return false;
       
-      return $this->imapCommand ('CHECK', null, $Callback);
+      return $this->imapCommand ('CHECK', null, $Callback, $Private);
     }
     // }}}
     
@@ -1450,16 +1462,17 @@
      * Close the currently selected mailbox
      * 
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function close ($Callback = null) {
+    public function close ($Callback = null, $Private = null) {
       // Check our state
       if ($this->State != self::IMAP_STATE_ONMAILBOX)  
         return false;
       
-      return $this->imapCommand ('CLOSE', null, array ($this, 'closeHandler'), $Callback);
+      return $this->imapCommand ('CLOSE', null, array ($this, 'closeHandler'), array ($Callback, $Private));
     }
     // }}}
     
@@ -1470,16 +1483,17 @@
      * @remark this is similar to CLOSE, but does not implicit expunge deleted messages
      * 
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void  
      **/
-    public function unselect ($Callback = null) {
+    public function unselect ($Callback = null, $Private = null) {
       // Check our state
       if (($this->State != self::IMAP_STATE_ONMAILBOX) || !$this->haveCapability ('UNSELECT'))
         return false;
       
-      return $this->imapCommand ('UNSELECT', null, array ($this, 'closeHandler'), $Callback);
+      return $this->imapCommand ('UNSELECT', null, array ($this, 'closeHandler'), array ($Callback, $Private));
     }
     // }}}
     
@@ -1490,12 +1504,12 @@
      * @param enum $Response
      * @param array $Code
      * @param string $Text
-     * @param array $Callback
+     * @param array $Private
      * 
      * @access private
      * @return void
      **/  
-    private function closeHandler ($Response, $Code, $Text, $Callback) {
+    private function closeHandler ($Response, $Code, $Text, $Private) {
       // Remember the current mailbox
       $oMailbox = $this->mailboxCurrent;
       
@@ -1506,7 +1520,7 @@
       }
       
       // Handle callbacks
-      $this->imapCallbackStatus (array ('imapMailboxClosed', 'imapMailboxCloseFailed'), $Callback, $Response == self::IMAP_STATUS_OK, $oMailbox);
+      $this->imapCallbackStatus (array ('imapMailboxClosed', 'imapMailboxCloseFailed'), $Private [0], $Response == self::IMAP_STATUS_OK, $oMailbox, $Private [1]);
     }
     // }}}
     
@@ -1515,17 +1529,18 @@
      * Wipe out all mails marked as deleted on the current mailbox
      * 
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function expunge ($Callback = null) {
+    public function expunge ($Callback = null, $Private = null) {
       // Check our state
       if ($this->State != self::IMAP_STATE_ONMAILBOX)
         return false;
       
       // Issue the command
-      return $this->imapCommand ('EXPUNGE', null, array ($this, 'imapCallbackExt'), array ($Callback, true));
+      return $this->imapCommand ('EXPUNGE', null, array ($this, 'imapCallbackExt'), array ($Callback, true, $Private));
     }
     // }}}
     
@@ -1538,11 +1553,12 @@
      * @param array $Flags
      * @param enum $Mode (optional)
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function setFlags ($byUID, $IDs, $Flags, $Mode = self::MODE_SET, $Callback = null) {
+    public function setFlags ($byUID, $IDs, $Flags, $Mode = self::MODE_SET, $Callback = null, $Private = null) {
       // Check our state
       if ($this->State != self::IMAP_STATE_ONMAILBOX)
         return false;
@@ -1567,7 +1583,7 @@
       $Args [] = $Flags;
       
       // Issue the command
-      return $this->imapCommand (($byUID ? 'UID STORE' : 'STORE'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true));
+      return $this->imapCommand (($byUID ? 'UID STORE' : 'STORE'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true, $Private));
     }
     // }}}
     
@@ -1579,11 +1595,12 @@
      * @param sequence $IDs
      * @param string $Mailbox
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function copy ($byUID, $IDs, $Mailbox, $Callback = null) {
+    public function copy ($byUID, $IDs, $Mailbox, $Callback = null, $Private = null) {
       // Check our state
       if ($this->State != self::IMAP_STATE_ONMAILBOX)
         return false;
@@ -1595,7 +1612,7 @@
       $Args = array ($Seq, $Mailbox);
       
       // Issue the command
-      return $this->imapCommand (($byUID ? 'UID COPY' : 'COPY'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true));
+      return $this->imapCommand (($byUID ? 'UID COPY' : 'COPY'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true, $Private));
     }
     // }}}
     
@@ -1606,12 +1623,13 @@
      * @param bool $byUID
      * @param sequence $IDs
      * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
      * @param string ... (optional)
      *
      * @access public
      * @return void
      **/
-    public function fetchMessages ($byUID, $IDs, $Callback = null, $Item = 'ALL') {
+    public function fetchMessages ($byUID, $IDs, $Callback = null, $Private = null, $Item = 'ALL') {
       // Check our state
       if ($this->State != self::IMAP_STATE_ONMAILBOX)
         return false;
@@ -1661,7 +1679,7 @@
       $Args = array ($Seq, '(' . implode (' ', $Args) . ')');
       
       // Issue the command
-      return $this->imapCommand (($byUID ? 'UID FETCH' : 'FETCH'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true), null, null, true);
+      return $this->imapCommand (($byUID ? 'UID FETCH' : 'FETCH'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true, $Private), null, null, true);
     }
     // }}}
     
@@ -1672,12 +1690,13 @@
      * @param bool $byUID
      * @param string $Charset (optional)
      * @param $Callback (optional)
+     * @param mixed $Private (optional)
      * @param string ... (optional)
      * 
      * @access public
      * @return void
      **/
-    public function searchMessages ($byUID, $Charset = null, $Callback = null, $Match1 = 'ALL') {
+    public function searchMessages ($byUID, $Charset = null, $Callback = null, $Private = null, $Match1 = 'ALL') {
       // Check our state
       if ($this->State != self::IMAP_STATE_ONMAILBOX)
         return false;
@@ -1698,7 +1717,7 @@
         array_unshift ($Args, 'CHARSET', $Charset);
       
       // Issue the command
-      return $this->imapCommand (($byUID ? 'UID SEARCH' : 'SEARCH'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true), null, null, true);
+      return $this->imapCommand (($byUID ? 'UID SEARCH' : 'SEARCH'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true, $Private), null, null, true);
     }
     // }}}
     
@@ -1830,14 +1849,9 @@
         // Write out the first part of this command
         $this->mwrite ('C', dechex ($ID), ' ', $Command, ' ', $firstArg, "\r\n");
         
-        echo 'OUT: ', 'C', dechex ($ID), ' ', $Command, ' ', $firstArg, "\n";
-      
       // Write out command without args
-      } else {
+      } else
         $this->mwrite ('C', dechex ($ID), ' ', $Command, "\r\n");
-        
-        echo 'OUT: ', 'C', dechex ($ID), ' ', $Command, "\n";
-      }
     }
     // }}}
     
@@ -2093,6 +2107,10 @@
      * @return void
      **/
     private function imapSetState ($State) {
+      // Check if anything is to be changed
+      if ($State == $this->State)
+        return;
+      
       // Change the status
       $oState = $this->State;
       $this->State = $State;
@@ -2239,7 +2257,7 @@
      * @access protected
      * @return void
      **/
-    protected function imapStateChanged ($newState, $oldState) { echo 'IMAP: State changed from ', $oldState, ' to ', $newState, "\n"; }
+    protected function imapStateChanged ($newState, $oldState) { }
     // }}}
     
     // {{{ imapConnected
@@ -2249,7 +2267,7 @@
      * @access protected
      * @return void
      **/
-    protected function imapConnected () { echo 'IMAP: Connected', "\n"; }
+    protected function imapConnected () { }
     // }}}
     
     // {{{ imapAuthenticated
@@ -2259,7 +2277,7 @@
      * @access protected
      * @return void
      **/
-    protected function imapAuthenticated () { echo 'IMAP: Authenticated', "\n"; }
+    protected function imapAuthenticated () { }
     // }}}
     
     // {{{ imapAuthenticationFailed
@@ -2269,7 +2287,7 @@
      * @access protected
      * @return void
      **/
-    protected function imapAuthenticationFailed () { echo 'IMAP: Authentication failed', "\n"; }
+    protected function imapAuthenticationFailed () { }
     // }}}
     
     // {{{ imapDisconnected
@@ -2279,7 +2297,7 @@
      * @access protected
      * @return void
      **/
-    protected function imapDisconnected () { echo 'IMAP: Disconnected', "\n"; }
+    protected function imapDisconnected () { }
     // }}}
     
     // {{{ imapCapabilities
@@ -2291,7 +2309,7 @@
      * @access protected
      * @return void
      **/
-    protected function imapCapabilities ($Capabilities) { echo 'IMAP: Capabilities received', "\n"; }
+    protected function imapCapabilities ($Capabilities) { }
     // }}}
     
     // {{{ imapAlert
@@ -2303,7 +2321,7 @@
      * @access protected
      * @return void
      **/
-    protected function imapAlert ($Message) { echo 'IMAP-Alert: ', $Message, "\n"; }
+    protected function imapAlert ($Message) { }
     // }}}
     
     // {{{ imapMailboxOpened
@@ -2316,7 +2334,7 @@
      * @access protected
      * @return void
      **/
-    protected function imapMailboxOpened ($Mailbox, $Writeable) { echo 'IMAP: Mailbox ', $Mailbox, ' openend for ', ($Writeable ? 'Read-Write' : 'Read'), "\n"; }
+    protected function imapMailboxOpened ($Mailbox, $Writeable) { }
     // }}}
     
     // {{{ imapMailboxOpenFailed
@@ -2328,7 +2346,7 @@
      * @access protected
      * @return void
      **/
-    protected function imapMailboxOpenFailed ($Mailbox) { echo 'IMAP: Open Mailbox ', $Mailbox, ' failed', "\n"; }
+    protected function imapMailboxOpenFailed ($Mailbox) { }
     // }}}
     
     // {{{ imapMailboxClosed
@@ -2340,7 +2358,7 @@
      * @access protected
      * @return void
      **/
-    protected function imapMailboxClosed ($Mailbox) { echo 'IMAP: Mailbox ', $Mailbox, ' was closed', "\n"; }
+    protected function imapMailboxClosed ($Mailbox) { }
     // }}}
     
     // {{{ imapMailboxCloseFailed
@@ -2352,7 +2370,7 @@
      * @access protected
      * @return void
      **/
-    protected function imapMailboxCloseFailed ($Mailbox) { echo 'IMAP: Mailbox ', $Mailbox, ' could not be closed', "\n"; }
+    protected function imapMailboxCloseFailed ($Mailbox) { }
     // }}}
   }
 
