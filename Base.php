@@ -44,6 +44,7 @@
     private $writeFDs = array ();
     private $errorFDs = array ();
     private $eventFDs = array ();
+    private $fdMap = array ();
     
     // Loop-Handling
     private $onLoop = false;
@@ -157,6 +158,11 @@
         if (isset ($this->eventFDs [$Index]) && is_resource ($this->eventFDs [$Index]))
           event_del ($this->eventFDs [$Index]);
         
+        // Sanity-Check FD-Map
+        foreach (array_keys ($this->fdMap, $Index) as $k)
+          unset ($this->fdMap [$k]);
+        
+        // Remove all stored FDs
         unset ($this->readFDs [$Index], $this->writeFDs [$Index], $this->errorFDs [$Index], $this->eventFDs [$Index]);
         
         return false;
@@ -193,6 +199,8 @@
           $this->errorFDs [$Index] = $fd;
         else
           unset ($this->errorFDs [$Index]);
+        
+        $this->fdMap [(int)$fd] = $Index;
       }
     }
     // }}}
@@ -383,7 +391,9 @@
       // Handle the events
       $this->loopBreak = false;
       
-      foreach ($readFDs as $Index=>$FD) {
+      foreach ($readFDs as $FD) {
+        $Index = $this->fdMap [(int)$FD];
+        
         if (!isset ($this->Events [$Index]))
           continue;
         
@@ -393,7 +403,9 @@
           return false;
       }
       
-      foreach ($writeFDs as $Index=>$FD) {
+      foreach ($writeFDs as $FD) {
+        $Index = $this->fdMap [(int)$FD];
+        
         if (!isset ($this->Events [$Index]))
           continue;
         
@@ -403,7 +415,9 @@
           return false;
       }
       
-      foreach ($errorFDs as $Index=>$FD) {
+      foreach ($errorFDs as $FD) {
+        $Index = $this->fdMap [(int)$FD];
+        
         if (!isset ($this->Events [$Index]))
           continue;
         
