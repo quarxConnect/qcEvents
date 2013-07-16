@@ -1249,7 +1249,8 @@
             $this->___callback ('socketDrained');
           }
         }
-      }
+      } else
+        $this->watchWrite (false);
     }
     // }}}
     
