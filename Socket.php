@@ -272,6 +272,9 @@
           $Resolve [] = $Host;
       }
       
+      // Put ourself into connected-state
+      $this->Connected = null;
+      
       // Check if we have addresses to connect to
       if (count ($this->socketAddresses) > 0)
         $this->connectMulti ();
@@ -279,9 +282,6 @@
       // Sanity-Check if to use internal resolver
       if (!$this->internalResolver || (count ($Resolve) == 0))
         return true;
-      
-      // Put ourself into connected-state
-      $this->Connected = null;
       
       // Perform asyncronous resolve
       return $this->socketResolveDo ($Host, $Port, $Type);
@@ -1158,6 +1158,10 @@
         
         return $this->disconnect ();
       }
+      
+      // Check if we are in connecting state
+      if ($this->isConnecting ())
+        $this->socketHandleConnected ();
       
       // Forward this internally
       $this->receiveInternal ($Data);
