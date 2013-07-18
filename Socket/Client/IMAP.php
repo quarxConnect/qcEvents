@@ -74,6 +74,9 @@
     /* Our current protocol-state */
     private $State = qcEvents_Socket_Client_IMAP::IMAP_STATE_DISCONNECTED;
     
+    /* IMAP-Greeting was received */
+    private $imapGreeting = false;
+    
     /* Command-Counter */
     private $Commands = 0;
     
@@ -281,19 +284,29 @@
       
       // Handle command based on state
       if ($this->State == self::IMAP_STATE_CONNECTING) {
+        // Check if a greeting was already received
+        if ($this->imapGreeting !== false) {
+          // Ignore tagged responses
+          if ($Tag == '*')
+            return $this->receivedUntagged ($Response, $Code, $Line);
+          
+          if ($this->imapGreeting == self::IMAP_STATUS_PREAUTH)
+            $this->imapSetState (self::IMAP_STATE_AUTHENTICATED);
+          else
+            $this->imapSetState (self::IMAP_STATE_CONNECTED);
+          
         // Connection is OK, we are in connected state
-        if ($Response == self::IMAP_STATUS_OK) {
-          $this->imapSetState (self::IMAP_STATE_CONNECTED);
+        } elseif ($Response == self::IMAP_STATUS_OK)
           $Callback = 'imapConnected';
         
         // Connection is very good, we are already authenticated
-        } elseif ($Response == self::IMAP_STATUS_PREAUTH) {
-          $this->imapSetState (self::IMAP_STATE_AUTHENTICATED);
+        elseif ($Response == self::IMAP_STATUS_PREAUTH)
           $Callback = 'imapAuthenticated';
         
         // Something is wrong with us or the server, we will be disconnected soon
-        } elseif ($Response == self::IMAP_STATUS_BYE) {
+        elseif ($Response == self::IMAP_STATUS_BYE) {
           $this->imapSetState (self::IMAP_STATE_DISCONNECTED);
+          
           return $this->disconnect ();
         
         // RFC-Violation, leave immediatly
@@ -303,11 +316,22 @@
           return $this->disconnect ();
         }
         
-        // Check wheter to ask for capabilities
-        if (count ($this->serverCapabilities) == 0)
-          return $this->imapCommand ('CAPABILITY', null, array ($this, 'imapCallback'), $Callback);
-        
-        return $this->___callback ($Callback);
+        if ($this->imapGreeting === false) {
+          // Store the greeting-response
+          $this->imapGreeting = $Response;
+          
+          // Check wheter to ask for capabilities
+          if (count ($this->serverCapabilities) == 0)
+            return $this->imapCommand ('CAPABILITY', null, array ($this, 'imapCallback'), $Callback);
+          
+          // Chnge the state directly
+          if ($this->imapGreeting == self::IMAP_STATUS_PREAUTH)
+            $this->imapSetState (self::IMAP_STATE_AUTHENTICATED);
+          else
+            $this->imapSetState (self::IMAP_STATE_CONNECTED);
+          
+          return $this->___callback ($Callback);
+        }
       }
       
       // Check for an untagged response
@@ -2252,6 +2276,7 @@
      **/
     protected final function socketConnected () {
       $this->imapSetState (self::IMAP_STATE_CONNECTING);
+      $this->imapGreeting = false;
     }
     // }}}
     
