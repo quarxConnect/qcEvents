@@ -136,6 +136,30 @@
     /* Message-IDs of last search */
     private $searchResult = array ();
     
+    // {{{ imapIsConnected
+    /**
+     * Check if this IMAP-Connection is at least in connected state
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function imapIsConnected () {
+      return (($this->State == self::IMAP_STATE_CONNECTED) || ($this->State == self::IMAP_STATE_AUTHENTICATED) || ($this->State == self::IMAP_STATE_ONMAILBOX));
+    }
+    // }}}
+    
+    // {{{ imapIsAuthenticated
+    /**
+     * Check if this IMAP-Connection is at least in authenticated state
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function imapIsAuthenticated () {
+      return (($this->State == self::IMAP_STATE_AUTHENTICATED) || ($this->State == self::IMAP_STATE_ONMAILBOX));
+    }
+    // }}}
+    
     // {{{ socketReceive
     /**
      * Internal Callback: Data is received over the wire
@@ -283,7 +307,7 @@
         if (count ($this->serverCapabilities) == 0)
           return $this->imapCommand ('CAPABILITY', null, array ($this, 'imapCallback'), $Callback);
         
-        return;
+        return $this->___callback ($Callback);
       }
       
       // Check for an untagged response
@@ -806,14 +830,13 @@
      * @access public
      * @return bool
      **/
-    public function startTLS ($Callback = null, $Private) {
+    public function startTLS ($Callback = null, $Private = null) {
       // Check if STARTTLS is supported by the server
       if (!$this->haveCapability ('STARTTLS'))
         return false;
       
       // Check if we are in connected state
       if ($this->State !== self::IMAP_STATE_CONNECTED)
-        # TODO: What if the connection was pre-authenticated?!
         return false;
       
       return $this->imapCommand ('STARTTLS', null, array ($this, 'imapTLSHelper'), array ($Callback, $Private));

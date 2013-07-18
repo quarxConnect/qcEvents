@@ -248,6 +248,18 @@
     }
     // }}}
     
+    // {{{ haveEvents
+    /**
+     * Check if there are events registered on this base
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function haveEvents () {
+      return ((count ($this->readFDs) > 0) || (count ($this->writeFDs) > 0) && (count ($this->errorFDs) > 0));
+    }
+    // }}}
+    
     // {{{ quitOnEmpty
     /**
      * Leave the loop if there are no events on the queue
