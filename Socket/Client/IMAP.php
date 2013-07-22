@@ -98,10 +98,10 @@
     private $imapTLSCallback = null;
     
     /* Namespaces on this server */
-    private $namespaces = array ();
+    private $impNamespaces = null;
     
     /* Status-Cache for Mailboxes */
-    private $mailboxes = array ();
+    private $imapMailboxes = array ();
     
     /* Current Mailbox */
     private $mailboxCurrent = null;
@@ -467,14 +467,13 @@
           // Parse the result
           $Result = $this->imapParseArgs ($Text);
           
-          // Make sure the mailbox-status is initialized
-          if (!isset ($this->mailboxes [$Result [0]]))
-            $this->mailboxes [$Result [0]] = array ('Flags' => null, 'Subscribed' => null, 'Delimiter' => null, 'Status' => array ());
+          // Retrive a handle for this mailbox
+          $Handle = $this->imapCreateLocalMailbox ($Result [0]);
           
           // Merge the status
           while (count ($Result [1]) > 1) {
             $Property = array_shift ($Result [1]);
-            $this->mailboxes [$Result [0]]['Status'][$Property] = array_shift ($Result [1]);
+            $Handle->Status [$Property] = array_shift ($Result [1]);
           }
           
           break;
@@ -485,15 +484,18 @@
           // Parse the result
           $Result = $this->imapParseArgs ($Text);
           
-          // Update Mailbox-Information
-          if (isset ($this->mailboxes [$Result [2]])) {
-            $this->mailboxes [$Result [2]]['Delimiter'] = $Result [1]; 
-            $this->mailboxes [$Result [2]]['Flags'] = $Result [0];
-            
-            if ($Response == 'LSUB')
-              $this->mailboxes [$Result [2]]['Subscribed'] = true;
-          } else
-            $this->mailboxes [$Result [2]] = array ('Flags' => $Result [0], 'Subscribed' => ($Response == 'LSUB'), 'Delimiter' => $Result [1], 'Status' => array ());
+          // Retrive a handle for this mailbox
+          $Handle = $this->imapCreateLocalMailbox ($Result [2]);
+          
+          // Update the handle
+          $Handle->Delimiter = $Result [1];
+          
+          if (count ($Handle->Flags == 0) || ($Response == 'LIST'))
+            # TODO: On LSUB we may have a \\NoSelect here, that only affects the subscription-status
+            $Handle->Flags = $Result [0];
+          
+          if (($Response == 'LSUB') && !in_array ('\\NoSelect', $Result [0]))
+            $Handle->Subscribed = true;
           
           break;
         
@@ -507,7 +509,7 @@
               continue;
             
             foreach ($Namespaces as $Info)
-              $this->namespaces [$Info [0]] = array ($Info [1], $Type);
+              $this->imapNamespaces [$Info [0]] = array ($Info [1], $Type);
           }
           
           break;
@@ -780,6 +782,145 @@
         default:
           echo 'UNHANDLED UNTAGGED: ', $Response, ' / ', implode (' - ', $Code), ' / ', $Text, "\n";
       }
+    }
+    // }}}
+    
+    // {{{ imapCreateLocalFolder
+    /**
+     * Make sure we have a given folder on our local storage
+     * 
+     * @param string $Path
+     * 
+     * @access private
+     * @return object
+     **/
+    private function imapCreateLocalMailbox ($Path) {
+      // Find a namespace for this
+      $Namespace = null;
+      
+      if (is_array ($this->imapNamespaces)) {
+        // Find the longest matching namespace
+        $l = 0;
+        
+        foreach ($this->imapNamespaces as $cNamespace=>$Info) {
+          $ln = strlen ($cNamespace);
+          
+          if (($ln == 0) || ((substr ($Path, 0, $ln) == $cNamespace) && ($ln > $l)))
+            $Namespace = $cNamespace;
+        }
+      }
+      
+      if (($Namespace !== null) && (($p = strrpos ($Path, $this->imapNamespaces [$Namespace][0])) !== false)) {
+        $Name = substr ($Path, $p + 1);
+        $pPath = substr ($Path, 0, $p);
+      } else {
+        $Name = $Path;
+        $pPath = '';
+      }
+      
+      // Check if this is a root-folder
+      if (strlen ($pPath) == 0) {
+        if (!isset ($this->imapMailboxes [$Name])) {
+          $this->imapMailboxes [$Name] = $Handle = new stdClass;
+          
+          $Handle->Path = $Path;
+          $Handle->Name = $Name;
+          $Handle->Namespace = $Namespace;
+          $Handle->Delimiter = ($Namespace !== null ? $this->imapNamespaces [$Namespace][0] : '/');
+          $Handle->Subscribed = false;
+          $Handle->Flags = array ();
+          $Handle->Status = array ();
+          $Handle->Children = array ();
+          $Handle->Parent = null;
+        }
+        
+        return $this->imapMailboxes [$Name];
+      }
+      
+      // Try to load the parent folder
+      $pHandle = $this->imapCreateLocalMailbox ($pPath);
+      
+      if (!isset ($pHandle->Children [$Name])) {
+        $pHandle->Children [$Name] = $Handle = new stdClass;
+        
+        $Handle->Path = $Path;
+        $Handle->Name = $Name;
+        $Handle->Namespace = $Namespace;
+        $Handle->Delimiter = ($Namespace !== null ? $this->imapNamespaces [$Namespace][0] : '/');
+        $Handle->Subscribed = false;
+        $Handle->Flags = array ();
+        $Handle->Status = array ();
+        $Handle->Children = array ();
+        $Handle->Parent = $pHandle;
+      }
+      
+      return $pHandle->Children [$Name];
+    }
+    // }}}
+    
+    // {{{ getRootMailboxes
+    /**
+     * Retrive all mailboxes on the top-level of this server
+     * 
+     * @access public
+     * @return array
+     **/
+    public function getRootMailboxes () {
+      return $this->imapMailboxes;
+    }
+    // }}}
+    
+    // {{{ getMailbox
+    /**
+     * Retrive a mailbox at given Path
+     * 
+     * @remark This is a local function only, you have to load them via LIST/LSUB before
+     * 
+     * @param string $Path
+     * 
+     * @access public
+     * @return object
+     **/
+    public function getMailbox ($Path) {
+      $l = strlen ($Path);
+      
+      // Find a root-mailbox for this
+      $rootMailbox = null;
+      
+      foreach ($this->imapMailboxes as $Name=>$Mailbox) {
+        $lM = strlen ($Name);
+        
+        // Check if the name matches
+        if (substr ($Path, 0, $lM) != $Name)
+          continue;
+        
+        // Check for a direct match
+        if ($lM == $l)
+          return $Mailbox;
+        
+        // Check the delimiter
+        if ($Path [$lM++] != $Mailbox->Delimiter)
+          continue;
+        
+        $rootMailbox = $Mailbox;
+        $Path = substr ($Path, $lM);
+        $l -= $lM;
+        
+        break;
+      }
+      
+      if (!$rootMailbox)
+        return false;
+      
+      $Path = explode ($rootMailbox->Delimiter, $Path);
+      
+      foreach ($Path as $Name)
+        if (!isset ($rootMailbox->Children [$Name]))
+          return false;
+        else
+          $rootMailbox = $rootMailbox->Children [$Name];
+      
+      return $rootMailbox;
     }
     // }}}
     
@@ -1310,25 +1451,34 @@
         // Mailbox was created
         if ($Action == 0) {
         
-        // Mailbox was removed
-        } elseif ($Action == 1)
-          unset ($this->mailboxes [$Private [0]]);
+        // Mailbox was removed or renamed
+        } elseif (($Action == 1) || ($Action == 2)) {
+          // Remove the mailbox
+          if ($Handle = $this->getMailbox ($Private [0])) {
+            if ($Handle->Parent)
+              unset ($Handle->Parent->Children [$Handle->Name]);
+            else
+              unset ($this->imapMailboxes [$Handle->Name]);
+            
+            if ($Action == 2) {
+              $Handle2 = $this->imapCreateLocalMailbox ($Private [1]);
+              $Handle->Name = $Handle2->Name;
+              $Handle->Parent = $Handle2->Parent;
+              
+              if ($Handle->Parent)
+                $Handle->Parent->Children [$Handle->Name] = $Handle;
+              else
+                $this->imapMailboxes [$Handle->Name] = $Handle;
+            }
+          } elseif ($Action == 2)
+            $this->imapCreateLocalMailbox ($Private [1]);
         
-        // Mailbox was renamed
-        elseif ($Action == 2) {
-          if (isset ($this->mailboxes [$Private [0]])) {
-            $this->mailboxes [$Private [1]] = $this->mailboxes [$Private [0]];
-            unset ($this->mailboxes [$Private [0]]);
-          }
-        
-        // Mailbox was subscribed
-        } elseif ($Action == 3) {
-        
-        // Mailbox was unsubscribed
-        } elseif ($Action == 4) {
+        // Mailbox was (un)subscribed
+        } elseif ((($Action == 3) || ($Action == 4)) && ($Handle = $this->getMailbox ($Private [0])))
+          $Handle->Subscribed = ($Action == 3);
         
         // Mail was appended to mailbox
-        } elseif ($Action == 5) {
+        elseif ($Action == 5) {
         
         }
       }
@@ -1361,6 +1511,10 @@
           ($this->State != self::IMAP_STATE_ONMAILBOX))
         return false;
       
+      // Try to load IMAP-Namespaces before this one
+      if (!is_array ($this->imapNamespaces))
+        $this->listNamespaces ();
+      
       // Issue the command
       return $this->imapCommand ('LIST', array ($Root, $Name), array ($this, 'listHandler'), array (0, $Callback, $Name, $Root, $Private));
     }
@@ -1384,6 +1538,10 @@
           ($this->State != self::IMAP_STATE_ONMAILBOX))
         return false;
       
+      // Try to load IMAP-Namespaces before this one
+      if (!is_array ($this->imapNamespaces))
+        $this->listNamespaces ();
+      
       // Issue the command
       return $this->imapCommand ('LSUB', array ($Root, $Name), array ($this, 'listHandler'), array (1, $Callback, $Name, $Root, $Private));
     }
@@ -1406,6 +1564,10 @@
           !$this->haveCapability ('NAMESPACE'))
         return false;
       
+      // Make sure the format of imapNamespaces is correct
+      if (!is_array ($this->imapNamespaces))
+        $this->imapNamespaces = array ();
+      
       // Issue the command
       return $this->imapCommand ('NAMESPACE', array (), array ($this, 'listHandler'), array (2, $Callback, $Private));
     }
@@ -1425,8 +1587,18 @@
      **/
     private function listHandler ($Response, $Code, $Text, $Private) {
       # TODO: Improve this
-      
       $Type = array_shift ($Private);
+      
+      // Check if LIST/LSUB was performed
+      if ($Type < 2) {
+        $Root = $Private [2];
+        
+        // Implement HasNoChildren-Flag if not supported by server
+        if (($Handle = $this->getMailbox ($Root)) && (count ($Handle->Children) == 0) && !in_array ('\\HasNoChildren', $Handle->Flags))
+          $Handle->Flags [] = '\\HasNoChildren';
+      }
+      
+      // Issue any stored callback for this
       $Callback = $Private [0];
       $Private [0] = $this;
       
