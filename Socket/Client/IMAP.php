@@ -214,7 +214,7 @@
         
         // Flush any buffered data back to our handler
         if (strlen ($Buffer = $this->getLineBufferClean ()) > 0)
-          $this->receive ($Buffer);
+          $this->socketReceive ($Buffer);
         
         return;
       }
@@ -580,6 +580,7 @@
           // Make sure the message exists
           if (!isset ($this->messages [$UID]))
             $this->messages [$UID] = array (
+              'UID' => $UID,
               'Headers' => new qcMail_Headers,
               'HeadersComplete' => false,
               'Structure' => null,
@@ -612,7 +613,20 @@
                 break;
               // Update envelope-information of this message
               case 'ENVELOPE':
-                $this->messages [$UID]['Envelope'] = $Args [$i + 1];
+                $j = $i + 1;
+                
+                $this->messages [$UID]['Envelope'] = array (
+                  'date' => strtotime ($Args [$j][0]),
+                  'subject' => $Args [$j][1],
+                  'from' => $Args [$j][2],
+                  'sender' => $Args [$j][3],
+                  'reply-to' => $Args [$j][4],
+                  'to' => $Args [$j][5],
+                  'cc' => $Args [$j][6],
+                  'bcc' => $Args [$j][7],
+                  'in-reply-to' => $Args [$j][8],
+                  'message-id' => $Args [$j][9],
+                );
                 
                 break;
               // Update the internal date of this message
@@ -950,6 +964,18 @@
           $rootMailbox = $rootMailbox->Children [$Name];
       
       return $rootMailbox;
+    }
+    // }}}
+    
+    // {{{ getMessages
+    /**
+     * Retrive all messages stored on this client
+     * 
+     * @access public
+     * @return array
+     **/
+    public function getMessages () {
+      return $this->messages;
     }
     // }}}
     
