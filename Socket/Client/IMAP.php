@@ -30,6 +30,7 @@
    *            20130621 Added Support for RFC 2342 IMAP NAMESPACE
    *            20130624 Completed support for RFC 3501 IMAP4r1
    *            20130624 Added Support for RFC 2088 Literal+
+   *            20130722 Added basic Support for RFC 3348 Mailbox-Children
    * 
    * @todo RFC 2359 UIDPLUS
    *       RFC 5256 SORT/THREAD
@@ -104,31 +105,13 @@
     private $imapMailboxes = array ();
     
     /* Current Mailbox */
-    private $mailboxCurrent = null;
+    private $imapMailbox = null;
+    
+    /* Predicted next mailbox */
+    private $imapMailboxNext = null;
     
     /* Read-Only-Status of current mailbox */
     private $mailboxReadOnly = false;
-    
-    /* Flags of current mailbox */
-    private $mailboxFlags = array ();
-    
-    /* Flags that are stored permanent on current mailbox */
-    private $mailboxPermanentFlags = array ();
-    
-    /* Number of mails in current mailbox */
-    private $mailboxCount = 0;
-    
-    /* Number of recent mails in current mailbox */
-    private $mailboxRecent = 0;
-    
-    /* Number of unseen mails in current mailbox */
-    private $mailboxUnseen = 0;
-    
-    /* UID-Validity of current mailbox */
-    private $mailboxUIDValidity = 0;
-    
-    /* Next UID-Value of current mailbox */
-    private $mailboxUIDNext = 0;
     
     /* Message-Information */
     private $messages = array ();
@@ -490,9 +473,9 @@
           // Update the handle
           $Handle->Delimiter = $Result [1];
           
-          if (count ($Handle->Flags == 0) || ($Response == 'LIST'))
+          if (count ($Handle->Attributes == 0) || ($Response == 'LIST'))
             # TODO: On LSUB we may have a \\NoSelect here, that only affects the subscription-status
-            $Handle->Flags = $Result [0];
+            $Handle->Attributes = $Result [0];
           
           if (($Response == 'LSUB') && !in_array ('\\NoSelect', $Result [0]))
             $Handle->Subscribed = true;
@@ -521,24 +504,46 @@
         
         // Mailbox-Flags
         case 'FLAGS':
-          $Args = $this->imapParseArgs ($Text);
-          $this->mailboxFlags = array_shift ($Args);
+          if ($this->imapMailboxNext !== null)
+            $Mailbox = $this->getMailbox ($this->imapMailboxNext);
+          elseif ($this->imapMailbox !== null)
+            $Mailbox = $this->getMailbox ($this->imapMailbox);
+          else
+            break;
+     
+          if ($Mailbox) {
+            $Args = $this->imapParseArgs ($Text);
+            $Mailbox->Flags = array_shift ($Args);
+          }
+          
           break;
         
         // Number of mails in current mailbox
         case 'EXISTS':
-          $this->mailboxCount = intval ($Text);
+          if ($this->imapMailboxNext !== null)
+            $Mailbox = $this->getMailbox ($this->imapMailboxNext);
+          elseif ($this->imapMailbox !== null)
+            $Mailbox = $this->getMailbox ($this->imapMailbox);
+          else
+            break;
+          
+          if ($Mailbox)
+            $Mailbox->MessageCount = intval ($Text);
+          
           break;
         
         // Number of recent mails in current mailbox
         case 'RECENT':
-          $this->mailboxRecent = intval ($Text);
+          if (($this->imapMailbox !== null) && ($Mailbox = $this->getMailbox ($this->imapMailbox)))
+            $Mailbox->RecentCount = intval ($Text);
+          
           break;
         
         // A message was removed from mailbox
         case 'EXPUNGE':
-          // Decrease the message-counter
-          $this->mailboxCount--;
+          // Decrease the counter
+          if (($this->imapMailbox !== null) && ($Mailbox = $this->getMailbox ($this->imapMailbox)))
+            $Mailbox->MessageCount--;
           
           // Retrive Sequence-number of the removed message
           $ID = intval ($Text);
@@ -754,26 +759,36 @@
           if (count ($Code) < 2)
             return;
           
+          if ($this->imapMailboxNext !== null)
+            $Mailbox = $this->getMailbox ($this->imapMailboxNext);
+          elseif ($this->imapMailbox !== null)
+            $Mailbox = $this->getMailbox ($this->imapMailbox);
+          else
+            break;
+            
+          if (!$Mailbox)
+            break;
+          
           switch ($Code [0]) {
             // List of flags that are stored permanent
             case 'PERMANENTFLAGS':
               $Args = $this->imapParseArgs ($Code [1]);
-              $this->mailboxPermanentFlags = array_shift ($Args);
+              $Mailbox->PermanentFlags = array_shift ($Args);
               break;
             
             // UID-Validity-Value of a mailbox
             case 'UIDVALIDITY':
-              $this->mailboxUIDValidity = intval ($Code [1]);
+              $Mailbox->UIDValidity = intval ($Code [1]);
               break;
             
             // Predicted next UID-Value
             case 'UIDNEXT':
-              $this->mailboxUIDNext = intval ($Code [1]);
+              $Mailbox->UIDNext = intval ($Code [1]);
               break;
             
             // Number of unseen messages on this mailbox
             case 'UNSEEN':
-              $this->mailboxUnseen = intval ($Code [1]);
+              $Mailbox->UnseenCount = intval ($Code [1]);
               break;
           }
           
@@ -828,10 +843,17 @@
           $Handle->Namespace = $Namespace;
           $Handle->Delimiter = ($Namespace !== null ? $this->imapNamespaces [$Namespace][0] : '/');
           $Handle->Subscribed = false;
+          $Handle->Attributes = array ();
           $Handle->Flags = array ();
+          $Handle->PermanentFlags = array ();
           $Handle->Status = array ();
           $Handle->Children = array ();
           $Handle->Parent = null;
+          $Handle->MessageCount = 0;
+          $Handle->RecentCount = 0;
+          $Handle->UnseenCount = 0;
+          $Handle->UIDValidity = 0;
+          $Handle->UIDNext = 0;
         }
         
         return $this->imapMailboxes [$Name];
@@ -848,10 +870,17 @@
         $Handle->Namespace = $Namespace;
         $Handle->Delimiter = ($Namespace !== null ? $this->imapNamespaces [$Namespace][0] : '/');
         $Handle->Subscribed = false;
+        $Handle->Attributes = array ();
         $Handle->Flags = array ();
+        $Handle->PermanentFlags = array ();
         $Handle->Status = array ();
         $Handle->Children = array ();
         $Handle->Parent = $pHandle;
+        $Handle->MessageCount = 0;
+        $Handle->RecentCount = 0;
+        $Handle->UnseenCount = 0; 
+        $Handle->UIDValidity = 0; 
+        $Handle->UIDNext = 0;
       }
       
       return $pHandle->Children [$Name];
@@ -1594,8 +1623,8 @@
         $Root = $Private [2];
         
         // Implement HasNoChildren-Flag if not supported by server
-        if (($Handle = $this->getMailbox ($Root)) && (count ($Handle->Children) == 0) && !in_array ('\\HasNoChildren', $Handle->Flags))
-          $Handle->Flags [] = '\\HasNoChildren';
+        if (($Handle = $this->getMailbox ($Root)) && (count ($Handle->Children) == 0) && !in_array ('\\HasNoChildren', $Handle->Attributes))
+          $Handle->Attributes [] = '\\HasNoChildren';
       }
       
       // Issue any stored callback for this
@@ -1625,6 +1654,9 @@
           ($this->State != self::IMAP_STATE_ONMAILBOX))
         return false;
       
+      // Store the predicted next mailbox
+      $this->imapMailboxNext = $Mailbox;
+      
       // Issue the command 
       return $this->imapCommand (($ReadOnly ? 'EXAMINE' : 'SELECT'), array ($Mailbox), array ($this, 'selectHandler'), array ($Callback, $Mailbox, $Private));
     }
@@ -1645,14 +1677,15 @@
     private function selectHandler ($Response, $Code, $Text, $Private) {
       // Check if the command was successfull
       if ($Response == self::IMAP_STATUS_OK) {
-        $this->mailboxCurrent = $Private [1];
+        $this->imapMailbox = $Private [1];
+        $this->imapMailboxNext = null;
         $this->mailboxReadOnly = ((count ($Code) > 0) && ($Code [0] == 'READ-ONLY'));
         
         $this->imapSetState (self::IMAP_STATE_ONMAILBOX);
       }
       
       // Fire callbacks
-      $this->imapCallbackStatus (array ('imapMailboxOpened', 'imapMailboxOpenFailed'), $Private [0], $Response == self::IMAP_STATUS_OK, $this->mailboxCurrent, !$this->mailboxReadOnly, $Private [2]);
+      $this->imapCallbackStatus (array ('imapMailboxOpened', 'imapMailboxOpenFailed'), $Private [0], $Response == self::IMAP_STATUS_OK, $this->imapMailbox, !$this->mailboxReadOnly, $Private [2]);
     }
     // }}}
     
@@ -1691,6 +1724,8 @@
       if ($this->State != self::IMAP_STATE_ONMAILBOX)  
         return false;
       
+      $this->imapMailboxNext = null;
+      
       return $this->imapCommand ('CLOSE', null, array ($this, 'closeHandler'), array ($Callback, $Private));
     }
     // }}}
@@ -1712,6 +1747,8 @@
       if (($this->State != self::IMAP_STATE_ONMAILBOX) || !$this->haveCapability ('UNSELECT'))
         return false;
       
+      $this->imapMailboxNext = null;
+      
       return $this->imapCommand ('UNSELECT', null, array ($this, 'closeHandler'), array ($Callback, $Private));
     }
     // }}}
@@ -1730,11 +1767,11 @@
      **/  
     private function closeHandler ($Response, $Code, $Text, $Private) {
       // Remember the current mailbox
-      $oMailbox = $this->mailboxCurrent;
+      $oMailbox = $this->imapMailbox;
       
       // Change the status on success
       if ($Response == self::IMAP_STATUS_OK) {
-        $this->mailboxCurrent = null;
+        $this->imapMailbox = null;
         $this->imapSetState (self::IMAP_STATE_AUTHENTICATED);
       }
       
@@ -2418,8 +2455,7 @@
       // Fire up external callback
       if (($External !== null) && is_callable ($External)) {
         $eArgs = $Args;
-        array_unshift ($eArgs, $this);
-        array_push ($eArgs, $Status == true);
+        array_unshift ($eArgs, $this, $Status == true);
         
         call_user_func_array ($External, $eArgs);
       }
