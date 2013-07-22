@@ -2427,10 +2427,10 @@
         $appendStatus = array_shift ($Private);
       
       // Prepare arguements
-      array_unshift ($Private, $this);
-      
       if ($appendStatus)
-        array_push ($Private, $Response == self::IMAP_STATUS_OK);
+        array_unshift ($Private, $Response == self::IMAP_STATUS_OK);
+      
+      array_unshift ($Private, $this);
       
       // Fire the callback
       call_user_func_array ($Callback, $Private);
