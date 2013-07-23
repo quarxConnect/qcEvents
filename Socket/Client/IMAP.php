@@ -1862,10 +1862,13 @@
       else
         return false;
       
-      $Args [] = $Flags;
+      if (!is_array ($Flags))
+        $Flags = array ($Flags);
+      
+      $Args [] = '(' . implode (' ', $Flags) . ')';
       
       // Issue the command
-      return $this->imapCommand (($byUID ? 'UID STORE' : 'STORE'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true, $Private));
+      return $this->imapCommand (($byUID ? 'UID STORE' : 'STORE'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true, $Private), null, null, true);
     }
     // }}}
     
