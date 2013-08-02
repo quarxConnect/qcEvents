@@ -714,7 +714,7 @@
                         unset ($Path [$Last--]);
                       }
                     } else
-                      $Type = 'RFC822';
+                      $Type = 'TEXT';
                     
                     // Rollback the path into a string
                     $Path = implode ('.', $Path);
@@ -976,6 +976,34 @@
      **/
     public function getMessages () {
       return $this->messages;
+    }
+    // }}}
+    
+    // {{{ getMessage
+    /**
+     * Retrive a message stored on this client
+     * 
+     * @param int $ID
+     * @param bool $UID (optional) ID is the UID
+     * 
+     * @access public
+     * @return array
+     **/
+    public function getMessage ($ID, $UID = false) {
+      // Check wheter to translate into an UID
+      if (!$UID) {
+        if (!isset ($this->messageIDs [$ID]))
+          return false;
+        
+        $ID = $this->messageIDs [$ID];
+      }
+      
+      // Check if the message exists
+      if (!isset ($this->messages [$ID]))
+        return false;
+      
+      // Return the message
+      return $this->messages [$ID];
     }
     // }}}
     
@@ -2360,6 +2388,9 @@
             $p = max ($p3, $p);
           
           // Check for closed arrays
+          if ((($p2 = strpos ($Args, ')')) !== false) && ($p2 < $p))
+            $p = $p2 - 1;
+          
           while ($Args [$p] == ')')
             $p--;
           
