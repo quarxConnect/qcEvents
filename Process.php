@@ -222,9 +222,30 @@
      * @return bool
      **/
     public function close () {
-      if ($this->Mode == self::MODE_PROCOPEN)
-        # REMARK: Use pcntl_wexitstatus() to retrive the return-code
-        return (proc_close ($this->Process) >= 0);
+      if ($this->Mode == self::MODE_PROCOPEN) {
+        // Close our pipe first
+        if (is_resource ($fd = $this->getFD ()))
+          fclose ($fd);
+        
+        // Try to terminate normally
+        proc_terminate ($this->Process);
+        
+        // Wait for the process to exit
+        for ($i = 0; $i < 1000; $i++) {
+          $status = proc_get_status ($this->Process);
+          
+          if (!$status ['running'])
+            break;
+          
+          usleep (2000);
+        }
+        
+        // Check if the process is still running
+        if ($status ['running'])
+          proc_terminate ($this->Process, SIGKILL);
+        
+        return true;
+      }
       
       if ($this->Mode == self::MODE_POPEN)
         return (pclose ($this->getFD ()) >= 0);
