@@ -1499,16 +1499,21 @@
       $Args = array ($Mailbox);
       
       if (is_array ($Flags))
-        $Args [] = $Flags;
+        $Args [] = '(' . implode (' ', $Flags) . ')';
       
       if ($Timestamp !== null)
-        $Args [] = date ('d-m-Y H:i:s O', $Timestamp);
+        $Args [] = '"' . date ('d-M-Y H:i:s O', $Timestamp) . '"';
       
-      $Args [] = '{' . strlen ($Message) . '}';
-      $Args [] = $Message;
+      if ($this->haveCapability ('LITERAL+')) {
+        $Args [] = '{' . strlen ($Message) . '+}' . "\n" . $Message;
+        $Args = array ($Args);
+      } else {
+        $Args [] = '{' . strlen ($Message) . '}';
+        $Args = array ($Args, array ($Message));
+      }
       
       // Issue the command
-      return $this->imapCommand ('APPEND', $Args, array ($this, 'mailboxAction'), array (5, $Callback, $Mailbox, $Private));
+      return $this->imapCommand ('APPEND', $Args, array ($this, 'mailboxAction'), array (5, $Callback, $Mailbox, $Private), null, null, true, true);
     }
     // }}}
     
@@ -2114,11 +2119,12 @@
      * @param callback $ContinueCallback (optional)
      * @param mixed $Private2 (optional)
      * @param bool $dontParse (optional)
+     * @param bool $unparedMultiline (optional)
      * 
      * @access private
      * @return void
      **/
-    private function imapCommand ($Command, $Args, $Callback, $Private = null, $ContinueCallback = null, $Private2 = null, $dontParse = false) {
+    private function imapCommand ($Command, $Args, $Callback, $Private = null, $ContinueCallback = null, $Private2 = null, $dontParse = false, $unparedMultiline = false) {
       // Make sure the callback is valid
       if (($Callback !== null) && !is_callable ($Callback)) {
         trigger_error ('No valid callback given', E_USER_WARNING);
@@ -2142,11 +2148,16 @@
       // Write out a command with arguments
       if (is_array ($Args) && (count ($Args) > 0)) {
         // Check wheter to parse the given arguements
-        if ($dontParse)
-          $firstArg = implode (' ', $Args);
+        if ($dontParse) {
+          if ($unparedMultiline) {
+            $firstArg = implode (' ', array_shift ($Args));
+          } else {
+            $firstArg = implode (' ', $Args);
+            $Args = array ();
+          }
         
         // Prepare arguements for submission
-        elseif (!($Args = $this->imapArgs ($Args)))
+        } elseif (!($Args = $this->imapArgs ($Args)))
           return false;
         
         // Peek the first line for this command
