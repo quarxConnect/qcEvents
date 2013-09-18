@@ -225,6 +225,24 @@
       
       unset ($this->Events [$key], $this->readFDs [$key], $this->writeFDs [$key], $this->errorFDs [$key], $this->eventFDs [$key]);
       
+      // Remove any queued timers
+      foreach ($this->timeoutEvents as $TI=>$Events) {
+        foreach ($Events as $EI=>$EvInfo)
+          if ($EvInfo [0] == $Event) {
+            unset ($this->timeoutEvents [$TI][$EI]);
+            
+            if (count ($this->timeoutEvents [$TI]) == 0) {
+              unset ($this->timeoutEvents [$TI]);
+              
+              if ($this->timeoutNext == $TI)
+                $this->timeoutNext = null;
+            }
+          }
+      }
+      
+      if ((count ($this->timeoutEvents) > 0) && ($this->timeoutNext === null))
+        $this->setTimer ();
+      
       // Tell the event that it has to unbind
       $Event->unbind ();
       
@@ -306,8 +324,12 @@
       $this->loopContinue = true;
       
       // Check if there are any events queued
-      if ((count ($this->readFDs) == 0) && (count ($this->writeFDs) == 0) && (count ($this->errorFDs) == 0) && (count ($this->timeoutEvents) == 0))
+      if ((count ($this->readFDs) == 0) && (count ($this->writeFDs) == 0) && (count ($this->errorFDs) == 0) && (count ($this->timeoutEvents) == 0)) {
+        if (!$this->loopEmpty)
+          return;
+        
         trigger_error ('Entering Event-Loop without FDs');
+      }
       
       // Handle libEvent-Support
       if (self::checkLibEvent ()) {
@@ -329,18 +351,19 @@
         return ($rc == 0);
       }
       
+      $this->loopExit = false;
+      $this->loopBreak = false;
+      
       while ($this->loopContinue) {
         // Reset loop-status
-        $this->loopExit = false;
         $this->loopContinue = false;
         
         // Run queued events first
         $this->runQueuedEvents ();
         
         // Enter the loop
-        while (!($this->loopExit || $this->loopBreak)) {
+        while (!($this->loopExit || $this->loopBreak))
           $rc = self::loopOnceInternal (100000);
-        }
       }
       
       $this->onLoop = false;
