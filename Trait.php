@@ -1,7 +1,7 @@
 <?PHP
 
   /**
-   * qcEvents - Event Interface
+   * qcEvents - Event Trait
    * Copyright (C) 2013 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
@@ -18,12 +18,10 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  interface qcEvents_Interface {
-    /* Event-Types */
-    const EVENT_READ = 0;
-    const EVENT_WRITE = 1;
-    const EVENT_ERROR = 2;
-    const EVENT_TIMER = 3;
+  trait qcEvents_Trait {
+    private $FD = null;
+    private $EventBase = null;
+    private $isBound = false;
     
     // {{{ getFD
     /**
@@ -32,7 +30,9 @@
      * @access public
      * @return resource
      **/
-    public function getFD ();
+    public function getFD () {
+      return $this->FD;
+    }
     // }}}
     
     // {{{ haveEventBase
@@ -42,7 +42,21 @@
      * @access public
      * @return bool
      **/  
-    public function haveEventBase ();
+    public function haveEventBase () {
+      return is_object ($this->EventBase);
+    }
+    // }}}
+    
+    // {{{ getEventBase
+    /**
+     * Retrive our event-base
+     * 
+     * @access public
+     * @return qcEvents_Base
+     **/
+    public function getEventBase () {
+      return $this->EventBase;
+    }
     // }}}
     
     // {{{ setEventBase
@@ -53,30 +67,55 @@
      * @param bool $setBound (optional) Mark this event as bound
      * 
      * @access public
-     * @return void
+     * @return void  
      **/
-    public function setEventBase (qcEvents_Base $Base, $setBound = false);
+    public function setEventBase (qcEvents_Base $Base, $setBound = false) {
+      // Make sure we are registered on this handler
+      if (!$Base->haveEvent ($this))
+        return $Base->addEvent ($this);
+      
+      // Set this handler
+      $this->EventBase = $Base;
+      
+      if ($setBound)
+        $this->isBound = true;
+      
+      return true;
+    }
     // }}}
     
     // {{{ unbind
     /**
-     * Remove this event from its Event-Base-Handler
+     * Remove this event from an event-base
      * 
      * @access public
-     * @return void
+     * @return bool  
      **/
-    public function unbind ();
+    public function unbind () {
+      // Check if this event is unbound
+      if (!$this->isBound)
+        return true;
+      
+      // Now really unbind
+      $this->isBound = false;
+      
+      if (is_object ($this->EventBase))
+        $this->EventBase->removeEvent ($this);
+      
+      return true;
+    }
     // }}}
-    
     
     // {{{ watchRead
     /**
      * Check if the event-fd should be watched for read-events
      * 
      * @access public
-     * @return bool
+     * @return bool  
      **/
-    public function watchRead ();
+    public function watchRead () {
+      return false;
+    }
     // }}}
     
     // {{{ watchWrite
@@ -84,9 +123,11 @@
      * Check wheter for watch for write-events of the fd of this event
      * 
      * @access public
-     * @return bool
+     * @return bool  
      **/
-    public function watchWrite ();
+    public function watchWrite () {
+      return false;
+    }
     // }}}
     
     // {{{ watchError
@@ -94,11 +135,12 @@
      * Check wheter to watch for error-exceptions on the events fd
      * 
      * @access public
-     * @return bool
+     * @return bool  
      **/
-    public function watchError ();
+    public function watchError () {
+      return false;
+    }
     // }}}
-    
     
     // {{{ readEvent
     /**
@@ -107,7 +149,7 @@
      * @access public
      * @return void
      **/
-    public function readEvent ();
+    public function readEvent () { }
     // }}}
     
     // {{{ writeEvent
@@ -117,7 +159,7 @@
      * @access public
      * @return void
      **/
-    public function writeEvent ();
+    public function writeEvent () { }
     // }}}
     
     // {{{ errorEvent
@@ -127,7 +169,7 @@
      * @access public
      * @return void
      **/
-    public function errorEvent ();
+    public function errorEvent () { }
     // }}}
     
     // {{{ timerEvent
@@ -137,7 +179,7 @@
      * @access public
      * @return void
      **/
-    public function timerEvent ();
+    public function timerEvent () { }
     // }}}
   }
 
