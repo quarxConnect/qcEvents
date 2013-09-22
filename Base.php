@@ -353,6 +353,7 @@
       
       $this->loopExit = false;
       $this->loopBreak = false;
+      $rc = null;
       
       while ($this->loopContinue) {
         // Reset loop-status
