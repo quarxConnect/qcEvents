@@ -64,6 +64,12 @@
     /* The current address we are trying to connect to */
     private $socketAddress = null;
     
+    /* Callback to fire once we are connected */
+    private $socketCallback = null;
+    
+    /* Private data to pass to the callback */
+    private $socketCallbackPrivate = null;
+    
     /* Our current remote hostname */
     private $remoteHost = '';
     
@@ -211,6 +217,14 @@
      * @param enum $Type (optional) TCP is used by default
      * @param bool $enableTLS (optional) Enable TLS-Encryption on connect
      * @param qcEvents_Base $newBase (optional) Try to bind to this event-base
+     * @param callable $Callback (optional) Fire this callback once this operation was finished
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be fired in the form of
+     * 
+     *   function (qcEvents_Socket $Self, bool $Status, mixed $Private) { }
+     * 
+     * $Status will be TRUE if the connection succeeded
      * 
      * @remark This function is asyncronous! If it returns true this does not securly mean that a connection was established!
      * @todo Add support for "bindto"-Option
@@ -218,7 +232,7 @@
      * @access public
      * @return bool
      **/
-    public function connect ($Hosts, $Port = null, $Type = null, $enableTLS = false, qcEvents_Base $newBase = null) {
+    public function connect ($Hosts, $Port = null, $Type = null, $enableTLS = false, qcEvents_Base $newBase = null, callable $Callback = null, $Private = null) {
       // Check wheter to use the default socket-type
       if ($Type === null)
         $Type = $this::DEFAULT_TYPE;
@@ -252,6 +266,9 @@
       // Reset internal addresses
       $this->socketAddresses = null;
       $this->socketAddress = null;
+      $this->socketCallback = $Callback;
+      $this->socketCallbackPrivate = $Private;
+      
       $this->tlsStatus = ($enableTLS ? true : null);
       
       // Make sure hosts is an array
@@ -325,6 +342,9 @@
       // Reset internal addresses
       $this->socketAddresses = null;
       $this->socketAddress = null;
+      $this->socketCallback = null;
+      $this->socketCallbackPrivate = null;
+      
       $this->tlsStatus = ($enableTLS ? true : null);
       $this->Connected = null;
       $this->lastEvent = time ();
@@ -475,6 +495,14 @@
           return $this->tlsEnable (true, array ($this, 'socketHandleConnected'));
       }
       
+      // Fire custom callback
+      if ($this->socketCallback) {
+        call_user_func ($this->socketCallback, $this, true, $this->socketCallbackPrivate);
+        
+        $this->socketCallback = null;
+        $this->socketCallbackPrivate = null;
+      }
+      
       // Fire the callback
       $this->___callback ('socketConnected');
     }
@@ -496,8 +524,18 @@
       
       // Check if there are more hosts on our list
       if (!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0)) {
+        // Fire custom callback
+        if ($this->socketCallback) {
+          call_user_func ($this->socketCallback, $this, true, $this->socketCallbackPrivate);
+          
+          $this->socketCallback = null;
+          $this->socketCallbackPrivate = null;
+        }
+        
+        // Fire the callback
         $this->___callback ('socketConnectionFailed');
         
+        // Disconnect cleanly
         return $this->disconnect ();
       }
       
