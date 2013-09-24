@@ -40,6 +40,9 @@
     /* Our active queries */
     private $queriesActive = array ();
     
+    /* Timeout for DNS-Queried */
+    private $dnsQueryTimeout = 5;
+    
     // {{{ __construct   
     /**
      * Create a new DNS-Client
@@ -146,6 +149,9 @@
       // Enqueue the query
       $this->queriesQueued [$ID] = array ($Message, $Hostname, $Callback, $Private);
       
+      if ($this->dnsQueryTimeout > 0)
+        $this->addTimeout ($this->dnsQueryTimeout, false, array ($this, 'dnsQueryTimeout'), $ID);
+      
       // Check wheter to connect
       if ($this->isDisconnected ()) {
         // Make sure we have hosts available
@@ -250,6 +256,32 @@
         call_user_func ($Query [2], $this, $Query [1], $Message->getAnswers (), $Message->getAuthorities (), $Message->getAdditionals (), $Query [3], $Message);
       
       $this->___callback ('dnsResult', $Query [1], $Message->getAnswers (), $Message->getAuthorities (), $Message->getAdditionals (), $Message);
+    }
+    // }}}
+    
+    // {{{ dnsQueryTimeout
+    /**
+     * Callback: Timeout a running query
+     * 
+     * @param int $ID
+     * 
+     * @access public
+     * @return void
+     **/
+    public function dnsQueryTimeout ($ID) {
+      if (isset ($this->queriesActive [$ID])) {
+        $Query = $this->queriesActive [$ID];
+        unset ($this->queriesActive [$ID]);
+      } elseif (isset ($this->queriesQueued [$ID])) {
+        $Query = $this->queriesQueued [$ID];
+        unset ($this->queriesQueued [$ID]);
+      } else
+        return;
+      
+      if (($Query [2] !== null) && is_callable ($Query [2]))
+        call_user_func ($Query [2], $this, $Query [1], null, null, null, $Query [3], null);
+      
+      $this->___callback ('dnsResult', $Query [1], null, null, null, null);
     }
     // }}}
     
