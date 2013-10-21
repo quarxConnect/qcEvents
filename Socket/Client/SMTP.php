@@ -112,6 +112,18 @@
     }
     // }}}
     
+    // {{{ getLastCode
+    /**
+     * Retrive the last result-code
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getLastCode () {
+      return $this->lastCode;
+    }
+    // }}}
+    
     // {{{ quit
     /**
      * Ask the server to close this session
@@ -432,9 +444,9 @@
      * Start the submission of an e-mail
      * 
      * @param string $Originator Originator of the mail
-     * @param array $Params (optional)
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
+     * @param array $Params (optional) Additional parameters for this command (for extensions)
+     * @param callback $Callback (optional) A callback to fire once the command was processed
+     * @param mixed $Private (optional) Any private data to pass to the callback
      * 
      * @access public
      * @return void
@@ -749,7 +761,6 @@
         $Command .= ' ' . implode (' ', $this->Command [1]);
       
       $this->write ($Command . "\r\n");
-      echo 'OUT: ', $Command, "\n";
     }
     // }}}
     
@@ -829,7 +840,6 @@
      * @return void
      **/
     protected final function receivedLine ($Line) {
-      echo 'IN: ', $Line, "\n";
       // Retrive the code from the line
       $Code = intval (substr ($Line, 0, 3));
       

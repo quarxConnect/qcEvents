@@ -152,6 +152,7 @@
     /* Our current protocol-state */
     private $smtpState = qcEvents_Socket_Server_SMTP::SMTP_STATE_DISCONNECTED;
     
+    /* Are we ready to accept messages */
     private $smtpReady = true;
     
     /* Do we allow pipelining */
@@ -165,6 +166,9 @@
     
     /* Registered SMTP-Commands */
     private $smtpCommands = array ();
+    
+    /* Remote Name from HELO/EHLO */
+    private $smtpRemoteName = null;
     
     /* Originator of mail */
     private $mailOriginator = null;
@@ -228,6 +232,42 @@
     }
     // }}}
     
+    // {{{ smtpAuthenticated
+    /**
+     * Check if the remote party was authenticated
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function smtpAuthenticated () {
+      return false;
+    }
+    // }}}
+    
+    // {{{ getSMTPRemoteName
+    /**
+     * Retrive the name that the remote party identified with
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getSMTPRemoteName () {
+      return $this->smtpRemoteName;
+    }
+    // }}}
+    
+    // {{{ smtpOriginator
+    /**
+     * Retrive the originator of the current mail-transaction
+     * 
+     * @access public
+     * @return string
+     **/
+    public function smtpOriginator () {
+      return $this->mailOriginator;
+    }
+    // }}}
+    
     // {{{ smtpConnected
     /**
      * Internal Callback: The underlying socket was connected
@@ -271,6 +311,21 @@
       if (strlen ($Data) > 0) {
         $this->smtpBuffer .= $Data;
         unset ($Data);
+      }
+      
+      if ($this->smtpCommand) {
+        // Check for pipelining
+        if (!$this->smtpPipelining) {   
+          $this->smtpSendResponse (520);
+          $this->disconnect ();
+          $this->smtpCommand = null;
+        }
+        
+        // Check if the command waits for additional data
+        $Code = $this->smtpCommand->getCode ();
+        
+        if (!($dataWait = (($Code > 299) && ($Code < 400))))
+          return;
       }
       
       // Check for commands that are ready
@@ -427,7 +482,7 @@
       $Domain = substr ($Data, $p, $e - $p);
       $p = $e + 1;
       
-      $Mail = substr ($Data, 0, $p);
+      $Mail = $Localpart . '@' . $Domain;
       
       // Check for additional parameter
       $Parameter = ltrim (substr ($Data, $p));
@@ -457,6 +512,9 @@
       // Check if there is a parameter given
       if (!$Command->hasParameter ())
         return $Command->setResponse (501);
+      
+      // Store the remote name
+      $this->smtpRemoteName = $Command->getParameter ();
       
       // Change our current state
       $this->smtpSetState (self::SMTP_STATE_CONNECTED);
@@ -766,6 +824,7 @@
         221 => 'Service closing transmission channel',
         250 => 'Ok',
         354 => 'Start mail input; end with <CRLF>.<CRLF>',
+        451 => 'Requested action aborted: error in processing',
         500 => 'Syntax error, command unrecognized',
         501 => 'Syntax error in parameters or arguments',
         502 => 'Command not implemented',
@@ -773,6 +832,7 @@
         504 => 'Command parameter not implemented',
         
         520 => 'Pipelining not allowed', # This is not on the RFC
+        550 => 'Requested action not taken: mailbox unavailable',
         554 => 'Transaction failed',
       );
       
