@@ -410,12 +410,12 @@
      * @param array $Answers
      * @param array $Authorities
      * @param array $Additional
-     * @param qcEvents_Socket_Stream_DNS_Message $wholeMessage
+     * @param qcEvents_Socket_Stream_DNS_Message $wholeMessage (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected function dnsResult ($askedHostname, $Answers, $Authorities, $Additionals, qcEvents_Socket_Stream_DNS_Message $wholeMessage) { }
+    protected function dnsResult ($askedHostname, $Answers, $Authorities, $Additionals, qcEvents_Socket_Stream_DNS_Message $wholeMessage = null) { }
     // }}}
   }
 
