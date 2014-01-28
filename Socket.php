@@ -143,7 +143,7 @@
      * Create a new event-socket
      * 
      * @param qcEvents_Base $Base (optional)
-     * @param string $Host (optional)
+     * @param mixed $Host (optional)
      * @param int $Port (optional)
      * @param enum $Type (optional)
      * @param bool $enableTLS (optional)
@@ -279,12 +279,12 @@
       
       foreach ($Hosts as $Host) {
         // Check for IPv6
-        if ($IPv6 = (strpos ($Host, ':') !== false) && ($Host [0] != '['))
+        if (($IPv6 = (strpos ($Host, ':') !== false)) && ($Host [0] != '['))
           $Host = '[' . $Host . ']';
         
         // Check for IPv4/v6 or wheter to skip the resolver
         if (!$this->internalResolver || $this->isIPv4 ($Host) || $IPv6)
-          $this->socketAddresses = array (array ($Host, $Host, $Port, $Type));
+          $this->socketAddresses [] = array ($Host, $Host, $Port, $Type);
         else
           $Resolve [] = $Host;
       }
