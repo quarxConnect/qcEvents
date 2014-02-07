@@ -246,10 +246,6 @@
       // Tell the event that it has to unbind
       $Event->unbind ();
       
-      // Check wheter to exit the loop if there are no remaining events
-      if (!$this->loopEmpty && (count ($this->Events) == 0))
-        $this->loopExit ();
-      
       return true;
     }
     // }}}
@@ -364,7 +360,8 @@
         
         // Enter the loop
         while (!($this->loopExit || $this->loopBreak))
-          $rc = self::loopOnceInternal (100000);
+          if (($rc = self::loopOnceInternal (100000)) === false)
+            break;
       }
       
       $this->onLoop = false;
@@ -412,9 +409,10 @@
       // Check if we should run stream select
       if ((count ($readFDs) == 0) && (count ($writeFDs) == 0) && (count ($errorFDs) == 0)) {
         usleep ($Timeout);
+        
         $this->signalHandler ();
         
-        return null;
+        return (count ($this->timeoutEvents) > 0 ? null : false);
       }
       
       // Wait for events
