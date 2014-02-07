@@ -132,7 +132,7 @@
         $this->httpSetState (self::HTTP_STATE_HEADER);
       
       // Read the header
-      if ($this->State == self::HTTP_STATE_HEADER) {
+      if ($this->State == self::HTTP_STATE_HEADER)
         while (($p = strpos ($this->bufferRead, "\r\n")) !== false) {
           // Retrive the current line
           $Line = substr ($this->bufferRead, 0, $p);
@@ -162,7 +162,7 @@
             else
               $this->bodyEncodings = explode (' ', trim ($this->Header->getField ('transfer-encoding')));
             
-            return;
+            break;
           }
           
           // Push the line to header-buffer
@@ -170,7 +170,7 @@
         }
       
       // Read Payload
-      } elseif ($this->State == self::HTTP_STATE_BODY)
+      if ($this->State == self::HTTP_STATE_BODY)
         // Handle chunked transfer
         if ($this->bodyEncodings [0] != 'identity') {
           // Check if we see the length of next chunk
