@@ -57,7 +57,20 @@
      * @access friendly
      * @return string
      **/
-    function __toString () {
+    public function __toString () {
+      return $this->toString (false);
+    }
+    // }}}
+    
+    /**
+     * Convert the header into a string
+     * 
+     * @param bool $Human (optional) Generate human readable output
+     * 
+     * @access public
+     * @return string
+     **/
+    public function toString ($Human = false) {
       // Make sure that files and values are transfered properly
       $haveFiles = (count ($this->Files) > 0);
       $haveValues = (count ($this->Values) > 0);
@@ -88,7 +101,7 @@
             'Content-Disposition: form-data; name="' . $Name . '"; filename="' . $Fileinfo [1] . '"' . "\r\n" .
             'Content-Type: ' . $Fileinfo [2] . "\r\n" .
             'Content-Transfer-Encoding: binary' . "\r\n\r\n" .
-            file_get_contents ($Fileinfo [0]) . "\r\n";
+            ($Human ? '[' . filesize ($Fileinfo [0]) . ' binary octets]' : file_get_contents ($Fileinfo [0])) . "\r\n";
         
         $Body .= '--' . $Boundary . '--' . "\r\n";
         

@@ -203,7 +203,7 @@
      * @return bool
      **/
     public function setCredentials ($Username, $Password) {
-      return $this->setField ('Authenticate', 'Basic ' . base64_encode ($Username . ':' . $Password));
+      return $this->setField ('Authorization', 'Basic ' . base64_encode ($Username . ':' . $Password));
     }
     // }}}
     
