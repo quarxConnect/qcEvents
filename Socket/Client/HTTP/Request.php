@@ -21,7 +21,16 @@
   require_once ('qcEvents/Socket/Stream/HTTP/Header.php');
   
   class qcEvents_Socket_Client_HTTP_Request extends qcEvents_Socket_Stream_HTTP_Header {
+    // Use TLS for this request
     private $useTLS = false;
+    
+    // Values to upload with this request
+    private $Values = array ();
+    
+    // Files to upload with this request
+    private $Files = array ();
+    
+    // User-defined body for this request
     private $Body = null;
     
     // {{{ __construct
@@ -49,12 +58,53 @@
      * @return string
      **/
     function __toString () {
+      // Make sure that files and values are transfered properly
+      $haveFiles = (count ($this->Files) > 0);
+      $haveValues = (count ($this->Values) > 0);
+      $Body = null;
+      
+      if ($haveFiles || $haveValues) {
+        // Generate a boundary for formdata
+        $Boundary = '----qcEvents-' . md5 (time ());
+        
+        // Always transfer files and values using POST
+        $this->setMethod (self::METHOD_POST);
+        $this->setField ('Content-Type', 'multipart/form-data; boundary="' . $Boundary . '"');
+        
+        // Generate body of request
+        $Body = '';
+        
+        foreach ($this->Values as $Name=>$Value)
+           $Body .=
+             '--' . $Boundary . "\r\n" .
+             'Content-Disposition: form-data; name="' . $Name . '"' . "\r\n" .
+             ($Value [1] !== null ? 'Content-Type: ' . $Value [1] . "\r\n" : '') .
+             'Content-Transfer-Encoding: binary' . "\r\n\r\n" .
+             $Value [0] . "\r\n";
+        
+        foreach ($this->Files as $Name=>$Fileinfo)
+          $Body .=
+            '--' . $Boundary . "\r\n" .
+            'Content-Disposition: form-data; name="' . $Name . '"; filename="' . $Fileinfo [1] . '"' . "\r\n" .
+            'Content-Type: ' . $Fileinfo [2] . "\r\n" .
+            'Content-Transfer-Encoding: binary' . "\r\n\r\n" .
+            file_get_contents ($Fileinfo [0]) . "\r\n";
+        
+        $Body .= '--' . $Boundary . '--' . "\r\n";
+        
+        // Store length of body
+        $this->setField ('Content-Length', strlen ($Body));
+        
+      // Use a user-defined body
+      } elseif ($this->Body !== null)
+        $Body =& $this->Body;
+      
       // Let our parent create the header
       $buf = parent::__toString ();
       
       // Append the body
-      if ($this->Body !== null)
-        $buf .= $this->Body . "\r\n";
+      if ($Body !== null)
+        $buf .= $Body . "\r\n";
       
       return $buf;
     }
@@ -146,12 +196,86 @@
       $this->Body = $Body;
       
       // Set fields on header
+      if ($Body === null) {
+        $this->unsetField ('Content-Length');
+        $this->unsetField ('Content-Type');
+        
+        return;
+      }
+      
       $this->setField ('Content-Length', strlen ($Body));
       
       if ($Mime !== null)
         $this->setField ('Content-Type', $Mime);
       elseif (!$this->hasField ('Content-Type'))
         $this->setField ('Content-Type', 'application/octet-stream');
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ attachValue
+    /**
+     * Attach a simple value to this request
+     * 
+     * @param string $Name
+     * @param string $Value
+     * @param string $Mime (optional) MIME-Type to send to the server
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function attachValue ($Name, $Value, $Mime = null) {
+      // Check if there is already a file by this name
+      if (isset ($this->Files [$Name]))
+        return false;
+      
+      // Attach the value
+      $this->Values [$Name] = array ($Value, $Mime);
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ attachFile
+    /**
+     * Attach a file to this request
+     * 
+     * @param string $Path Path to file
+     * @param string $Name (optional) Name of the file
+     * @param string $Filename (optional) Filename to send to the server
+     * @param string $Mime (optional) MIME-Type to send to the server
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function attachFile ($Path, $Name = null, $Filename = null, $Mime = null) {
+      // Make sure the file exists
+      if (!is_file ($Path))
+        return false;
+      
+      // Bail out a warning if there is a body
+      if ($this->Body !== null)
+        trigger_error ('Uploading a file will override any user-defined body of the request', E_USER_WARNING);
+      
+      // Retrive the basename of the file
+      $Basename = basename ($Path);
+      
+      // Check which name to use
+      if ($Name === null)
+        $Name = $Basename;
+      
+      if ($Filename === null)
+        $Filename = $Basename;
+      
+      // Check if there is a mime-type given
+      if ($Mime === null)
+        # TODO: Auto-detect?
+        $Mime = 'application/octet-stream';
+      
+      // Enqueue the file
+      $this->Files [$Name] = array ($Path, $Filename, $Mime);
+      unset ($this->Values [$Name]);
       
       return true;
     }

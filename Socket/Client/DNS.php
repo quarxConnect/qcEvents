@@ -161,7 +161,6 @@
         // Issue the connect-request
         $this->useInternalResolver (false);
         $this->connect ($this->Nameservers [0][0], $this->Nameservers [0][1], $this->Nameservers [0][2]);
-        $this->bind ();
       
       // Check if connection is already established
       } elseif ($this->isConnected ())
