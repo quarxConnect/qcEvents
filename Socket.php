@@ -241,25 +241,35 @@
         $Type = $this::FORCE_TYPE;
       
       // Validate the type-parameter
-      if (($Type != self::TYPE_TCP) && ($Type != self::TYPE_UDP))
+      if (($Type != self::TYPE_TCP) && ($Type != self::TYPE_UDP)) {
+        trigger_error ('Unsupported socket-type');
+        
         return false;
+      }
       
       // Check wheter to use a default port
       if ($Port === null) {
         $Port = $this::DEFAULT_PORT;
         
-        if ($Port === null)
+        if ($Port === null) {
+          trigger_error ('No port specified');
+          
           return false;
+        }
       }
       
       if ($this::FORCE_PORT !== null)
         $Port = $this::FORCE_PORT;
       
       // Make sure we have an event-base assigned
-      if (!$this->haveEventBase () && (($newBase === null) || !$this->setEventBase ($newBase)))
+      if (!$this->haveEventBase () && (($newBase === null) || !$this->setEventBase ($newBase))) {
+        trigger_error ('No Event-Base assigned or could not assign Event-Base');
+        
         return false;
+      }
       
       // Try to close any open connection before creating a new one
+      # TODO: Make disconnect async
       if (!$this->isDisconnected () && !$this->disconnect ())
         return false;
       
@@ -328,8 +338,11 @@
         $Type = $this::FORCE_TYPE;
       
       // Validate the type-parameter
-      if (($Type != self::TYPE_TCP) && ($Type != self::TYPE_UDP))
+      if (($Type != self::TYPE_TCP) && ($Type != self::TYPE_UDP)) {
+        trigger_error ('Unsupported socket-type');
+        
         return false;
+      }
       
       // Make sure we have an event-base assigned
       if (!$this->haveEventBase () && (($newBase === null) || !$this->setEventBase ($newBase)))
@@ -355,7 +368,7 @@
       // Perform syncronous lookup
       if ($this->internalResolver === false) {
         // Fire a callback
-        $this->___callback ('socketResolve', array ($Label));
+        $this->___callback ('socketResolve', array ($Label), array (qcEvents_Socket_Stream_DNS_Message::TYPE_SRV));
         
         // Do the DNS-Lookup
         if (!is_array ($Result = dns_get_record ($Label, DNS_SRV, $AuthNS, $Addtl)) || (count ($Result) == 0))
@@ -592,7 +605,7 @@
       $this->lastEvent = time ();
       
       // Fire a callback
-      $this->___callback ('socketResolve', array ($Hostname));
+      $this->___callback ('socketResolve', array ($Hostname), $Types);
       
       // Setup a timeout
       $this->addTimeout (self::CONNECT_TIMEOUT, false, array ($this, 'socketConnectTimeout'));
@@ -789,7 +802,9 @@
           $this->serverParent->___callback ('serverClientClosed', $this->getRemoteName (), $this);
       }
       
+      // Reset our status
       $this->Connected = false;
+      $this->tlsEnabled = false;
       
       // Unbind from our event-base
       $this->unbind ();
@@ -800,14 +815,12 @@
         $this->internalResolver = true;
       }
       
-      // Fire up callback
-      $this->___callback ('socketDisconnected');
-      
       // Clean up buffers
-      $this->readBuffer = '';
+      $this->readBuffer = ''; 
       $this->writeBuffer = '';
       
-      return true;
+      // Fire up callback
+      $this->___callback ('socketDisconnected');
     }
     // }}}
     
@@ -1331,11 +1344,12 @@
      * Callback: Internal resolver started to look for Addresses
      * 
      * @param array $Hostnames
+     * @param array $Types
      * 
      * @access protected
      * @return void
      **/
-    protected function socketResolve ($Hostnames) { }
+    protected function socketResolve ($Hostnames, $Types) { }
     // }}}
     
     // {{{ socketResolved
