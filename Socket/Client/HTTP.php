@@ -19,6 +19,7 @@
    **/
 
   require_once ('qcEvents/Socket/Stream/HTTP.php');
+  require_once ('qcEvents/Socket/Client/HTTP/Request.php');
   
   class qcEvents_Socket_Client_HTTP extends qcEvents_Socket_Stream_HTTP {
     /* Current Request */
@@ -40,6 +41,7 @@
       
       // Register hooks
       $this->addHook ('socketConnected', array ($this, 'httpSocketConnected'));
+      $this->addHook ('socketDisconnected', array ($this, 'httpSocketDisconnected'));
       $this->addHook ('httpFinished', array ($this, 'httpReqeustFinished'));
     }
     // }}}
@@ -48,7 +50,7 @@
     /**
      * Enqueue an HTTP-Request
      * 
-     * @param string $URL
+     * @param mixed $Request
      * @param enum $Method (optional)
      * @param array $Headers (optional)
      * @param string $Body (optional)
@@ -58,17 +60,24 @@
      * @access public
      * @return void
      **/
-    public function addRequest ($URL, $Method = 'GET', $Headers = array (), $Body = null, $Callback = null, $Private = null) {
+    public function addRequest ($Request, $Method = null, $Headers = null, $Body = null, callable $Callback = null, $Private = null) {
+      // Make sure we have a request-object
+      if (!($Request instanceof qcEvents_Socket_Client_HTTP_Request))
+        $Request = new qcEvents_Socket_Client_HTTP_Request ($Request);
+      
+      // Set additional properties of the request
+      if ($Method !== null)
+        $Request->setMethod ($Method);
+      
+      if (is_array ($Headers))
+        foreach ($Headers as $Key=>$Value)
+          $Request->setField ($Key, $Value);
+      
+      if ($Body !== null)
+        $Request->setBody ($Body);
+      
       // Enqueue the request
-      $this->Requests [] = array (
-        0 => $URL,
-        1 => parse_url ($URL),
-        2 => $Method,
-        3 => $Headers,
-        4 => $Body,
-        5 => $Callback,
-        6 => $Private
-      );
+      $this->Requests [] = array ($Request, $Callback, $Private);
       
       // Try to submit it
       $this->submitPendingRequest ();
@@ -88,11 +97,8 @@
         return;
       
       // Check if there are no more events pending
-      if (count ($this->Requests) == 0) {
-        $this->disconnect ();
-        
-        return;
-      }
+      if (count ($this->Requests) == 0)
+        return $this->disconnect ();
       
       // Reset the HTTP-Stream
       $this->reset ();
@@ -100,17 +106,23 @@
       // Retrive the next request
       $this->Request = array_shift ($this->Requests);
       
-      $Host = $this->Request [1]['host'];
-      $Port = (isset ($this->Request [1]['port']) ? $this->Request [1]['port'] : ($this->Request [1]['scheme'] == 'https' ? 443 : 80));
+      $Host = $this->Request [0]->getHostname ();
+      $Port = $this->Request [0]->getPort ();
+      $TLS = $this->Request [0]->useTLS ();
       
       // Check if to connect to remote host
-      if ($this->isConnected () &&
-          ($this->getRemoteHost () == $Host) &&
-          ($this->getRemotePort () == $Port))
-        return $this->httpSocketConnected ();
+      if ($this->isConnected ()) {
+        if (($this->getRemoteHost () == $Host) &&
+            ($this->getRemotePort () == $Port) &&
+            ($this->tlsEnable () == $TLS))
+          return $this->httpSocketConnected ();
+        
+        // Close the current connection
+        return $this->disconnect ();
+      }
       
-      if ($this->isDisconnected ())
-        $this->connect ($Host, $Port, self::TYPE_TCP, ($this->Request [1]['scheme'] == 'https'));
+      // Connect to next host
+      return $this->connect ($Host, $Port, self::TYPE_TCP, $TLS);
     }
     // }}}
     
@@ -126,15 +138,25 @@
       if ($this->Request === null)
         return $this->submitPendingRequest ();
       
-      if (!isset ($this->Request [3]['Host']))
-        $this->Request [3]['Host'] = $this->Request [1]['host'];
+      // Write out the request
+      $this->write (strval ($this->Request [0]));
+    }
+    // }}}
+    
+    // {{{ httpSocketDisconnected
+    /**
+     * Internal Callback: Our underlying socket was disconnected
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected final function httpSocketDisconnected () {
+      // Check if a request is pending
+      if ($this->Request === null)
+        return $this->submitPendingRequest ();
       
-      $this->mwrite ($this->Request [2], ' ', $this->Request [1]['path'], (isset ($this->Request [1]['query']) ? '?' . $this->Request [1]['query'] : ''), ' HTTP/1.1', "\r\n");
-      
-      foreach ($this->Request [3] as $Key=>$Value)
-        $this->mwrite ($Key, ': ', $Value, "\r\n");
-      
-      $this->write ("\r\n");
+      // Connect to next destination
+      $this->connect ($this->Request [0]->getHostname (), $this->Request [0]->getPort (), self::TYPE_TCP, $this->Request [0]->useTLS ());
     }
     // }}}
     
@@ -151,18 +173,19 @@
     protected final function httpReqeustFinished ($Header, $Body) {
       // Check if a request is pending
       if ($this->Request !== null) {
-        // Fire callbacks
-        if (is_callable ($this->Request [5]))
-          call_user_func ($this->Request [5], $this, $this->Request [0], $Header, $Body, $this->Request [6]);
-        
-        $this->___callback ('httpRequestResult', $this->Request [0], $Header, $Body);
-        
-        // Remove the current request
+        $Request = $this->Request;
         $this->Request = null;
+        
+        // Fire callbacks
+        if (is_callable ($Request [1]))
+          call_user_func ($Request [1], $this, $Request [0], $Header, $Body, $Request [2]);
+        
+        $this->___callback ('httpRequestResult', $Request [0], $Header, $Body);
       }
       
       // Submit the next request
-      $this->submitPendingRequest ();
+      if (strtolower ($Header->getField ('Connection')) != 'close')
+        $this->submitPendingRequest ();
     }
     // }}}
     
@@ -170,14 +193,14 @@
     /**
      * Callback: HTTP-Request is finished
      * 
-     * @param string $URL
+     * @param qcEvents_Socket_Client_HTTP_Request $Request
      * @param qcEvents_Socket_Stream_HTTP_Header $Header
      * @param string $Body
      * 
      * @access protected
      * @return void
      **/
-    protected function httpRequestResult ($URL, qcEvents_Socket_Stream_HTTP_Header $Header, $Body) { }
+    protected function httpRequestResult (qcEvents_Socket_Client_HTTP_Request $Request, qcEvents_Socket_Stream_HTTP_Header $Header, $Body) { }
     // }}}
   }
 

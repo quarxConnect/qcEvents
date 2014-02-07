@@ -136,6 +136,77 @@
     }
     // }}}
     
+    // {{{ setMethod
+    /**
+     * Set the method of a request-header
+     * 
+     * @param enum $Method
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setMethod ($Method) {
+      switch ($Method) {
+        case self::METHOD_GET:
+        case self::METHOD_POST:
+          $this->Method = $Method;
+          
+          return true;
+      }
+      
+      return false;
+    }
+    // }}}
+    
+    // {{{ setURL
+    /**
+     * Setup this header by a given URL
+     * 
+     * @param mixed $URL
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setURL ($URL) {
+      // Make sure we have a parsed URL
+      if (!is_array ($URL) && !($URL = parse_url ($URL)))
+        return false;
+      
+      // Store the URI
+      $this->URI = $URL ['path'] . (isset ($URL ['query']) && ($URL ['query'] !== null) ? '?' . $URL ['query'] : '');
+      
+      // Setup host-entry
+      if (!isset ($URL ['host']) || ($URL ['host'] === null)) {
+        $this->unsetField ('Host');
+        $this->Version = '1.0';
+      } else {
+        $this->setField ('Host', $URL ['host'] . (isset ($URL ['port']) && ($URL ['port'] !== null) ? ':' . $URL ['port'] : ''));
+        $this->Version = '1.1';
+      }
+      
+      // Set credentials (if applicable)
+      if (isset ($URL ['user']))
+        $this->setCredentials ($URL ['user'], $URL ['pass']);
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ setCredentials
+    /**
+     * Store HTTP-Credentials
+     * 
+     * @param string $Username
+     * @param string $Password
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setCredentials ($Username, $Password) {
+      return $this->setField ('Authenticate', 'Basic ' . base64_encode ($Username . ':' . $Password));
+    }
+    // }}}
+    
     // {{{ hasField
     /**
      * Check if a field is present on this header
