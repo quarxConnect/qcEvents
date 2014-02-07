@@ -42,7 +42,7 @@
      **/
     function __construct ($URL = null) {
       // Setup the header using a dummy
-      parent::__construct (array ('GET / HTTP/1.0'));
+      parent::__construct (array ('GET / HTTP/1.0', 'Connection: keep-alive'));
       
       // Store the requested URL
       if ($URL !== null)

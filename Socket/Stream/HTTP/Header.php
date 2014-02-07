@@ -178,10 +178,10 @@
       // Setup host-entry
       if (!isset ($URL ['host']) || ($URL ['host'] === null)) {
         $this->unsetField ('Host');
-        $this->Version = '1.0';
+        $this->Version = 'HTTP/1.0';
       } else {
         $this->setField ('Host', $URL ['host'] . (isset ($URL ['port']) && ($URL ['port'] !== null) ? ':' . $URL ['port'] : ''));
-        $this->Version = '1.1';
+        $this->Version = 'HTTP/1.1';
       }
       
       // Set credentials (if applicable)

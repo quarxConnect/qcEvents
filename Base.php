@@ -60,6 +60,23 @@
     private $timeoutNext = 0;
     private $timeoutEvents = array ();
     
+    // {{{ singleton
+    /**
+     * Create a single instance of this class
+     * 
+     * @access public
+     * @return qcEvents_Base
+     **/
+    public static function singleton () {
+      static $Singleton = null;
+      
+      if (!$Singleton)
+        $Singleton = new static ();
+      
+      return $Singleton;
+    }
+    // }}}
+    
     // {{{ __construct
     /**
      * Create a new event-base

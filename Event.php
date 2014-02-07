@@ -71,6 +71,18 @@
     }
     // }}}
     
+    // {{{ getFD
+    /**
+     * Retrive our file-descriptor
+     * 
+     * @access public
+     * @return resource
+     **/
+    public function getFD () {
+      return $this->fd;
+    }
+    // }}}
+    
     // {{{ setFD
     /**
      * Set the file-descriptor to monitor
@@ -118,18 +130,6 @@
       $this->Callback = $Callback;
       
       return true;
-    }
-    // }}}
-    
-    // {{{ getFD
-    /**
-     * Retrive our file-descriptor
-     * 
-     * @access public
-     * @return resource
-     **/
-    public function getFD () {
-      return $this->fd;
     }
     // }}}
     
@@ -301,8 +301,10 @@
       // Set this handler
       $this->eventBase = $Base;
       
-      if ($setBound)
+      if ($setBound) {
         $this->isBound = true;
+        $this->___callback ('onEventHandler');
+      }
       
       return true;
     }
@@ -506,7 +508,7 @@
     }
     // }}}
     
-    // {{{ __callback
+    // {{{ ___callback
     /**
      * Issue a callback
      * 
