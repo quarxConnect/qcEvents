@@ -242,6 +242,9 @@
       
       unset ($this->Events [$key], $this->readFDs [$key], $this->writeFDs [$key], $this->errorFDs [$key], $this->eventFDs [$key]);
       
+      foreach (array_keys ($this->fdMap, $key) as $k)
+        unset ($this->fdMap [$k]);
+      
       // Remove any queued timers
       foreach ($this->timeoutEvents as $TI=>$Events) {
         foreach ($Events as $EI=>$EvInfo)
@@ -681,7 +684,7 @@
       $this->forceEvents [] = array ($Handle, $Event);
       
       // Stop the current loop after it was finished
-      $this->loopExit ();
+      $this->loopBreak ();
       
       return true;
     }
