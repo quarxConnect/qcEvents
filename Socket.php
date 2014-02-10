@@ -98,7 +98,8 @@
     private $bufferSize = 0;
     
     /* Run in buffered mode */
-    private $isBuffered = false;
+    private $isReadBuffered = false;
+    private $isWriteBuffered = true;
     
     /* Local read-buffer */
     private $readBuffer = '';
@@ -304,7 +305,7 @@
       
       // Check if we have addresses to connect to
       if (count ($this->socketAddresses) > 0)
-        $this->connectMulti ();
+        $this->socketConnectMulti ();
       
       // Sanity-Check if to use internal resolver
       if (!$this->internalResolver || (count ($Resolve) == 0))
@@ -385,14 +386,14 @@
     }
     // }}}
      
-    // {{{ connectMulti
+    // {{{ socketConnectMulti
     /**
      * Try to connect to next host on our list
      * 
      * @access private
      * @return void
      **/
-    private function connectMulti () {
+    private function socketConnectMulti () {
       // Check if there are addresses on the queue
       if (!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0) || ($this->socketAddress !== null))
         return false;
@@ -408,7 +409,9 @@
       
       if (!is_resource ($Socket = stream_socket_client ($URI, $errno, $err, 5, STREAM_CLIENT_ASYNC_CONNECT)))
         return false;
-        
+      
+      stream_set_blocking ($Socket, 0);
+      
       // Set our new status
       if (!$this->setFD ($Socket, true, true, true))
         return false;
@@ -452,6 +455,9 @@
         $this->remoteName = $Remote;
       } else {
         $this->bufferSize = self::READ_TCP_BUFFER;
+        
+        // Switch connection into non-blocking mode
+        stream_set_blocking ($Connection, 0);
         
         // Store the connection
         $this->setFD ($Connection, true, false);
@@ -553,7 +559,7 @@
       }
       
       // Try the next host
-      return $this->connectMulti ();
+      return $this->socketConnectMulti ();
     }
     // }}}
     
@@ -726,7 +732,7 @@
       
       // Check wheter to try to connect
       if (is_array ($this->socketAddresses) && (count ($this->socketAddresses) > 0))
-        $this->connectMulti ();
+        $this->socketConnectMulti ();
     }
     // }}}
     
@@ -917,21 +923,69 @@
      * 
      * @access public
      * @return bool
+     * @deprecated
      **/
     public function isBuffered ($Toggle = null) {
+      trigger_error ('Please use isReadBuffered() and isWriteBuffered()', E_USER_DEPRECATED);
+      
       // Check wheter to set a new status
       if ($Toggle !== null) {
         // Set the new status
-        $this->isBuffered = ($Toggle ? true : false);
+        $this->isReadBuffered = $this->isWriteBuffered = ($Toggle ? true : false);
         
         // Flush the read-buffer if there is data waiting
-        if (!$this->isBuffered && (strlen ($this->readBuffer) > 0)) {
+        if (!$this->isReadBuffered && (strlen ($this->readBuffer) > 0)) {
           $this->___callback ('socketReceive', $this->readBuffer);
           $this->readBuffer = '';
         }
       }
       
-      return $this->isBuffered;
+      return $this->isReadBuffered && $this->isWriteBuffered;
+    }
+    // }}}
+    
+    // {{{ isReadBuffered
+    /**
+     * Check or set if reads will be buffered
+     * 
+     * @param bool $Toggle (optional)
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isReadBuffered ($Toggle = null) {
+      // Check wheter to set a new status
+      if ($Toggle !== null) {
+        // Set the new status
+        $this->isReadBuffered = ($Toggle ? true : false);
+        
+        // Flush the read-buffer if there is data waiting
+        if (!$this->isReadBuffered && (strlen ($this->readBuffer) > 0)) {
+          $this->___callback ('socketReceive', $this->readBuffer);
+          $this->readBuffer = '';
+        }
+      }
+      
+      return $this->isReadBuffered;
+    }
+    // }}}
+    
+    // {{{ isWriteBuffered
+    /**
+     * Check or set if writes are buffered
+     * 
+     * @parma bool $Toggle (optional)
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isWriteBuffered ($Toggle = null) {
+      // Check wheter to set a new status
+      if ($Toggle !== null)
+        // Set the new status
+        $this->isWriteBuffered = ($Toggle ? true : false);
+      
+      return $this->isWriteBuffered;
     }
     // }}}
     
@@ -948,7 +1002,7 @@
      **/
     public function readBuffer ($Size = null) {
       // Check if we are in buffered mode
-      if (!$this->isBuffered)
+      if (!$this->isReadBuffered)
         return false;
       
       // Retrive the requested data from the buffer
@@ -975,7 +1029,7 @@
      **/
     public function write ($Data) {
       // Check wheter to write to our internal buffer first
-      if ($this->isBuffered) {
+      if ($this->isWriteBuffered) {
         $this->writeBuffer .= $Data;
         
         if ((strlen ($this->writeBuffer) > 0) && !$this->watchWrite ())
@@ -1138,14 +1192,10 @@
         return false;
       
       // Issue the request to enter or leave TLS-Mode
-      stream_set_blocking ($fd, false);
-      
       if ($this->tlsStatus)
         $tlsRequest = stream_socket_enable_crypto ($fd, $this->tlsStatus, STREAM_CRYPTO_METHOD_TLS_CLIENT);
       else
         $tlsRequest = stream_socket_enable_crypto ($fd, $this->tlsStatus);
-      
-      stream_set_blocking ($fd, true);
       
       // Check if the request succeeded
       if ($tlsRequest === true) {
@@ -1252,7 +1302,7 @@
       $this->lastEvent = time ();
       
       // Forward to our handler
-      if ($this->isBuffered) {
+      if ($this->isReadBuffered) {
         $this->readBuffer .= $Data;
        
         $this->___callback ('socketReadable');
@@ -1272,7 +1322,7 @@
       // Check if we are currently connecting
       if ($this->isConnecting ()) {
         // Remove the write-events
-        if (!$this->isBuffered || (strlen ($this->writeBuffer) == 0))
+        if (!$this->isWriteBuffered || (strlen ($this->writeBuffer) == 0))
           $this->watchWrite (false);
         
         // Fire up the callback
@@ -1284,7 +1334,7 @@
         return $this->setTLSMode ();
       
       // Handle buffered writes
-      if ($this->isBuffered && (strlen ($this->writeBuffer) > 0)) {
+      if ($this->isWriteBuffered && (strlen ($this->writeBuffer) > 0)) {
         $length = $this->writeInternal ($this->writeBuffer);
         
         // Check if the write succeded
