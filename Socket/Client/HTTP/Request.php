@@ -109,8 +109,14 @@
         $this->setField ('Content-Length', strlen ($Body));
         
       // Use a user-defined body
-      } elseif ($this->Body !== null)
+      } elseif ($this->Body !== null) {
+        $this->setMethod (self::METHOD_POST);
+        
         $Body =& $this->Body;
+      
+      // Make sure we are not in POST-Mode if no body is present
+      } elseif ($this->getMethod () == self::METHOD_POST)
+        $this->setMethod (self::METHOD_GET);
       
       // Let our parent create the header
       $buf = parent::__toString ();
