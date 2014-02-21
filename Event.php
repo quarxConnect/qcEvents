@@ -19,6 +19,7 @@
    **/
   
   require_once ('qcEvents/Base.php');
+  require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Interface.php');
   
   /**
@@ -30,7 +31,7 @@
    * @package qcEvents
    * @revision 01   
    **/
-  class qcEvents_Event implements qcEvents_Interface {
+  class qcEvents_Event extends qcEvents_Hookable implements qcEvents_Interface {
     // Informations on this event
     private $fd = null;
     private $monitorRead = false;
@@ -38,7 +39,6 @@
     private $monitorError = false;
     private $monitorTimer = false;
     private $Callback = null;
-    private $Hooks = array ();
     
     // Information about our status and parent
     private $isBound = false;
@@ -473,77 +473,6 @@
         return false;
       
       return $B->addTimeout ($this, $Timeout, $Repeat, $Callback, $Private);
-    }
-    // }}}
-    
-    // {{{ addHook
-    /**
-     * Register a hook for a callback-function
-     * 
-     * @param string $Hook
-     * @param callback $Callback
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function addHook ($Name, $Callback, $Private = null) {
-      // Check if this is a valid callback
-      if (!is_callable ($Callback))
-        return false;
-      
-      // Check if this is a valid hook
-      $Name = strtolower ($Name);
-      
-      if (!is_callable (array ($this, $Name)))
-        return false;
-      
-      // Register the hook
-      if (!isset ($this->Hooks [$Name]))
-        $this->Hooks [$Name] = array (array ($Callback, $Private));
-      else
-        $this->Hooks [$Name][] = array ($Callback, $Private);
-      
-      return true;
-    }
-    // }}}
-    
-    // {{{ ___callback
-    /**
-     * Issue a callback
-     * 
-     * @param string $Callback Name of the callback
-     * @param ...
-     * 
-     * @access protected
-     * @return mixed
-     **/
-    protected function ___callback ($Name) {
-      // Retrive all given parameters
-      $Args = func_get_args ();
-      $Name = strtolower (array_shift ($Args));
-      
-      // Check hooks
-      if (isset ($this->Hooks [$Name]))
-        foreach ($this->Hooks [$Name] as $Callback) {
-          $cArgs = $Args;
-          $cArgs [] = $Callback [1];
-          
-          if (!is_array ($Callback [0]) || ($Callback [0][0] !== $this))
-            array_unshift ($cArgs, $this);
-          
-          if (call_user_func_array ($Callback [0], $cArgs) === false)
-            return false;
-        }
-      
-      // Check if the callback is available
-      $Callback = array ($this, $Name);
-      
-      if (!is_callable ($Callback))
-        return false;
-      
-      // Issue the callback
-      return call_user_func_array ($Callback, $Args);
     }
     // }}}
   }
