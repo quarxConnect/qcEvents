@@ -42,6 +42,7 @@
       // Register hooks
       $this->addHook ('socketConnected', array ($this, 'httpSocketConnected'));
       $this->addHook ('socketDisconnected', array ($this, 'httpSocketDisconnected'));
+      $this->addHook ('socketConnectionFailed', array ($this, 'httpSocketFailed'));
       $this->addHook ('httpFinished', array ($this, 'httpReqeustFinished'));
     }
     // }}}
@@ -160,6 +161,31 @@
     }
     // }}}
     
+    // {{{ httpSocketFailed
+    /**
+     * Internal Callback: HTTP-Connection failed at socket-level
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected final function httpSocketFailed () {
+      // Check if there is a request pending
+      if ($this->Request === null)
+        return;
+      
+      // Release the current request
+      $Request = $this->Request;
+      $this->Request = null;
+      
+      // Fire callbacks
+      $this->___raiseCallback ($Request [1], $Request [0], null, null, $Request [2]);
+      $this->___callback ('httpRequestResult', $Request [0], null, null);
+      
+      // Move to next request
+      $this->submitPendingRequest ();
+    }
+    // }}}
+    
     // {{{ httpReqeustFinished
     /** 
      * Internal Callback: HTTP-Request was finished
@@ -177,9 +203,7 @@
         $this->Request = null;
         
         // Fire callbacks
-        if (is_callable ($Request [1]))
-          call_user_func ($Request [1], $this, $Request [0], $Header, $Body, $Request [2]);
-        
+        $this->___raiseCallback ($Request [1], $Request [0], $Header, $Body, $Request [2]);
         $this->___callback ('httpRequestResult', $Request [0], $Header, $Body);
       }
       
@@ -194,13 +218,13 @@
      * Callback: HTTP-Request is finished
      * 
      * @param qcEvents_Socket_Client_HTTP_Request $Request
-     * @param qcEvents_Socket_Stream_HTTP_Header $Header
-     * @param string $Body
+     * @param qcEvents_Socket_Stream_HTTP_Header $Header (optional)
+     * @param string $Body (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected function httpRequestResult (qcEvents_Socket_Client_HTTP_Request $Request, qcEvents_Socket_Stream_HTTP_Header $Header, $Body) { }
+    protected function httpRequestResult (qcEvents_Socket_Client_HTTP_Request $Request, qcEvents_Socket_Stream_HTTP_Header $Header = null, $Body = null) { }
     // }}}
   }
 
