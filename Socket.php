@@ -80,7 +80,7 @@
     private $remotePort = 0;
     
     /* Short-hand of remote hostname and port (for UDP-Server-Mode) */
-    private $remoteName = '';
+    private $remoteName = null;
     
     /* Our current TLS-Status */
     private $tlsEnabled = false;
