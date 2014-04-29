@@ -124,6 +124,18 @@
     }
     // }}}
     
+    // {{{ getVersion
+    /**
+     * Retrive the version of this header
+     * 
+     * @access public
+     * @return float
+     **/
+    public function getVersion () {
+      return floatval ($this->Version);
+    }
+    // }}}
+    
     // {{{ isRequest
     /**
      * Check if this header is a http-request

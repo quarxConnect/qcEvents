@@ -1088,7 +1088,7 @@
       if ($this->Type == self::TYPE_UDP_SERVER)
         return stream_socket_sendto ($fd, $Data, 0, $this->remoteName);
       
-      return fwrite ($fd, $Data);
+      return @fwrite ($fd, $Data);
     }
     // }}}
     

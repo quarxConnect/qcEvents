@@ -121,7 +121,12 @@
         return false;
       
       // Make sure the response-header is correct for this response
-      $Response->setField ('Transfer-Encoding', 'chunked');
+      if ($Response->getVersion () < 1.1) {
+        $Response->unsetField ('Transfer-Encoding');
+        $Response->setField ('Connection', 'close');
+      } else
+        $Response->setField ('Transfer-Encoding', 'chunked');
+      
       $Response->unsetField ('Content-Length');
       
       // Write out the response  
@@ -147,7 +152,10 @@
         return false;
       
       // Write out the chunk
-      $this->mwrite (dechex (strlen ($Body)), "\r\n", $Body, "\r\n");
+      if ($this->Response->getVersion () < 1.1)
+        $this->write ($Body);
+      else
+        $this->mwrite (dechex (strlen ($Body)), "\r\n", $Body, "\r\n");
       
       return true;
     }
