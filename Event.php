@@ -48,15 +48,25 @@
     /**
      * Create a new Event-Handler
      * 
-     * @param resource $fd
-     * @param bool $monitorRead
-     * @param bool $monitorWrite
-     * @param callback $Callback
+     * @param qcEvents_Base $Base (optional)
+     * @param resource $fd (optional)
+     * @param bool $monitorRead (optional)
+     * @param bool $monitorWrite (optional)
+     * @param bool $monitorError (optional)
+     * @param callable $Callback (optional)
      * 
      * @access friendly
      * @return void
      **/
-    function __construct ($fd, $monitorRead, $monitorWrite, $Callback = null) {
+    function __construct (qcEvents_Base $Base = null, $fd = null, $monitorRead = true, $monitorWrite = false, $monitorError = false, $Callback = null) {
+      // Set our event-handler
+      if ($Base !== null)
+        $this->setEventBase ($Base);
+      
+      // Check wheter to proceed
+      if ($fd === null)
+        return;
+      
       // Make sure we have a valid stream
       if (!is_resource ($fd))
         throw new Exception ('Invalid fd');
@@ -66,7 +76,7 @@
         $this->setCallback ($Callback);
       
       // Setup ourself
-      if (!$this->setFD ($fd, $monitorRead, $monitorWrite))
+      if (!$this->setFD ($fd, $monitorRead, $monitorWrite, $monitorError))
         throw new Exception ('Could not create event');
     }
     // }}}
