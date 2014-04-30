@@ -18,10 +18,10 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Socket/Stream/DNS.php');
-  require_once ('qcEvents/Socket/Stream/DNS/Header.php');
+  require_once ('qcEvents/Stream/DNS.php');
+  require_once ('qcEvents/Stream/DNS/Header.php');
   
-  class qcEvents_Socket_Server_DNS extends qcEvents_Socket_Stream_DNS {
+  class qcEvents_Socket_Server_DNS extends qcEvents_Stream_DNS {
     /* IDs of known DNS-Queries */
     private $IDs = array ();
     
@@ -45,12 +45,12 @@
     /**
      * Generate the reply for a queued query
      * 
-     * @param qcEvents_Socket_Stream_DNS_Message $Message
+     * @param qcEvents_Stream_DNS_Message $Message
      * 
      * @access public
      * @return void
      **/
-    public function dnsQueryReply (qcEvents_Socket_Stream_DNS_Message $Message) {
+    public function dnsQueryReply (qcEvents_Stream_DNS_Message $Message) {
       $ID = $Message->getID ();
       
       if (!isset ($this->IDs [$ID]))
@@ -66,12 +66,12 @@
     /**
      * Internal Callback: A DNS-Query was received
      * 
-     * @param qcEvents_Socket_Stream_DNS_Message $Message
+     * @param qcEvents_Stream_DNS_Message $Message
      * 
      * @access protected
      * @return void
      **/
-    protected final function dnsServerQuery (qcEvents_Socket_Stream_DNS_Message $Message) {
+    protected final function dnsServerQuery (qcEvents_Stream_DNS_Message $Message) {
       // Store the ID as known
       $this->IDs [$Message->getID ()] = $Message;
       
@@ -79,7 +79,7 @@
       $this->addTimeout (4, false, array ($this, 'dnsServerQueryTimeout'), $Message->getID ());
       
       // Fire a callback
-      if (!is_object ($rc = $this->___callback ('dnsQueryReceived', $Message)) || !($rc instanceof qcEvents_Socket_Stream_DNS_Message))
+      if (!is_object ($rc = $this->___callback ('dnsQueryReceived', $Message)) || !($rc instanceof qcEvents_Stream_DNS_Message))
         return;
       
       // Overwrite the ID
@@ -106,7 +106,7 @@
       
       // Create a response
       $Response = $this->IDs [$ID]->createClonedResponse ();
-      $Response->setError (qcEvents_Socket_Stream_DNS_Header::ERROR_SERVER);
+      $Response->setError (qcEvents_Stream_DNS_Header::ERROR_SERVER);
       
       // Write out the response
       $this->dnsQueryReply ($Response);
@@ -118,12 +118,12 @@
     /**
      * Callback: A DNS-Query was received
      * 
-     * @param qcEvents_Socket_Stream_DNS_Message $Query
+     * @param qcEvents_Stream_DNS_Message $Query
      * 
      * @access protected
-     * @return qcEvents_Socket_Stream_DNS_Message If not NULL a direct reply is issued
+     * @return qcEvents_Stream_DNS_Message If not NULL a direct reply is issued
      **/
-    protected function dnsQueryReceived (qcEvents_Socket_Stream_DNS_Message $Query) { }
+    protected function dnsQueryReceived (qcEvents_Stream_DNS_Message $Query) { }
     // }}}
   }
 

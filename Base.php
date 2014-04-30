@@ -446,6 +446,9 @@
       $this->loopBreak = false;
       
       foreach ($readFDs as $FD) {
+        if (!isset ($this->fdMap [(int)$FD]))
+          continue;
+        
         $Index = $this->fdMap [(int)$FD];
         
         if (!isset ($this->Events [$Index]))
@@ -458,6 +461,9 @@
       }
       
       foreach ($writeFDs as $FD) {
+        if (!isset ($this->fdMap [(int)$FD]))
+          continue;
+        
         $Index = $this->fdMap [(int)$FD];
         
         if (!isset ($this->Events [$Index]))
@@ -470,6 +476,9 @@
       }
       
       foreach ($errorFDs as $FD) {
+        if (!isset ($this->fdMap [(int)$FD]))
+          continue;
+        
         $Index = $this->fdMap [(int)$FD];
         
         if (!isset ($this->Events [$Index]))

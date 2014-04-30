@@ -79,7 +79,7 @@
       
       // Create a resolver
       $Resolver = new qcEvents_Socket_Client_DNS ($this->getEventBase ());
-      $Resolver->resolve ($Domain, qcEvents_Socket_Stream_DNS_Message::TYPE_CNAME, null, array ($this, 'relayLockupResolve'), array ($Address, array ($Domain), 0, $Callback, $Private));
+      $Resolver->resolve ($Domain, qcEvents_Stream_DNS_Message::TYPE_CNAME, null, array ($this, 'relayLockupResolve'), array ($Address, array ($Domain), 0, $Callback, $Private));
     }
     // }}}
     
@@ -93,12 +93,12 @@
      * @param array $Authorities
      * @param array $Additionals
      * @param array $Private
-     * @param qcEvents_Socket_Stream_DNS_Message $Message (optional)
+     * @param qcEvents_Stream_DNS_Message $Message (optional)
      * 
      * @access public
      * @return void
      **/
-    public function relayLockupResolve (qcEvents_Socket_Client_DNS $Resolver, $Domain, $Answers, $Authorities, $Additionals, $Private, qcEvents_Socket_Stream_DNS_Message $wholeMessage = null) {
+    public function relayLockupResolve (qcEvents_Socket_Client_DNS $Resolver, $Domain, $Answers, $Authorities, $Additionals, $Private, qcEvents_Stream_DNS_Message $wholeMessage = null) {
       // Check if we probed for an CNAME-Record
       if ($Private [2] == 0) {
         $Private [2] = 1;
@@ -106,14 +106,14 @@
         
         if (is_array ($Answers))
           foreach ($Answers as $Answer)
-            if ($Answer->getType () == qcEvents_Socket_Stream_DNS_Message::TYPE_CNAME)
+            if ($Answer->getType () == qcEvents_Stream_DNS_Message::TYPE_CNAME)
               $Private [1][] = $Record->getHostname ();
         
         if (count ($Private [1]) == 0)
           $Private [1][] = $Domain;
         
         foreach ($Private [1] as $Domain)
-          $Resolver->resolve ($Domain, qcEvents_Socket_Stream_DNS_Message::TYPE_MX, null, array ($this, 'relayLockupResolve'), $Private);
+          $Resolver->resolve ($Domain, qcEvents_Stream_DNS_Message::TYPE_MX, null, array ($this, 'relayLockupResolve'), $Private);
         
         return;
       
@@ -123,7 +123,7 @@
           foreach ($Answers as $Answer) {
             $Type = $Answer->getType ();
             
-            if (($Type == qcEvents_Socket_Stream_DNS_Message::TYPE_A) || ($Type == qcEvents_Socket_Stream_DNS_Message::TYPE_AAAA))
+            if (($Type == qcEvents_Stream_DNS_Message::TYPE_A) || ($Type == qcEvents_Stream_DNS_Message::TYPE_AAAA))
               $Resolver->relayResults [$Answer->getAddress ()] = array ($Answer->getAddress (), 25);
           }
         
@@ -149,7 +149,7 @@
       }
       
       foreach ($Answers as $Answer)
-        if ($Answer->getType () == qcEvents_Socket_Stream_DNS_Message::TYPE_MX)
+        if ($Answer->getType () == qcEvents_Stream_DNS_Message::TYPE_MX)
           $Resolver->relayHosts [] = $Answer->getHostname ();
       
       // Check if this resolving-stage was finished
@@ -165,8 +165,8 @@
         $Hosts = $Private [1];
       
       foreach ($Hosts as $Host) {
-        $Resolver->resolve ($Host, qcEvents_Socket_Stream_DNS_Message::TYPE_A, null, array ($this, 'relayLockupResolve'), $Private);
-        $Resolver->resolve ($Host, qcEvents_Socket_Stream_DNS_Message::TYPE_AAAA, null, array ($this, 'relayLockupResolve'), $Private);
+        $Resolver->resolve ($Host, qcEvents_Stream_DNS_Message::TYPE_A, null, array ($this, 'relayLockupResolve'), $Private);
+        $Resolver->resolve ($Host, qcEvents_Stream_DNS_Message::TYPE_AAAA, null, array ($this, 'relayLockupResolve'), $Private);
       }
     }
     // }}}

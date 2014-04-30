@@ -18,19 +18,19 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Socket/Stream/DNS.php');
-  require_once ('qcEvents/Socket/Stream/DNS/Message.php');
+  require_once ('qcEvents/Stream/DNS.php');
+  require_once ('qcEvents/Stream/DNS/Message.php');
   
   /**
    * Asyncronous DNS Resolver
    * ------------------------
    * 
    * @class qcEvents_Socket_Client_DNS
-   * @extends qcEvents_Socket_Stream_DNS
+   * @extends qcEvents_Stream_DNS
    * @package qcEvents
    * @revision 01
    **/
-  class qcEvents_Socket_Client_DNS extends qcEvents_Socket_Stream_DNS {
+  class qcEvents_Socket_Client_DNS extends qcEvents_Stream_DNS {
     /* Our registered nameservers */
     private $Nameservers = array ();
     
@@ -131,7 +131,7 @@
      **/
     public function resolve ($Hostname, $Type = null, $Class = null, $Callback = null, $Private = null) {
       // Create a DNS-Query
-      $Message = new qcEvents_Socket_Stream_DNS_Message;
+      $Message = new qcEvents_Stream_DNS_Message;
       $Message->isQuery (true);
       
       while ($ID = $Message->setRandomID ())
@@ -139,12 +139,12 @@
           break;
       
       if ($Type === null)
-        $Type = qcEvents_Socket_Stream_DNS_Message::TYPE_A;
+        $Type = qcEvents_Stream_DNS_Message::TYPE_A;
       
       if ($Class === null)
-        $Class = qcEvents_Socket_Stream_DNS_Message::CLASS_INTERNET;
+        $Class = qcEvents_Stream_DNS_Message::CLASS_INTERNET;
       
-      $Message->addQuestion (new qcEvents_Socket_Stream_DNS_Question ($Hostname, $Type, $Class));
+      $Message->addQuestion (new qcEvents_Stream_DNS_Question ($Hostname, $Type, $Class));
       
       // Enqueue the query
       $this->queriesQueued [$ID] = array ($Message, $Hostname, $Callback, $Private);
@@ -231,7 +231,7 @@
     /**
      * Internal Callback: DNS-Response was received
      * 
-     * @param qcEvents_Socket_Stream_DNS_Message $Message
+     * @param qcEvents_Stream_DNS_Message $Message
      * 
      * @access protected
      * @return void
@@ -288,12 +288,12 @@
     /**
      * Create an array compatible to php's dns_get_records from a given response
      * 
-     * @param qcEvents_Socket_Stream_DNS_Message $Response
+     * @param qcEvents_Stream_DNS_Message $Response
      * 
      * @access public
      * @return array
      **/
-    public function dnsConvertPHP (qcEvents_Socket_Stream_DNS_Message $Response, &$authns = null, &$addtl = null, &$raw = false) {
+    public function dnsConvertPHP (qcEvents_Stream_DNS_Message $Response, &$authns = null, &$addtl = null, &$raw = false) {
       // Make sure this is a response
       if ($Response->isQuery ())
         return false;
@@ -328,25 +328,25 @@
     /**
      * Create an array from a given DNS-Record
      * 
-     * @param qcEvents_Socket_Stream_DNS_Record $Record
+     * @param qcEvents_Stream_DNS_Record $Record
      * 
      * @access private
      * @return array
      **/
-    private function dnsConvertPHPRecord (qcEvents_Socket_Stream_DNS_Record $Record) {
+    private function dnsConvertPHPRecord (qcEvents_Stream_DNS_Record $Record) {
       // Only handle IN-Records
-      if ($Record->getClass () != qcEvents_Socket_Stream_DNS_Message::CLASS_INTERNET)
+      if ($Record->getClass () != qcEvents_Stream_DNS_Message::CLASS_INTERNET)
         return false;
       
       static $Types = array (
-        qcEvents_Socket_Stream_DNS_Message::TYPE_A => 'A',
-        qcEvents_Socket_Stream_DNS_Message::TYPE_MX => 'MX',
-        qcEvents_Socket_Stream_DNS_Message::TYPE_CNAME => 'CNAME',
-        qcEvents_Socket_Stream_DNS_Message::TYPE_NS => 'NS',
-        qcEvents_Socket_Stream_DNS_Message::TYPE_PTR => 'PTR',
-        qcEvents_Socket_Stream_DNS_Message::TYPE_TXT => 'TXT',
-        qcEvents_Socket_Stream_DNS_Message::TYPE_AAAA => 'AAAA',
-        qcEvents_Socket_Stream_DNS_Message::TYPE_SRV => 'SRV',
+        qcEvents_Stream_DNS_Message::TYPE_A => 'A',
+        qcEvents_Stream_DNS_Message::TYPE_MX => 'MX',
+        qcEvents_Stream_DNS_Message::TYPE_CNAME => 'CNAME',
+        qcEvents_Stream_DNS_Message::TYPE_NS => 'NS',
+        qcEvents_Stream_DNS_Message::TYPE_PTR => 'PTR',
+        qcEvents_Stream_DNS_Message::TYPE_TXT => 'TXT',
+        qcEvents_Stream_DNS_Message::TYPE_AAAA => 'AAAA',
+        qcEvents_Stream_DNS_Message::TYPE_SRV => 'SRV',
         # Skipped: SOA, HINFO, NAPTR and A6
       );
       
@@ -362,33 +362,33 @@
       
       // Add data depending on type
       switch ($Type) {
-        case qcEvents_Socket_Stream_DNS_Message::TYPE_A:
+        case qcEvents_Stream_DNS_Message::TYPE_A:
           $Result ['ip'] = $Record->getAddress ();
           
           break;
-        case qcEvents_Socket_Stream_DNS_Message::TYPE_AAAA:
+        case qcEvents_Stream_DNS_Message::TYPE_AAAA:
           $Result ['ipv6'] = substr ($Record->getAddress (), 1, -1);
           
           break;
-        case qcEvents_Socket_Stream_DNS_Message::TYPE_NS:
-        case qcEvents_Socket_Stream_DNS_Message::TYPE_CNAME:
-        case qcEvents_Socket_Stream_DNS_Message::TYPE_PTR:
+        case qcEvents_Stream_DNS_Message::TYPE_NS:
+        case qcEvents_Stream_DNS_Message::TYPE_CNAME:
+        case qcEvents_Stream_DNS_Message::TYPE_PTR:
           $Result ['target'] = $Record->getHostname ();
           
           break;
-        case qcEvents_Socket_Stream_DNS_Message::TYPE_MX:
+        case qcEvents_Stream_DNS_Message::TYPE_MX:
           $Result ['pri'] = $Record->getPriority ();
           $Result ['target'] = $Record->getHostname ();
           
           break;
-        case qcEvents_Socket_Stream_DNS_Message::TYPE_SRV:
+        case qcEvents_Stream_DNS_Message::TYPE_SRV:
           $Result ['pri'] = $Record->getPriority ();
           $Result ['weight'] = $Record->getWeight ();
           $Result ['port'] = $Record->getPort ();
           $Result ['target'] = $Record->getHostname ();
           
           break;
-        case qcEvents_Socket_Stream_DNS_Message::TYPE_TXT:
+        case qcEvents_Stream_DNS_Message::TYPE_TXT:
           $Result ['txt'] = $Record->getPayload ();
           $Result ['entries'] = explode ("\n", $Result ['txt']);
           
@@ -409,12 +409,12 @@
      * @param array $Answers
      * @param array $Authorities
      * @param array $Additional
-     * @param qcEvents_Socket_Stream_DNS_Message $wholeMessage (optional)
+     * @param qcEvents_Stream_DNS_Message $wholeMessage (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected function dnsResult ($askedHostname, $Answers, $Authorities, $Additionals, qcEvents_Socket_Stream_DNS_Message $wholeMessage = null) { }
+    protected function dnsResult ($askedHostname, $Answers, $Authorities, $Additionals, qcEvents_Stream_DNS_Message $wholeMessage = null) { }
     // }}}
   }
 

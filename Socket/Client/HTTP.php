@@ -18,10 +18,10 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
 
-  require_once ('qcEvents/Socket/Stream/HTTP.php');
+  require_once ('qcEvents/Stream/HTTP.php');
   require_once ('qcEvents/Socket/Client/HTTP/Request.php');
   
-  class qcEvents_Socket_Client_HTTP extends qcEvents_Socket_Stream_HTTP {
+  class qcEvents_Socket_Client_HTTP extends qcEvents_Stream_HTTP {
     /* Current Request */
     private $Request = null;
     
@@ -190,7 +190,7 @@
     /** 
      * Internal Callback: HTTP-Request was finished
      * 
-     * @param qcEvents_Socket_Stream_HTTP_Header $Header
+     * @param qcEvents_Stream_HTTP_Header $Header
      * @param string $Body
      * 
      * @access protected
@@ -218,13 +218,13 @@
      * Callback: HTTP-Request is finished
      * 
      * @param qcEvents_Socket_Client_HTTP_Request $Request
-     * @param qcEvents_Socket_Stream_HTTP_Header $Header (optional)
+     * @param qcEvents_Stream_HTTP_Header $Header (optional)
      * @param string $Body (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected function httpRequestResult (qcEvents_Socket_Client_HTTP_Request $Request, qcEvents_Socket_Stream_HTTP_Header $Header = null, $Body = null) { }
+    protected function httpRequestResult (qcEvents_Socket_Client_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, $Body = null) { }
     // }}}
   }
 

@@ -18,7 +18,7 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Socket/Stream/HTTP.php');
+  require_once ('qcEvents/Stream/HTTP.php');
   
   /**
    * HTTP-Server
@@ -29,7 +29,7 @@
    * @package qcEvents
    * @revision 03
    **/
-  class qcEvents_Socket_Server_HTTP extends qcEvents_Socket_Stream_HTTP {
+  class qcEvents_Socket_Server_HTTP extends qcEvents_Stream_HTTP {
     /* Maximum numbers of requests for this connection */
     private $maxRequestCount = 50;
     
@@ -71,14 +71,14 @@
     /**
      * Finish a request within a single transmission
      * 
-     * @param qcEvents_Socket_Stream_HTTP_Header $Request
-     * @param qcEvents_Socket_Stream_HTTP_Header $Response
+     * @param qcEvents_Stream_HTTP_Header $Request
+     * @param qcEvents_Stream_HTTP_Header $Response
      * @param string $Body (optional)
      * 
      * @access public
      * @return bool
      **/
-    public function httpdSetResponse (qcEvents_Socket_Stream_HTTP_Header $Request, qcEvents_Socket_Stream_HTTP_Header $Response, $Body = null) {
+    public function httpdSetResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response, $Body = null) {
       // Check if the given request matches the current one
       if ($Request !== $this->Request)
         return false;
@@ -105,13 +105,13 @@
     /**
      * Start a response for a given request
      * 
-     * @param qcEvents_Socket_Stream_HTTP_Header $Request
-     * @param qcEvents_Socket_Stream_HTTP_Header $Response
+     * @param qcEvents_Stream_HTTP_Header $Request
+     * @param qcEvents_Stream_HTTP_Header $Response
      * 
      * @access public
      * @return bool
      **/
-    public function httpdStartResponse (qcEvents_Socket_Stream_HTTP_Header $Request, qcEvents_Socket_Stream_HTTP_Header $Response) {
+    public function httpdStartResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response) {
       // Check if the given request matches the current one
       if ($Request !== $this->Request)
         return false;
@@ -140,13 +140,13 @@
     /**
      * Write futher data for a given request
      * 
-     * @param qcEvents_Socket_Stream_HTTP_Header $Request
+     * @param qcEvents_Stream_HTTP_Header $Request
      * @param string $Body
      * 
      * @access public
      * @return bool
      **/
-    public function httpdWriteResponse (qcEvents_Socket_Stream_HTTP_Header $Request, $Body) {
+    public function httpdWriteResponse (qcEvents_Stream_HTTP_Header $Request, $Body) {
       // Check if the given request matches the current one
       if (($Request !== $this->Request) || !$this->Response)
         return false;
@@ -165,13 +165,13 @@
     /**
      * Finish a given response
      * 
-     * @param qcEvents_Socket_Stream_HTTP_Header $Request
-     * @param qcEvents_Socket_Stream_HTTP_Header $Trailer (optional)
+     * @param qcEvents_Stream_HTTP_Header $Request
+     * @param qcEvents_Stream_HTTP_Header $Trailer (optional)
      * 
      * @access public
      * @return bool
      **/
-    public function httpdFinishResponse (qcEvents_Socket_Stream_HTTP_Header $Request, qcEvents_Socket_Stream_HTTP_Header $Trailer = null) {
+    public function httpdFinishResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Trailer = null) {
       // Check if the given request matches the current one
       if (($Request !== $this->Request) || !$this->Response)
         return false;
@@ -239,11 +239,11 @@
     /**
      * Write out a HTTP-Header
      * 
-     * @param qcEvents_Socket_Stream_HTTP_Header $Header
+     * @param qcEvents_Stream_HTTP_Header $Header
      * @access protected
      * @return void
      **/
-    protected function httpHeaderWrite (qcEvents_Socket_Stream_HTTP_Header $Header) {
+    protected function httpHeaderWrite (qcEvents_Stream_HTTP_Header $Header) {
       // Check if headers have been written already
       if ($this->Response)
         return false;
@@ -274,13 +274,13 @@
     /**
      * Internal Callback: HTTP-Request was received
      * 
-     * @param qcEvents_Socket_Stream_HTTP_Header $Header
+     * @param qcEvents_Stream_HTTP_Header $Header
      * @param string $Body
      * 
      * @access protected
      * @return void
      **/
-    protected final function httpdRequestReady (qcEvents_Socket_Stream_HTTP_Header $Header, $Body) {
+    protected final function httpdRequestReady (qcEvents_Stream_HTTP_Header $Header, $Body) {
       // Discard the header if it is not a request
       if (!$Header->isRequest ())
         return;
@@ -364,13 +364,13 @@
      * 
      * @remark This is only called once, if another request wasn't finished yet new requests are queued
      * 
-     * @param qcEvents_Socket_Stream_HTTP_Header $Header
+     * @param qcEvents_Stream_HTTP_Header $Header
      * @param string $Body
      * 
      * @access protected
      * @return void
      **/
-    protected function httpdRequestReceived (qcEvents_Socket_Stream_HTTP_Header $Header, $Body = null) { }
+    protected function httpdRequestReceived (qcEvents_Stream_HTTP_Header $Header, $Body = null) { }
     // }}}
   }
 

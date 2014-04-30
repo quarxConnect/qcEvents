@@ -369,7 +369,7 @@
       // Perform syncronous lookup
       if ($this->internalResolver === false) {
         // Fire a callback
-        $this->___callback ('socketResolve', array ($Label), array (qcEvents_Socket_Stream_DNS_Message::TYPE_SRV));
+        $this->___callback ('socketResolve', array ($Label), array (qcEvents_Stream_DNS_Message::TYPE_SRV));
         
         // Do the DNS-Lookup
         if (!is_array ($Result = dns_get_record ($Label, DNS_SRV, $AuthNS, $Addtl)) || (count ($Result) == 0))
@@ -382,7 +382,7 @@
       // Perform asyncronous lookup
       require_once ('qcEvents/Socket/Client/DNS.php');
       
-      return $this->socketResolveDo ($Label, null, $Type, qcEvents_Socket_Stream_DNS_Message::TYPE_SRV);
+      return $this->socketResolveDo ($Label, null, $Type, qcEvents_Stream_DNS_Message::TYPE_SRV);
     }
     // }}}
      
@@ -590,9 +590,9 @@
       // Check which types to resolve
       if ($Types === null)
         $Types = array (  
-          qcEvents_Socket_Stream_DNS_Message::TYPE_A,
-          qcEvents_Socket_Stream_DNS_Message::TYPE_AAAA,
-          qcEvents_Socket_Stream_DNS_Message::TYPE_CNAME,
+          qcEvents_Stream_DNS_Message::TYPE_A,
+          qcEvents_Stream_DNS_Message::TYPE_AAAA,
+          qcEvents_Stream_DNS_Message::TYPE_CNAME,
         );
       elseif (!is_array ($Types))
         $Types = array ($Types);

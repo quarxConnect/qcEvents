@@ -18,9 +18,9 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Socket/Stream/HTTP/Header.php');
+  require_once ('qcEvents/Stream/HTTP/Header.php');
   
-  class qcEvents_Socket_Client_HTTP_Request extends qcEvents_Socket_Stream_HTTP_Header {
+  class qcEvents_Socket_Client_HTTP_Request extends qcEvents_Stream_HTTP_Header {
     // Use TLS for this request
     private $useTLS = false;
     
