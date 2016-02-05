@@ -21,7 +21,7 @@
   require_once ('qcEvents/Stream/DNS.php');
   require_once ('qcEvents/Stream/DNS/Header.php');
   
-  class qcEvents_Socket_Server_DNS extends qcEvents_Stream_DNS {
+  class qcEvents_Server_DNS extends qcEvents_Stream_DNS {
     /* IDs of known DNS-Queries */
     private $IDs = array ();
     
@@ -33,11 +33,9 @@
      * @return void
      **/
     function __construct () {
-      // Inherit to our parent
-      call_user_func_array ('parent::__construct', func_get_args ());
-        
       // Register hooks
       $this->addHook ('dnsQuestionReceived', array ($this, 'dnsServerQuery'));
+      $this->addHook ('dnsQuestionTimeout', array ($this, 'dnsServerQueryTimeout'));
     }
     // }}}
     
@@ -51,14 +49,17 @@
      * @return void
      **/
     public function dnsQueryReply (qcEvents_Stream_DNS_Message $Message) {
+      // Retrive the ID of that message
       $ID = $Message->getID ();
       
+      // Make sure we have it queued
       if (!isset ($this->IDs [$ID]))
         return;
       
       unset ($this->IDs [$ID]);
       
-      return $this->dnsSendMessage ($Message);
+      // Write out the reply
+      return $this->dnsStreamSendMessage ($Message);
     }
     // }}}
     
@@ -74,9 +75,6 @@
     protected final function dnsServerQuery (qcEvents_Stream_DNS_Message $Message) {
       // Store the ID as known
       $this->IDs [$Message->getID ()] = $Message;
-      
-      // Setup a timeout for this Query
-      $this->addTimeout (4, false, array ($this, 'dnsServerQueryTimeout'), $Message->getID ());
       
       // Fire a callback
       if (!is_object ($rc = $this->___callback ('dnsQueryReceived', $Message)) || !($rc instanceof qcEvents_Stream_DNS_Message))
@@ -94,19 +92,23 @@
     /** 
      * Generate a timeout for a queued DNS-Query
      * 
-     * @param int $ID
+     * @param qcEvents_DNS_Stream $Stream
+     * @param qcEvents_Stream_DNS_Message $Message
      * 
      * @access public
      * @return void
      **/
-    public final function dnsServerQueryTimeout ($ID) {
+    public final function dnsServerQueryTimeout (qcEvents_Stream_DNS_Message $Message) {
+      // Retrive the ID from that message
+      $ID = $Message->getID ();
+      
       // Check if the query is still queued
       if (!isset ($this->IDs [$ID]))
         return;
       
       // Create a response
       $Response = $this->IDs [$ID]->createClonedResponse ();
-      $Response->setError (qcEvents_Stream_DNS_Header::ERROR_SERVER);
+      $Response->setError (qcEvents_Stream_DNS_Message::ERROR_SERVER);
       
       // Write out the response
       $this->dnsQueryReply ($Response);

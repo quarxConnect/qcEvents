@@ -59,6 +59,18 @@
     }
     // }}}
     
+    // {{{ getLabel
+    /**
+     * Retrive the label of this question
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getLabel () {
+      return $this->Label;
+    }
+    // }}}
+    
     // {{{ setLabel
     /**
      * Set the label for this question
@@ -72,6 +84,18 @@
       $this->Label = $Label;
       
       return true;
+    }
+    // }}}
+    
+    // {{{ getType
+    /**
+     * Retrive the type of this question
+     * 
+     * @access public
+     * @return enum
+     **/
+    public function getType () {
+      return $this->Type;
     }
     // }}}
     

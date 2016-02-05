@@ -18,7 +18,8 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Socket.php');
+  require_once ('qcEvents/Interface/Consumer.php');
+  require_once ('qcEvents/Trait/Hookable.php');
   require_once ('qcEvents/Stream/XML/Node.php');
   
   /**
@@ -30,9 +31,14 @@
    * @package qcEvents
    * @revision 02
    **/
-  class qcEvents_Stream_XML extends qcEvents_Socket {
+  class qcEvents_Stream_XML implements qcEvents_Interface_Consumer {
+    use qcEvents_Trait_Hookable;
+    
     /* Default Class for XML-Nodes */
     const DEFAULT_XML_NODE = 'qcEvents_Stream_XML_Node';
+    
+    /* Stream-Source */
+    private $Source = null;
     
     /* Buffer for unparsed XML */
     private $xmlBuffer = null;
@@ -43,10 +49,17 @@
     /* Current XML-Node */
     private $xmlNodeCurrent = null;
     
-    private $rootLocal = null;
+    /* XML-Node to start the stream from our side */
+    private $xmlRootLocal = null;
+    
+    /* Copy of the remote XML-Node the stream was started with */
     private $xmlRootRemote = null;
     
+    /* Indicator wheter the XML-Stream was started or not */
     private $streamStarted = false;
+    
+    /* Initialization-Callback */
+    private $initCallback = null;
     
     // {{{ sendXML
     /**
@@ -60,7 +73,7 @@
      */
     public function sendXML (qcEvents_Stream_XML_Node $XML, $returnLength = false) {
       // Check if our socket is really open
-      if (!$this->isConnected ())
+      if (!($this->Source instanceof qcEvents_Interface_Sink))
         return false;
       
       // Normalize Array to String   
@@ -71,7 +84,7 @@
       $this->_LastPacket = time ();
       
       // Try to write to the stream
-      if (!$this->write ($Data))
+      if (!$this->Source->write ($Data))
         return false;
       
       if ($returnLength)
@@ -90,8 +103,8 @@
      **/
     public function restartStream () {
       // Check if there is a root-element registered and send it
-      if (is_object ($this->rootLocal))
-        $this->sendXML ($this->rootLocal);
+      if (is_object ($this->xmlRootLocal))
+        $this->sendXML ($this->xmlRootLocal);
       
       // Do not restart the XML-Stream without a root-element
       elseif ($this->streamStarted)
@@ -115,11 +128,8 @@
      * @return bool
      **/
     public function xmlSetRootNode (qcEvents_Stream_XML_Node $xmlNode) {
-      if ($this->isConnected ())
-        return false;
-      
-      $this->rootLocal = $xmlNode;
-      $this->rootLocal->forceOpen ();
+      $this->xmlRootLocal = $xmlNode;
+      $this->xmlRootLocal->forceOpen ();
       
       return true;
     }
@@ -158,7 +168,7 @@
             
             // Use the stuff as value if an XML-Node is available
             if (is_object ($this->xmlNodeCurrent))
-              $this->xmlNodeCurrent->setValue ($val = substr ($buf, 0, $p));
+              $this->xmlNodeCurrent->setValue (html_entity_decode ($val = substr ($buf, 0, $p), ENT_XML1, 'UTF-8'));
             
             // Truncate the buffer
             $buf = substr ($buf, $p);
@@ -210,18 +220,16 @@
                 !$this->xmlNodeCurrent->isOpen () ||
                 !($this->xmlNodeCurrent->getName () == $Name)) {
               $this->___callback ('xmlError');
-              return $this->disconnect ();
+              
+              return $this->close ();
             }
             
             // Close the XML-Node
             $this->xmlNodeCurrent->isOpen (false);
             
-            // Fire callback
-            $this->___callback ('xmlNodeReady', $this->xmlNodeCurrent);
-            
             // Check if the current node was our current root-node
             if ($this->xmlNodeCurrent === $this->xmlNodeRoot)
-              $this->xmlBlockReady ();
+              $this->xmlNodeReady ();
             
             // Switch to its parent
             else
@@ -257,12 +265,19 @@
           $this->xmlBuffer = $buf = substr ($buf, 1);
           
           // Forward the root-object
-          if (is_object ($this->rootLocal) && !is_object ($this->xmlRootRemote)) {
+          if (!is_object ($this->xmlRootRemote)) {
             $this->xmlRootRemote = $this->xmlNodeCurrent;
             $this->xmlNodeCurrent = null;
             $this->xmlNodeRoot = null;   
             
+            // Raise callbacks
+            if ($this->initCallback)
+              $this->___raiseCallback ($this->initCallback [0], $this->initCallback [1], $this, true, $this->initCallback [2]);
+            
             $this->___callback ('xmlReceiveRoot', $this->xmlRootRemote);
+            
+            // Make sure the init-callback is removed
+            $this->initCallback = null;
           }
            
         // Check if the node is closed (and does not carry any contents)
@@ -272,12 +287,9 @@
             $this->xmlNodeCurrent->isOpen (false);
             $this->xmlNodeCurrent->isReady (true);
             
-            // Fire callback
-            $this->___callback ('xmlNodeReady', $this->xmlNodeCurrent);
-            
             // Check if the node is our root-node
             if ($this->xmlNodeCurrent == $this->xmlNodeRoot) {
-              if ($this->xmlBlockReady ())
+              if ($this->xmlNodeReady ())
                 continue;
             
             // Move to parent node
@@ -396,14 +408,14 @@
     }
     // }}}
     
-    // {{{ xmlBlockReady
+    // {{{ xmlNodeReady
     /**
-     * An XML-Block was parsed completly any may be forwarded
+     * An XML-Node was parsed completly any may be forwarded
      * 
      * @access private
      * @return void
      **/
-    private function xmlBlockReady () {
+    private function xmlNodeReady () {
       // Remember the node and reset
       $xmlNode = $this->xmlNodeRoot;
       $this->xmlNodeRoot = null;   
@@ -414,42 +426,175 @@
     }
     // }}}
     
-    // {{{ socketConnected
+    // {{{ consume
     /**
-     * Occupied Callback: Start the XML-Stream when the connection becomes ready
+     * Consume a set of data
+     * 
+     * @param mixed $Data
+     * @param qcEvents_Interface_Source $Source
      * 
      * @access public
      * @return void
      **/
-    protected final function socketConnected () {
-      $this->write ('<?xml version="1.0"?>' . "\n");
+    public function consume ($Data, qcEvents_Interface_Source $Source) {
+      if ($Source === $this->Source)
+        $this->xmlBufferInsert ($Data);
+    }
+    // }}}
+    
+    // {{{ close
+    /**
+     * Close this event-interface
+     * 
+     * @param callable $Callback (optional) Callback to raise once the interface is closed
+     * @param mixed $Private (optional) Private data to pass to the callback
+     * 
+     * @access public
+     * @return void  
+     **/
+    public function close (callable $Callback = null, $Private = null) {
+      // Try to gracefully close the stream
+      if ($this->xmlRootLocal && $this->Source)
+        $this->Source->write ('</' . $this->xmlRootLocal->getName () . '>' . "\r\n", function (qcEvents_Interface_Source $Source) use ($Callback, $Private) {
+          $Source->close (function () use ($Callback, $Private) {
+            $this->___raiseCallback ($Callback, $Private);
+            $this->___callback ('eventClosed');
+          });
+        });
+      
+      // Just close the stream
+      elseif ($this->Source)
+        $this->Source->close (function () use ($Callback, $Private) {
+          $this->___raiseCallback ($Callback, $Private);
+          $this->___callback ('eventClosed');
+        });
+      
+      // Just raise the callback
+      elseif ($this->streamStarted) {
+        $this->___raiseCallback ($Callback, $Private);
+        $this->___callback ('eventClosed');
+      }
+      
+      // Reset our state   
+      $this->resetState ();
+    }
+    // }}}
+    
+    // {{{ initConsumer
+    /**
+     * Setup ourself to consume data from a source
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be raised in the form of
+     *  
+     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *    
+     * @access public
+     * @return callable
+     **/
+    public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+      // Reset our state
+      $this->resetState ();
+      
+      // Write out the first XML-Data
+      if ($Source instanceof qcEvents_Interface_Sink)
+        $Source->write ('<?xml version="1.0"?>' . "\n");
+      
+      // Assign the source
+      $this->Source = $Source;
+      
+      // Perform an internal restart
       $this->restartStream ();
+      
+      // Fire callback
+      $this->___callback ('eventPiped', $Source);
+      
+      // Register Init-Callback
+      $this->initCallback = array ($Callback, $Source, $Private);
     }
     // }}}
     
-    // {{{ socketReceive
+    // {{{ initStreamConsumer
     /**
-     * Occupied Callback: Invoked whenever incoming data is received
+     * Setup ourself to consume data from a stream
      * 
-     * @param string $Data
+     * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
      * 
-     * @access protected
-     * @return void
+     * The callback will be raised in the form of
+     * 
+     *   function (qcEvents_Interface_Stream $Source, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     * 
+     * @access public
+     * @return callable
      **/
-    protected final function socketReceive ($Data) {
-      $this->xmlBufferInsert ($Data);
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+      // Reset our state   
+      $this->resetState ();
+      
+      // Write out the first XML-Data
+      $Source->write ('<?xml version="1.0"?>' . "\n");
+      
+      // Assign the source
+      $this->Source = $Source;
+      
+      // Perform an internal restart
+      $this->restartStream ();
+      
+      // Fire callback
+      $this->___callback ('eventPipedStream', $Source);
+      
+      // Register Init-Callback
+      $this->initCallback = array ($Callback, $Source, $Private);
     }
     // }}}
     
-    // {{{ socketReadable
+    // {{{ deinitConsumer
     /**
-     * Occupied Callback: Incoming data is available on underlying buffer
+     * Callback: A source was removed from this sink
      * 
-     * @access protected
+     * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be raised in the form of 
+     *  
+     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     * 
+     * @access public
+     * @return void  
+     **/
+    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+      // Reset our state   
+      $this->resetState ();
+      
+      // Fire callback
+      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___callback ('eventUnpiped', $Source);
+    }
+    // }}}
+    
+    // {{{ resetState
+    /**
+     * Reset our internal state
+     * 
+     * @access private
      * @return void
      **/
-    protected final function socketReadable () {
-      $this->xmlBufferInsert ($this->readBuffer ());
+    private function resetState () {
+      if ($this->initCallback)
+        $this->___raiseCallback ($this->initCallback [0], $this->initCallback [1], $this, false, $this->initCallback [2]);
+      
+      $this->xmlBuffer = '';
+      $this->xmlNodeRoot = null;
+      $this->xmlNodeCurrent = null;
+      $this->xmlRootRemote = null;
+      $this->streamStarted = false;
+      $this->initCallback = null;
     }
     // }}}
     
@@ -503,6 +648,16 @@
     // }}}
     
     
+    // {{{ eventClosed
+    /**
+     * Callback: The XML-Stream was closed
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function eventClosed () { }
+    // }}}
+    
     // {{{ xmlStreamStarted
     /**
      * Callback: XML-Stream was started
@@ -510,7 +665,7 @@
      * @access protected
      * @return void
      **/
-    protected function xmlStreamStarted () { echo 'XML-Stream: Started', "\n"; }
+    protected function xmlStreamStarted () { }
     // }}}
     
     // {{{ xmlError
@@ -520,7 +675,7 @@
      * @access protected
      * @return void
      **/
-    protected function xmlError () { echo 'XML-Stream: Error', "\n"; }
+    protected function xmlError () { }
     // }}}
     
     // {{{ xmlNodeAcceptRoot
@@ -532,7 +687,7 @@
      * @access protected
      * @return bool
      **/
-    protected function xmlNodeAcceptRoot (qcEvents_Stream_XML_Node $xmlNode) { echo 'XML-Stream: Accept ', $xmlNode->getName (), ' as root', "\n"; }
+    protected function xmlNodeAcceptRoot (qcEvents_Stream_XML_Node $xmlNode) { }
     // }}}
     
     // {{{ xmlNodeStart
@@ -544,19 +699,7 @@
      * @access protected
      * @return void
      **/
-    protected function xmlNodeStart (qcEvents_Stream_XML_Node $xmlNode) { echo 'XML-Stream: Start parsing ', $xmlNode->getName (), "\n"; }
-    // }}}
-    
-    // {{{ xmlNodeReady
-    /**
-     * Callback: A single XML-Node was parsed including its children
-     * 
-     * @param qcEvents_Stream_XML_Node $xmlNode
-     * 
-     * @access protected
-     * @return void
-     **/
-    protected function xmlNodeReady (qcEvents_Stream_XML_Node $xmlNode) { echo 'XML-Stream: ', $xmlNode->getName (), ' ready', "\n"; }
+    protected function xmlNodeStart (qcEvents_Stream_XML_Node $xmlNode) { }
     // }}}
     
     // {{{ xmlReceiveRoot
@@ -568,7 +711,7 @@
      * @access protected
      * @return void
      **/
-    protected function xmlReceiveRoot (qcEvents_Stream_XML_Node $xmlNode) { echo 'XML-Stream: ', $xmlNode->getName (), ' is root-node of stream', "\n"; }
+    protected function xmlReceiveRoot (qcEvents_Stream_XML_Node $xmlNode) { }
     // }}}
     
     // {{{ xmlReceiveNode
@@ -580,7 +723,7 @@
      * @access protected
      * @return void
      **/
-    protected function xmlReceiveNode (qcEvents_Stream_XML_Node $xmlNode) { echo 'XML-Stream: ', $xmlNode->getName (), ' received', "\n"; }
+    protected function xmlReceiveNode (qcEvents_Stream_XML_Node $xmlNode) { }
     // }}}
   }
 

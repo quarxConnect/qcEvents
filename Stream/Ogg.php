@@ -18,7 +18,8 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Event.php');
+  require_once ('qcEvents/Interface/Consumer.php');
+  require_once ('qcEvents/Trait/Hookable.php');
   
   /** 
    * Ogg Streams
@@ -28,10 +29,15 @@
    * @class qcEvents_Stream_Ogg
    * @extends qcEvents_Event
    * @package qcEvents
-   * @revision 01
+   * @revision 02
    * @author Bernd Holzmueller <bernd@quarxconnect.de>
    **/
-  class qcEvents_Stream_Ogg extends qcEvents_Event {
+  class qcEvents_Stream_Ogg implements qcEvents_Interface_Consumer {
+    use qcEvents_Trait_Hookable;
+    
+    /* Quirk-Mode */
+    private $tolerateQuirks = false;
+    
     /* Perform CRC-Checking */
     private $checkCRC = true;
     
@@ -47,28 +53,52 @@
     /* Last parsed packet was a stream that started */
     private $streamAdded = false;
     
-    // {{{ readEvent
+    /* Initialization-Callback */
+    private $initCallback = null;
+    
+    // {{{ consume
     /**
-     * Internal Callback: Data is waiting to be read
+     * Consume a set of data
+     * 
+     * @param mixed $Data
+     * @param qcEvents_Interface_Source $Source
      * 
      * @access public
      * @return void
      **/
-    public function readEvent () {
-      // Try to read from our stream
-      if ((($Data = fread ($this->getFD (), 4096)) === false) || (strlen ($Data) == 0)) {
-        if (feof ($this->getFD ())) {
-          $this->___callback ('oggFinished');
-          $this->unbind ();
-        }
-        
-        return;
-      }
-      
+    public function consume ($Data, qcEvents_Interface_Source $Source) {
       // Append to internal buffer
       $this->Buffer .= $Data;
       $l = strlen ($this->Buffer);
       $p = 0;
+      unset ($Data);
+      
+      // Check if we are initializing
+      if ($this->initCallback) {
+        // Check if the first bytes denote an Ogg-Stream-Packet
+        $Status = (substr ($this->Buffer, 0, 4) == 'OggS');
+        
+        // Check wheter we should accept quirks
+        if (!$Status && $this->tolerateQuirks) {
+          // Check if there is a stream-header in the buffer (but not at start)
+          if (($p = strpos ($this->Buffer, 'OggS', 1)) === false)
+            return;
+          
+          // Override the old status
+          $Status = true;
+        }
+        
+        // Raise the initial callback
+        if ($Status)
+          $this->___raiseCallback ($this->initCallback [0], $this->initCallback [1], $this, $Status, $this->initCallback [2]);
+        else
+          $this->deinitConsumer ($this->initCallback [1]);
+        
+        $this->initCallback = null;
+        
+        if (!$Status)
+          return;
+      }
       
       while (($p = strpos ($this->Buffer, 'OggS', $p)) !== false) {
         // Read the Ogg-Header
@@ -239,6 +269,27 @@
     }
     // }}}
     
+    // {{{ close
+    /**
+     * Close this event-interface
+     * 
+     * @param callable $Callback (optional) Callback to raise once the interface is closed
+     * @param mixed $Private (optional) Private data to pass to the callback
+     * 
+     * @access public
+     * @return void
+     **/
+    public function close (callable $Callback = null, $Private = null) {
+      # TODO: Unpipe from our parent source/stream
+      
+      // Raise a callback for this
+      $this->___callback ('oggFinished');
+      
+      // Reset our state
+      $this->resetState ();
+    }
+    // }}}
+    
     // {{{ crc
     /**
      * Calculate Ogg-CRC
@@ -323,6 +374,104 @@
         $reg = ($reg << 8) ^ $lookup [(($reg >> 24) & 0xff) ^ ord ($Data [$i])];
       
       return $reg;
+    }
+    // }}}
+    
+    // {{{ initConsumer
+    /**
+     * Setup ourself to consume data from a source
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be raised in the form of
+     * 
+     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     * 
+     * @access public
+     * @return callable
+     **/
+    public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+      // Reset ourself first
+      $this->resetState ();
+      
+      // Raise a callback for this
+      $this->___callback ('eventPiped', $Source);
+      
+      // Store the requested callback
+      $this->initCallback = array ($Callback, $Source, $Private);
+    }
+    // }}}
+    
+    // {{{ initStreamConsumer
+    /**
+     * Setup ourself to consume data from a stream
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be raised in the form of
+     * 
+     *   function (qcEvents_Interface_Stream $Source, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     * 
+     * @access public
+     * @return callable
+     **/
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+      // Reset ourself first
+      $this->resetState ();
+      
+      // Raise a callback for this
+      $this->___callback ('eventPipedStream', $Source);
+      
+      // Store the requested callback
+      $this->initCallback = array ($Callback, $Source, $Private);
+    }
+    // }}}
+    
+    // {{{ deinitConsumer
+    /** 
+     * Callback: A source was removed from this sink
+     *    
+     * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be raised in the form of 
+     *  
+     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     * 
+     * @access public
+     * @return void
+     **/  
+    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+      // Reset our state   
+      $this->resetState ();
+      
+      // Raise a callback for this
+      $this->___callback ('eventUnpiped', $Source);
+      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+    } 
+    // }}}
+    
+    // {{{ resetState
+    /**
+     * Reset our internal state
+     * 
+     * @access private
+     * @return void
+     **/
+    private function resetState () {
+      if ($this->initCallback)
+        $this->___raiseCallback ($this->initCallback [0], $this->initCallback [1], $this, false, $this->initCallback [2]);
+      
+      $this->initCallback = null;
+      $this->Buffer = '';
+      $this->Streams = array ();
+      $this->streamGroup = array ();
+      $this->streamAdded = false;
     }
     // }}}
     

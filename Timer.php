@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Timed Events
-   * Copyright (C) 2012 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,7 +18,10 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Event.php');
+  require_once ('qcEvents/Interface/Timer.php');
+  require_once ('qcEvents/Trait/Timer.php');
+  require_once ('qcEvents/Trait/Hookable.php');
+  require_once ('qcEvents/Trait/Parented.php');
   
   /**
    * Timer Event
@@ -27,74 +30,33 @@
    * 
    * @class qcEvents_Timer
    * @package qcEvents
-   * @revision 01
+   * @revision 02
    **/
-  class qcEvents_Timer extends qcEvents_Event {
-    private $Timeout = 0;
-    private $Repeat = false;
+  class qcEvents_Timer implements qcEvents_Interface_Timer {
+    use qcEvents_Trait_Timer, qcEvents_Trait_Hookable, qcEvents_Trait_Parented;
     
-    // {{{ __construct
+    // {{{ raiseTimer
     /**
-     * Create a new timer-event
+     * Callback: A timer-event was raised
      * 
-     * @param int $Timeout (optional) Timeout in seconds
-     * @param bool $Repeat (optional) Repeat this event continously
-     * @param callback $Callback (optional)
-     * 
-     * @access friendly
+     * @access public
      * @return void
      **/
-    function __construct ($Timeout = null, $Repeat = false, $Callback = null) {
-      // Store the callback
-      if ($Callback !== null)
-        $this->setCallback ($Callback);
-      
-      // Set the timeout
-      if ($Timeout !== null)
-        $this->setTimeout ($Timeout, $Repeat);
+    public function raiseTimer () {
+      $this->___callback ('eventTimer');
     }
     // }}}
     
-    // {{{ setTimeout
-    /**
-     * Set a timeout for this event
-     * 
-     * @param int $Timeout
-     * @param bool $Repeat (optional) Repeat this event
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function setTimeout ($Timeout, $Repeat = false) {
-      // Store these values internally
-      $this->Timeout = $Timeout;
-      $this->Repeat = $Repeat;
-      
-      if (!is_object ($P = $this->getHandler ()))
-        return true;
-      
-      return $P->addTimeout ($this, $this->Timeout, $this->Repeat);
-    }
-    // }}}
     
-    // {{{ setHandler
+    // {{{ eventTimer
     /**
-     * Store handle of our event-base
+     * Callback: A timer-event was raised
      * 
-     * @param object $Handler
-     * 
-     * @access public
-     * @return bool  
+     * @access protected
+     * @return void
      **/
-    public function setHandler ($Handler, $markBound = false) {
-      // Forward the event to our parent
-      if (!parent::setEventBase ($Handler, $markBound))
-        return false;
-      
-      // Make sure that we set any timeouts
-      return $this->setTimeout ($this->Timeout, $this->Repeat);
-    }
+    protected function eventTimer () { }
     // }}}
-  }
+  }    
 
 ?>

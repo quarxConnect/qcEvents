@@ -1,9 +1,9 @@
 <?PHP
 
   /**
-   * qcEvents - Base Event Handler
-   * Copyright (C) 2012 Bernd Holzmueller <bernd@quarxconnect.de>
-   *
+   * qcEvents - Event-Loop
+   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
@@ -13,52 +13,36 @@
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   *
+   * 
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Interface.php');
-  
-  /**
-   * Event-Base
-   * ----------
-   * Main-Interface to our event-handler
-   * 
-   * @class qcEvents_Base
-   * @package qcEvents
-   * @revision 01
-   **/
   class qcEvents_Base {
-    // libEvent-Support
-    private $evBase = null;
+    /* Event-Types */
+    const EVENT_READ = 0;
+    const EVENT_WRITE = 1;
+    const EVENT_ERROR = 2;
+    const EVENT_TIMER = 3;
     
-    /* List of all events on this handler */
+    /* All events of this base */
     private $Events = array ();
     
-    /* List of events that should run on the next iteration */
-    private $forceEvents = array ();
-    
-    /* Queued FDs */
+    /* Stored FDs for event-loop */
     private $readFDs = array ();
     private $writeFDs = array ();
     private $errorFDs = array ();
-    private $eventFDs = array ();
-    private $fdMap = array ();
+    private $fdOwner = array ();
     
-    // Loop-Handling
-    private $onLoop = false;
-    private $loopBreak = false;
-    private $loopExit = false;
-    private $loopContinue = false;
-    private $loopEmpty = false;
+    /* Pending forced events */
+    private $forcedEvents = array ();
     
-    // Signal-Handling
-    private $handleSignals = null;
+    /* Timer-Events */
+    private $Timers = array ();
+    private $TimerNext = null;
     
-    // Timeouts
-    private $timeoutNext = 0;
-    private $timeoutEvents = array ();
+    /* Loop-State */
+    private $loopState = -1;
     
     // {{{ singleton
     /**
@@ -77,202 +61,125 @@
     }
     // }}}
     
-    // {{{ __construct
-    /**
-     * Create a new event-base
-     * 
-     * @access friendly
-     * @return void
-     **/
-    function __construct () {
-      // Handle libEvent-Support
-      if (self::checkLibEvent () && !is_resource ($this->evBase = event_base_new ()))
-        throw new Exception ("Could not create event-base");
-      
-      // Check if we may handle signals
-      if (!($this->handleSignals = extension_loaded ('pcntl')))
-        trigger_error ('No PCNTL Extension found, using manual timer-events', E_USER_WARNING);
-    }
-    // }}}
     
     // {{{ addEvent
     /**
-     * Append an event to our queue
+     * Add an event to our event-loop
      * 
-     * @param object $Event
+     * @param qcEvents_Interface_Loop $Event
      * 
      * @access public
      * @return bool
      **/
-    public function addEvent ($Event) {
-      // Make sure this is a valid Event
-      if (!($Event instanceof qcEvents_Interface))
-        return false;
-      
-      // Remove the event from its previous base
-      $Index = false;
-      
-      if ($Event->haveEventBase ()) {
-        if ($Event->getEventBase () === $this)
-          $Index = array_search ($Event, $this->Events, true);
-        else
-          $Event->unbind ();
+    public function addEvent (qcEvents_Interface_Loop $Event) {
+      // Check if the event is already assigned to an event-loop
+      if (is_object ($Base = $Event->getEventBase ()) && ($Base instanceof qcEvents_Base)) {
+        if ($Base !== $this)
+          $Base->removeEvent ($Event);
+        
+        elseif (in_array ($Event, $this->Events, true))
+          return $this->updateEvent ($Event);
       }
       
-      // Append the Event to our ones
-      if ($Index === false) {
-        $this->Events [] = $Event;
-        
-        // Register ourself on the event   
-        $Event->setEventBase ($this, true);
-        
-        // Retrive internal ID of this event
-        $Index = array_search ($Event, $this->Events, true);
-      }
+      // Set ourself as event-loop on the event
+      $Event->setEventBase ($this);
       
-      if (is_resource ($fd = $Event->getFD ()))
-        $this->updateEventFD ($Index, $fd);
+      // Append to local storage
+      $this->Events [] = $Event;
       
-      return true;
+      // Treat as an update
+      return $this->updateEvent ($Event);
     }
     // }}}
     
     // {{{ updateEvent
     /**
-     * Update the watched events for a given handle
+     * Update the FDs of an event
      * 
-     * @param object $Event
-     * 
-     * @access public
-     * @return void
-     **/
-    public function updateEvent ($Event) {
-      // Lookup the event
-      if (($key = array_search ($Event, $this->Events)) === false)
-        return false;
-      
-      return $this->updateEventFD ($key);
-    }
-    // }}}
-    
-    // {{{ updateEventFD
-    /**
-     * Update the event-watchers for a given event
-     * 
-     * @param int $Index
-     * @param resource $fd (optional)
-     * 
-     * @access private
-     * @return void
-     **/
-    private function updateEventFD ($Index, $fd = null) {
-      // Make sure the event is available
-      if (!isset ($this->Events [$Index]))
-        return false;
-      
-      // Make sure we have an fd or clean up and exit
-      if (!is_resource ($fd) && !is_resource ($fd = $this->Events [$Index]->getFD ())) {
-        if (isset ($this->eventFDs [$Index]) && is_resource ($this->eventFDs [$Index]))
-          event_del ($this->eventFDs [$Index]);
-        
-        // Sanity-Check FD-Map
-        foreach (array_keys ($this->fdMap, $Index) as $k)
-          unset ($this->fdMap [$k]);
-        
-        // Remove all stored FDs
-        unset ($this->readFDs [$Index], $this->writeFDs [$Index], $this->errorFDs [$Index], $this->eventFDs [$Index]);
-        
-        return false;
-      }
-      
-      // Handle libEvent-Support
-      if (self::checkLibEvent ()) {
-        // Make sure we have an libevent-Event available
-        if ((!isset ($this->eventFDs [$Index]) || !is_resource ($this->eventFDs [$Index])) &&
-            !($this->eventFDs [$Index] = event_new ()))
-          return false;
-        
-        // Generate flags for libevent
-        $flags = ($this->Events [$Index]->watchRead () ? EV_READ : 0) |
-                 ($this->Events [$Index]->watchWrite () ? EV_WRITE : 0) |
-                 EV_PERSIST;
-        
-        // Update the Event
-        event_set ($this->eventFDs [$Index], $fd, $flags, array ($this, 'libeventHandler'), $Index);
-        
-      // Handle our own implementation
-      } else {
-        if ($this->Events [$Index]->watchRead ())
-          $this->readFDs [$Index] = $fd;
-        else
-          unset ($this->readFDs [$Index]);
-        
-        if ($this->Events [$Index]->watchWrite ())
-          $this->writeFDs [$Index] = $fd;
-        else
-          unset ($this->writeFDs [$Index]);
-        
-        if ($this->Events [$Index]->watchError ())
-          $this->errorFDs [$Index] = $fd;
-        else
-          unset ($this->errorFDs [$Index]);
-        
-        $this->fdMap [(int)$fd] = $Index;
-      }
-    }
-    // }}}
-    
-    // {{{ removeEvent
-    /**
-     * Remove an event from our list of events
-     * 
-     * @param object $Event
+     * @param qcEvents_Interface_Loop $Event
      * 
      * @access public
-     * @return bool - Always true ;)
+     * @return bool
      **/
-    public function removeEvent ($Event) {
-      // Lookup the event
-      if (($key = array_search ($Event, $this->Events)) === false)
-        return true;
+    public function updateEvent (qcEvents_Interface_Loop $Event) {
+      // Check if this event is on our collection
+      if (($Index = array_search ($Event, $this->Events, true)) === false)
+        return false;
       
-      // Remove all references
-      if (isset ($this->eventFDs [$key]) && is_resource ($this->eventFDs [$key]))
-        event_del ($this->eventFDs [$key]);
+      // Remove error-fds and stale owner-ships (maybe we may skip this for performance-reasons)
+      foreach (array_keys ($this->fdOwner, $Event, true) as $Key)
+        unset ($this->fdOwner [$Key], $this->errorFDs [$Key]);
       
-      unset ($this->Events [$key], $this->readFDs [$key], $this->writeFDs [$key], $this->errorFDs [$key], $this->eventFDs [$key]);
+      // Retrive the FDs
+      if (is_resource ($readFD = $Event->getReadFD ())) {
+        $this->readFDs [$Index] = $this->errorFDs [(int)$readFD] = $readFD;
+        $this->fdOwner [(int)$readFD] = $Event;
+      } else
+        unset ($this->readFDs [$Index]);
       
-      foreach (array_keys ($this->fdMap, $key) as $k)
-        unset ($this->fdMap [$k]);
-      
-      // Remove any queued timers
-      foreach ($this->timeoutEvents as $TI=>$Events) {
-        foreach ($Events as $EI=>$EvInfo)
-          if ($EvInfo [0] == $Event) {
-            unset ($this->timeoutEvents [$TI][$EI]);
-            
-            if (count ($this->timeoutEvents [$TI]) == 0) {
-              unset ($this->timeoutEvents [$TI]);
-              
-              if ($this->timeoutNext == $TI)
-                $this->timeoutNext = null;
-            }
-          }
-      }
-      
-      if ((count ($this->timeoutEvents) > 0) && ($this->timeoutNext === null))
-        $this->setTimer ();
-      
-      // Tell the event that it has to unbind
-      $Event->unbind ();
+      if (is_resource ($writeFD = $Event->getWriteFD ())) {
+        $this->writeFDs [$Index] = $this->errorFDs [(int)$writeFD] = $writeFD;
+        $this->fdOwner [(int)$writeFD] = $Event;
+      } else
+        unset ($this->writeFDs [$Index]);
       
       return true;
     }
     // }}}
     
+    // {{{ removeEvent
+    /**
+     * Remove an event from this event-loop
+     * 
+     * @access public
+     * @return void
+     **/
+    public function removeEvent (qcEvents_Interface_Loop $Event) {
+      // Check if this event is on our collection
+      if (($Index = array_search ($Event, $this->Events, true)) === false)
+        return false;
+      
+      // Remove the references
+      foreach (array_keys ($this->fdOwner, $Event, true) as $Key)
+        unset ($this->fdOwner [$Key], $this->errorFDs [$Key]);
+      
+      unset ($this->Events [$Index]);
+      unset ($this->readFDs [$Index], $this->writeFDs [$Index]);
+      
+      // Check timers
+      foreach ($this->Timers as $s=>$Timers) {
+        foreach ($Timers as $m=>$Events) {
+          foreach ($Events as $i=>$ev)
+            if ($ev [0] === $Event)
+              unset ($this->Timers [$s][$m][$i]);
+          
+          if (count ($this->Timers [$s][$m]) == 0)
+            unset ($this->Timers [$s][$m]);
+        }
+        
+        if (count ($this->Timers [$s]) == 0)
+          unset ($this->Timers [$s]);
+      }
+    }
+    // }}}
+    
+    // {{{ haveEvent 
+    /**
+     * Check if we have a given event registered
+     * 
+     * @param qcEvents_Interface_Loop $Event
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function haveEvent (qcEvents_Interface_Loop $Event) {
+      return in_array ($Event, $this->Events, true);
+    }
+    // }}}
+    
     // {{{ getEvents
     /**
-     * Retrive all registered events for this handler
+     * Retrive all events from this base
      * 
      * @access public
      * @return array
@@ -282,519 +189,361 @@
     }
     // }}}
     
-    // {{{ haveEvents
+    // {{{ forceEventRaise
     /**
-     * Check if there are events registered on this base
+     * Force the raise of a given event on next iteration of event-loop
+     * 
+     * @param qcEvents_Interface_Loop $Event
+     * @param enum $evType
      * 
      * @access public
      * @return bool
      **/
-    public function haveEvents () {
-      return ((count ($this->readFDs) > 0) || (count ($this->writeFDs) > 0) && (count ($this->errorFDs) > 0));
-    }
-    // }}}
-    
-    // {{{ quitOnEmpty
-    /**
-     * Leave the loop if there are no events on the queue
-     * 
-     * @param bool $Trigger (optional) Set the condition
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function quitOnEmpty ($Trigger = null) {
-      if ($Trigger === null)
-        return !$this->loopEmpty;
-      
-      $this->loopEmpty = !$Trigger;
+    public function forceEventRaise (qcEvents_Interface_Loop $Event, $evType) {
+      if ($evType == self::EVENT_READ)
+        $this->forcedEvents [] = array ($Event, 'raiseRead');
+      elseif ($evType == self::EVENT_WRITE)
+        $this->forcedEvents [] = array ($Event, 'raiseWrite');
+      elseif ($evType == self::EVENT_ERROR)
+        $this->forcedEvents [] = array ($Event, 'raiseError');
+      elseif (($evType == self::EVENT_TIMER) && ($Event instanceof qcEvents_Interface_Timer))
+        $this->forcedEvents [] = array ($Event, 'raiseTimer');
+      else
+        return false;
       
       return true;
     }
     // }}}
     
-    // {{{ haveEvent
+    // {{{ addTimer
     /**
-     * Check if we have a given event registered
+     * Setup a new timer
      * 
-     * @param object $Event
+     * @param qcEvents_Interface_Timer $Event
+     * @param mixed $Timeout The timeout to wait (may be in seconds or array (seconds, microseconds))
+     * @param bool $Repeat (optional) Repeat this event
+     * @param callable $Callback (optional) Don't run raiseTimer() but the given callback
+     * @param mixed $Private (optional) Pass this parameter to the given callback
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function haveEvent ($Event) {
-      return in_array ($Event, $this->Events, true);
+    public function addTimer (qcEvents_Interface_Timer $Event, $Timeout, $Repeat = false, callable $Callback = null, $Private = null) {
+      // Make sure we don't wast space if no callback is given
+      if ($Callback === null)
+        $Private = null;
+      
+      // Get the current time
+      $Now = $this->getTimer ();
+      
+      // Calculate the time of the event
+      $Then = $Now;
+      $Then [0] += (is_array ($Timeout) ? $Timeout [0] : $Timeout);
+      $Then [1] += (is_array ($Timeout) ? $Timeout [1] : 0);
+      
+      while ($Then [1] > 1000000) {
+        $Then [0]++;
+        $Then [1] -= 1000000;
+      }
+      
+      // Enqueue the event
+      if (!isset ($this->Timers [$Then [0]])) {
+        $this->Timers [$Then [0]] = array ($Then [1] => array (array ($Event, $Timeout, $Repeat, $Callback, $Private)));
+        
+        ksort ($this->Timers, SORT_NUMERIC);
+      } elseif (!isset ($this->Timers [$Then [0]][$Then [1]])) {
+        $this->Timers [$Then [0]][$Then [1]] = array (array ($Event, $Timeout, $Repeat, $Callback, $Private));
+        
+        ksort ($this->Timers [$Then [0]], SORT_NUMERIC);
+      } else
+        $this->Timers [$Then [0]][$Then [1]][] = array ($Event, $Timeout, $Repeat, $Callback, $Private);
+      
+      // Set the next timer
+      if (($this->TimerNext === null) ||
+          ($this->TimerNext [0] > $Then [0]) ||
+          (($this->TimerNext [0] == $Then [0]) && ($this->TimerNext [1] > $Then [1])))
+        $this->TimerNext = $Then;
+    }
+    // }}}
+    
+    // {{{ clearTimer
+    /**
+     * Remove a pending timer
+     * 
+     * @param qcEvents_Interface_Timer $Event
+     * @param mixed $Timeout The timeout to wait (may be in seconds or array (seconds, microseconds))
+     * @param bool $Repeat (optional) Repeat this event
+     * @param callable $Callback (optional) Don't run raiseTimer() but the given callback
+     * @param mixed $Private (optional) Pass this parameter to the given callback
+     * 
+     * @access public
+     * @return void
+     **/
+    public function clearTimer (qcEvents_Interface_Timer $Event, $Timeout, $Repeat = false, callable $Callback = null, $Private = null) {
+      foreach ($this->Timers as $Sec=>$Timers) {
+        foreach ($Timers as $Usec=>$Events) {
+          foreach ($Events as $ID=>$Spec)
+            if (($Spec [0] === $Event) && ($Spec [1] === $Timeout) && ($Spec [2] === $Repeat) && ($Spec [3] === $Callback) && ($Spec [4] === $Private))
+              unset ($this->Timers [$Sec][$Usec][$ID]);
+          
+          if (count ($this->Timers [$Sec][$Usec]) == 0)
+            unset ($this->Timers [$Sec][$Usec]);
+        }
+        
+        if (count ($this->Timers [$Sec]) == 0)
+          unset ($this->Timers [$Sec]);
+      }
     }
     // }}}
     
     // {{{ loop
     /**
-     * Enter the mainloop
+     * Enter the event-loop
+     * 
+     * @param bool $Single (optional) Just process all pending events once
      * 
      * @access public
-     * @return void
+     * @return bool
      **/
-    public function loop () {
-      // Remember that we are on loop
-      $this->onLoop = true;
-      $this->loopContinue = true;
-      
-      // Check if there are any events queued
-      if ((count ($this->readFDs) == 0) && (count ($this->writeFDs) == 0) && (count ($this->errorFDs) == 0) && (count ($this->timeoutEvents) == 0)) {
-        if (!$this->loopEmpty)
-          return;
+    public function loop ($Single = false) {
+      // Don't enter the loop twice
+      if (($this->loopState >= 0) && !$Single) {
+        trigger_error ('Do not enter the loop twice');
         
-        trigger_error ('Entering Event-Loop without FDs');
+        return false;
       }
       
-      // Handle libEvent-Support
-      if (self::checkLibEvent ()) {
-        $rc = 0;
+      // Reset the loop-state
+      $this->loopState = ($Single ? 1 : 0);
+      
+      // Main-Loop
+      do {
+        // Run forced events first
+        $evForced = $this->forcedEvents;
+        $this->forcedEvents = array ();
         
-        while ($this->loopContinue && ($rc == 0)) {
-          // Reset loop-status
-          $this->loopContinue = false;
+        foreach ($evForced as $ev) {
+          call_user_func ($ev);
           
-          // Run queued events first
-          $this->runQueuedEvents ();
-          
-          // Enter the loop
-          $rc = event_base_loop ($this->evBase);
+          if ($this->loopState > 1)
+            break (2);
         }
         
-        $this->onLoop = false;
+        // Check if there are queued event-handlers
+        if ((count ($this->fdOwner) == 0) && (count ($this->Timers) == 0))
+          break;
         
-        return ($rc == 0);
-      }
-      
-      $this->loopExit = false;
-      $this->loopBreak = false;
-      $rc = null;
-      
-      while ($this->loopContinue) {
-        // Reset loop-status
-        $this->loopContinue = false;
+        // Copy the fdSets (We do the copy because the arrays will be modified)
+        $readFDs = $this->readFDs;
+        $writeFDs = $this->writeFDs;
+        $errorFDs = $this->errorFDs;
         
-        // Run queued events first
-        $this->runQueuedEvents ();
+        // Check wheter to select or just wait
+        $usecs = $this->getTimerWaitTime ();
         
-        // Enter the loop
-        while (!($this->loopExit || $this->loopBreak))
-          if (($rc = self::loopOnceInternal (100000)) === false)
-            break;
-      }
-      
-      $this->onLoop = false;
-      
-      return $rc;
-    }
-    // }}}
-    
-    // {{{ loopOnce
-    /**
-     * Run the main-loop once
-     * 
-     * @param int $Timeout (optional) Timeout for our own implementation
-     * 
-     * @access public
-     * @return void
-     **/
-    public function loopOnce ($Timeout = 250) {
-      // Run queued events first
-      $this->runQueuedEvents ();
-      
-      // Handle libEvent-Support
-      if (self::checkLibEvent ())
-        return (event_base_loop ($this->evBase, EVLOOP_ONCE) == 0);
-      
-      return self::loopOnceInternal ($Timeout);
-    }
-    // }}}
-    
-    // {{{ loopOnceInternal
-    /**
-     * Poll our registered events for changes
-     * 
-     * @param int $Timeout
-     * 
-     * @access private
-     * @return void
-     **/
-    private function loopOnceInternal ($Timeout) {
-      // Copy arrays for select()
-      $readFDs = $this->readFDs;
-      $writeFDs = $this->writeFDs;
-      $errorFDs = $this->errorFDs;
-      
-      // Check if we should run stream select
-      if ((count ($readFDs) == 0) && (count ($writeFDs) == 0) && (count ($errorFDs) == 0)) {
-        usleep ($Timeout);
+        if ((count ($readFDs) == 0) && (count ($writeFDs) == 0) && (count ($errorFDs) == 0)) {
+          $Count = 0;
+          
+          usleep ($usecs);
+        } else {
+          $secs = floor ($usecs / 1000000);
+          $usecs -= $secs * 1000000;
+          
+          $Count = stream_select ($readFDs, $writeFDs, $errorFDs, $secs, $usecs);
+        }
         
-        $this->signalHandler ();
+        // Check for pending signals
+        $this->runTimers ();
         
-        return (count ($this->timeoutEvents) > 0 ? null : false);
-      }
-      
-      // Wait for events
-      $Count = @stream_select ($readFDs, $writeFDs, $errorFDs, 0, $Timeout);
-      $this->signalHandler ();
-      
-      if ($Count == 0)  
-        return null;
-      
-      // Handle the events
-      $this->loopBreak = false;
-      
-      foreach ($readFDs as $FD) {
-        if (!isset ($this->fdMap [(int)$FD]))
+        // Stop here if there are no events pending
+        if ($Count == 0)
           continue;
         
-        $Index = $this->fdMap [(int)$FD];
+        foreach ($readFDs as $readFD) {
+          if (isset ($this->fdOwner [(int)$readFD]))
+            $this->fdOwner [(int)$readFD]->raiseRead ();
+          
+          if ($this->loopState > 1)
+            break (2);
+        }
         
-        if (!isset ($this->Events [$Index]))
-          continue;
+        foreach ($writeFDs as $writeFD) {
+          if (isset ($this->fdOwner [(int)$writeFD]))
+            $this->fdOwner [(int)$writeFD]->raiseWrite ();  
+          
+          if ($this->loopState > 1)
+            break (2);
+        }
         
-        $this->Events [$Index]->readEvent ();
-        
-        if ($this->loopBreak)
-          return false;
-      }
+        foreach ($errorFDs as $errorFD) {
+          if (isset ($this->fdOwner [(int)$errorFD]))
+            $this->fdOwner [(int)$errorFD]->raiseError ();  
+          
+          if ($this->loopState > 1)
+            break (2);
+        }
+      } while ($this->loopState < 1);
       
-      foreach ($writeFDs as $FD) {
-        if (!isset ($this->fdMap [(int)$FD]))
-          continue;
-        
-        $Index = $this->fdMap [(int)$FD];
-        
-        if (!isset ($this->Events [$Index]))
-          continue;
-        
-        $this->Events [$Index]->writeEvent ();
-        
-        if ($this->loopBreak)
-          return false;
-      }
+      // Reset the loop-state
+      $this->loopState = -1;
       
-      foreach ($errorFDs as $FD) {
-        if (!isset ($this->fdMap [(int)$FD]))
-          continue;
-        
-        $Index = $this->fdMap [(int)$FD];
-        
-        if (!isset ($this->Events [$Index]))
-          continue;
-        
-        $this->Events [$Index]->errorEvent ();
-        
-        if ($this->loopBreak)
-          return false;
-      }
-      
+      // Indicate success
       return true;
-    }
-    // }}}
-    
-    // {{{ libeventHandler
-    /**
-     * Handle an incoming callback from libevent
-     * 
-     * @param resource $fd
-     * @param enum $Event
-     * @param int $arg
-     * 
-     * @access public
-     * @return void
-     **/
-    public function libeventHandler ($fd, $Event, $arg) {
-      // Check if the given event exists
-      if (!isset ($this->Events [$arg])) {
-        trigger_error ('Event for non-existing handle captured', E_USER_NOTICE);
-        
-        return;
-      }
-      
-      // Handle the event
-      if (($Event & EV_READ) == EV_READ)
-        $this->Events [$arg]->readEvent ();
-      
-      if (($Event & EV_WRITE) == EV_WRITE)
-        $this->Events [$arg]->writeEvent ();
-      
-      if (($Event & EV_TIMEOUT) == EV_TIMEOUT)
-        $this->Events [$arg]->errorEvent ();
-    }
-    // }}}
-    
-    // {{{ signalHandler
-    /**
-     * Handle pending signals
-     * 
-     * @access private
-     * @return void
-     **/
-    private function signalHandler () {
-      // Let PCNTL handle the events
-      if ($this->handleSignals === true)
-        return pcntl_signal_dispatch ();
-      
-      // Do it manual
-      while (($this->timeoutNext > 0) && ($this->timeoutNext <= time ()))
-        $this->timerEvent (SIGALRM);
-    }
-    // }}}
-    
-    // {{{ runQueuedEvents
-    /**
-     * Handle queued events
-     * 
-     * @access private
-     * @return void
-     **/
-    private function runQueuedEvents () {
-      // Check if there are any events pending
-      if (count ($this->forceEvents) == 0)
-        return null;
-      
-      // Run all pending events
-      $this->loopBreak = false;
-      
-      foreach ($this->forceEvents as $ID=>$Ev) {
-        // Run the event
-        switch ($Ev [1]) {
-          case qcEvents_Interface::EVENT_READ:
-            $Ev [0]->readEvent ();
-            break;
-          
-          case qcEvents_Interface::EVENT_WRITE:
-            $Ev [0]->writeEvent ();
-            break;
-          
-          case qcEvents_Interface::EVENT_ERROR:
-            $Ev [0]->errorEvent ();
-            break;
-          
-          case qcEvents_Interface::EVENT_TIMER:
-            $Ev [0]->timerEvent ();
-            break;
-        }
-        
-        unset ($this->forceEvents [$ID]);
-        
-        // Check wheter to quit here
-        if ($this->loopBreak)
-          return false;
-      }
-      
-      return true;
-    }
-    // }}}
-    
-    // {{{ timerEvent
-    /**
-     * Handler for ALARM-Signals
-     * 
-     * @param int $Signal
-     * 
-     * @access public
-     * @return void
-     **/
-    public function timerEvent ($Signal) {
-      // Make sure its an Alarm
-      if ($Signal != SIGALRM)
-        return;
-      
-      // Make sure we have events
-      if (!isset ($this->timeoutEvents [$this->timeoutNext]))
-        return $this->setTimer ();
-      
-      // Handle the events
-      $Events = $this->timeoutEvents [$this->timeoutNext];
-      unset ($this->timeoutEvents [$this->timeoutNext]);
-      
-      $S = false;
-      $T = time ();
-      
-      foreach ($Events as $Event) {
-        // Run the event
-        if ($Event [3] !== null)
-          call_user_func ($Event [3], $Event [4]);
-        else
-          $Event [0]->timerEvent ();
-        
-        // Requeue the event
-        if ($Event [2]) {
-          $N = $T + $Event [1];
-          
-          if (!isset ($this->timeoutEvents [$N])) {
-            $this->timeoutEvents [$N] = array ($Event);
-            $S = true;
-          } else
-            $this->timeoutEvents [$N][] = $Event;
-        }
-      }
-      
-      if ($S)
-        ksort ($this->timeoutEvents, SORT_NUMERIC);
-      
-      return $this->setTimer ();
     }
     // }}}
     
     // {{{ loopBreak
     /**
-     * Leave the current loop immediatly
+     * Immediatly abort the event-loop
      * 
      * @access public
      * @return void
      **/
     public function loopBreak () {
-      if (self::checkLibEvent ())
-        return event_base_loopbreak ($this->evBase);
+      if ($this->loopState < 0)
+        return;
       
-      return ($this->loopBreak = true);
+      $this->loopState = 2;
     }
     // }}}
     
     // {{{ loopExit
     /**
-     * Let the current loop finish, then exit
+     * Exit the event-loop once all currently pending events where processed
      * 
      * @access public
      * @return void
      **/
     public function loopExit () {
-      if (self::checkLibEvent ()) 
-        return event_base_loopexit ($this->evBase);
+      if ($this->loopState < 0)
+        return;
       
-      return ($this->loopExit = true);
+      $this->loopState = max ($this->loopState, 1);
     }
     // }}}
     
-    // {{{ queueForNextIteration
+    // {{{ getTimer
     /**
-     * Force to raise an event on our next iteration
+     * Retrive current precise time
      * 
-     * @param object $Handle
-     * @param enum $Event
-     * 
-     * @access public
-     * @return bool
+     * @access private
+     * @return array
      **/
-    public function queueForNextIteration ($Handle, $Event = qcEvents_Interface::EVENT_TIMER) {
-      // Check if this event belongs to us
-      if (!$this->haveEvent ($Handle))
-        return false;
+    private function getTimer () {
+      $Now = gettimeofday ();
       
-      // Make sure that a main-loop is continued
-      if ($this->onLoop)
-        $this->loopContinue = true;
-      
-      // Queue the event
-      $this->forceEvents [] = array ($Handle, $Event);
-      
-      // Stop the current loop after it was finished
-      $this->loopBreak ();
-      
-      return true;
+      return array ($Now ['sec'], $Now ['usec']);
     }
     // }}}
     
-    // {{{ addTimeout
+    // {{{ getTimerWaitTime
     /**
-     * Add create a timer for an event-object
+     * Retrive the wait-time until the next timer-event in microseconds
      * 
-     * @param object $Event The event itself
-     * @param int $Timeout How many seconds to wait
-     * @param bool $Repeat (optional) Keep the timeout
-     * @param callback $Callback (optional) Use this function as Callback
-     * @param mixed $Private (optional) Private data passed to the callback
-     * 
-     * @access public
-     * @return bool
+     * @access private
+     * @return int
      **/
-    public function addTimeout ($Event, $Timeout, $Repeat = false, $Callback = null, $Private = null) {
-      // Check the callback
-      if (($Callback !== null) && !is_callable ($Callback))
-        $Callback = null;
+    private function getTimerWaitTime () {
+      // Check if there are events forced
+      if (count ($this->forcedEvents) > 0)
+        return 1;
       
-      // Calculate 
-      $T = time ();
-      $N = $T + $Timeout;
+      // Check if there is a timer queued
+      if ($this->TimerNext === null)
+        return 5000000;
       
-      if (!isset ($this->timeoutEvents [$N])) {
-        $this->timeoutEvents [$N] = array (array ($Event, $Timeout, $Repeat, $Callback, $Private));
-        
-        ksort ($this->timeoutEvents, SORT_NUMERIC);
-      } else
-        $this->timeoutEvents [$N][] = array ($Event, $Timeout, $Repeat, $Callback, $Private);
+      // Get the current time
+      $Now = $this->getTimer ();
       
-      // Setup the timer
-      if (($this->timeoutNext < $T) || ($this->timeoutNext > $N)) {
-        $this->timeoutNext = $N;
-        
-        if ($this->handleSignals) {
-          pcntl_signal (SIGALRM, array ($this, 'timerEvent'));
-          pcntl_alarm ($Timeout);
-        }
-      }
-      
-      return true;
+      // Return the wait-time
+      return max (1, (($this->TimerNext [0] - $Now [0]) * 1000000) + ($this->TimerNext [1] - $Now [1]));
     }
     // }}}
     
-    // {{{ setTimer
+    // {{{ runTimers
     /**
-     * Make sure that the timer is set to the next timer-event
+     * Run any pending timer-event
      * 
      * @access private
      * @return void
      **/
-    private function setTimer () {
-      // Reset the next timeout
-      $this->timeoutNext = 0;
-      
-      // Don't do anything if there are no events
-      if (count ($this->timeoutEvents) == 0)
+    private function runTimers () {
+      // Check if there is a timer queued
+      if ($this->TimerNext === null)
         return;
       
-      // Find next timestamp
-      $T = time ();
+      // Get the current time
+      $Now = $this->getTimer ();
       
-      foreach ($this->timeoutEvents as $Next=>$Keys)
-        if (($Next < $T) && $this->handleSignals)
-          unset ($this->timeoutEvents [$Next]);
-        else
+      // Check wheter to run timers
+      if (($this->TimerNext [0] > $Now [0]) ||
+          (($this->TimerNext [0] == $Now [0]) && ($this->TimerNext [1] > $Now [1])))
+        return;
+      
+      // Run all timers
+      $Current = $this->TimerNext;
+      
+      foreach ($this->Timers as $Sec=>$Timers) {
+        // Get the current time
+        $Now = $this->getTimer ();
+        
+        if ($Sec > $Now [0]) {
+          if (($this->TimerNext !== null) && (($this->TimerNext [0] == $Current [0]) || ($this->TimerNext [0] > $Sec))) {
+            reset ($this->Timers);
+            $this->TimerNext = array (key ($this->Timers), key ($Timers));
+          }
+          
           break;
-      
-      if ($Next < $T)
-        return;
-      
-      // Set the timer
-      $this->timeoutNext = $Next;
-      
-      if ($this->handleSignals)
-        pcntl_alarm ($Next - $T);
-    }
-    // }}}
-    
-    // {{{ checkLibEvent
-    /**
-     * Check wheter php was compiled with libevent-Support
-     * 
-     * @access public
-     * @return bool
-     **/
-    public static function checkLibEvent () {
-      // Check if a previous result was cached
-      if (!defined ('PHPEVENT_LIBEVENT')) {
-        if (function_exists ('event_set'))
-          define ('PHPEVENT_LIBEVENT', true);
-        else
-          define ('PHPEVENT_LIBEVENT', false);
+        }
+        
+        foreach ($Timers as $USec=>$Events) {
+          // Get the current time
+          $Now = $this->getTimer ();
+          
+          if ($USec > $Now [1]) {
+            $this->TimerNext [1] = $USec;
+            
+            break (2);
+          }
+          
+          unset ($this->Timers [$Sec][$USec]);
+          
+          // Run all events
+          foreach ($Events as $Event) {
+            // Run the callback
+            if ($Event [3] !== null) {
+              if (!is_array ($Event [3]) || ($Event [3][0] !== $Event [0]))
+                call_user_func ($Event [3], $Event [0], $Event [4]);
+              else
+                call_user_func ($Event [3], $Event [4]);
+            
+            // ... or raise the event
+            } else
+              $Event [0]->raiseTimer ();
+            
+            // Check wheter to repeat
+            if ($Event [2])
+              $this->addTimer ($Event [0], $Event [1], $Event [2], $Event [3], $Event [4]);
+          }
+        }
+        
+        // Remove the second if all timers were fired
+        if (isset ($this->Timers [$Sec]) && (count ($this->Timers [$Sec]) == 0))
+          unset ($this->Timers [$Sec]);
       }
       
-      // Return the cached result
-      return PHPEVENT_LIBEVENT;
+      // Check wheter to dequeue the timer
+      if (count ($this->Timers) == 0)
+        $this->TimerNext = null;
+      elseif (($this->TimerNext [0] == $Current [0]) &&
+              ($this->TimerNext [1] == $Current [1])) {
+        reset ($this->Timers);
+        
+        $this->TimerNext = array (
+          key ($this->Timers),
+          key (current ($this->Timers))
+        );
+      }
     }
     // }}}
   }

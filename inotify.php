@@ -21,10 +21,12 @@
   // Make sure the inotify-extension was loaded
   if (!extension_loaded ('inotify')) {
     trigger_error (E_USER_ERROR, 'inotify-extension not loaded');
+    
     return;
   }
   
-  require_once ('qcEvents/Event.php');
+  require_once ('qcEvents/Interface/Loop.php');
+  require_once ('qcEvents/Trait/Parented.php');
   
   /**
    * inotify
@@ -33,9 +35,11 @@
    * 
    * @class qcEvents_inotify
    * @package qcEvents
-   * @revision 01
+   * @revision 02
    **/
-  class qcEvents_inotify extends qcEvents_Event{
+  class qcEvents_inotify implements qcEvents_Interface_Loop {
+    use qcEvents_Trait_Parented;
+    
     /* File-Operations */
     const MASK_ACCESS = 1; // File was accessed (read)
     const MASK_MODIFY = 2; // File was modified
@@ -134,6 +138,30 @@
     }
     // }}}
     
+    // {{{ getReadFD
+    /**
+     * Retrive the stream-resource to watch for reads
+     * 
+     * @access public
+     * @return resource May return NULL if no reads should be watched
+     **/
+    public function getReadFD () {
+      return $this->inotify;
+    }
+    // }}}
+    
+    // {{{ getWriteFD
+    /**
+     * Retrive the stream-resource to watch for writes
+     * 
+     * @access public
+     * @return resource May return NULL if no writes should be watched
+     **/
+    public function getWriteFD () {
+      return null;
+    }
+    // }}}
+    
     // {{{ scanCreated
     /**
      * Scan a watched directory for dirs and files and fake callback-events
@@ -162,25 +190,25 @@
     }
     // }}}
     
-    // {{{ setHandler
+    // {{{ setEventBase
     /**
-     * Store handle of our event-base
+     * Set a new event-loop-handler
      * 
-     * @param object $Handler
+     * @param qcEvents_Base $Base
      * 
      * @access public
-     * @return bool
+     * @return void  
      **/
-    public function setHandler ($Handler, $markBound = false) {
-      // Save our old handler
-      $oh = $this->getHandler ();
+    public function setEventBase (qcEvents_Base $Base) {
+      // Save our event-base
+      $oEventBase = $this->getEventBase ();
       
       // Call our parent first
-      if (!($rc = parent::setHandler ($Handler, $markBound)))
+      if (!($rc = parent::setEventBase ($Base)))
         return $rc;
       
       // Don't do anything if the handler didn't change
-      if ($oh === $Handler)
+      if ($oEventBase === $Handler)
         return $rc;
       
       // Unbind from the old inotify
@@ -203,41 +231,42 @@
       }
       
       // Find a new inotify
-      foreach ($Handler->getEvents () as $Event)
+      foreach ($Base->getEvents () as $Event)
         if (($Event instanceof qcEvents_inotify) && is_resource ($Event->inotify)) {
           $this->inotify = $Event->inotify;
           $this->inotifyGeneration = $Event->inotifyGeneration;
+          
           break;
         }
       
       if (!is_resource ($this->inotify)) {
         $this->inotify = inotify_init ();
         $this->inotifyGeneration = self::$inotifyGenerations++;
+        
         self::$inotifyEvents [$this->inotifyGeneration] = array ();
       }
-      
-      $this->setFD ($this->inotify, true, false);
       
       // Register our watch
       $this->inotifyDescriptor = inotify_add_watch ($this->inotify, $this->inotifyPath, $this->inotifyMask);
       self::$inotifyEvents [$this->inotifyGeneration][$this->inotifyDescriptor] = $this;
       
-      return $rc;
+      return $Base->updateEvent ($this);
     }
     // }}}
     
-    // {{{ readEvent 
+    // {{{ raiseRead
     /**
      * Handle a read-event
      * 
      * @access public
      * @return void
      **/  
-    public final function readEvent () {
+    public final function raiseRead () {
       foreach (inotify_read ($this->inotify) as $Event) {
         // Check if we have an event-handle for this watch-descriptor
         if (!isset (self::$inotifyEvents [$this->inotifyGeneration][$Event ['wd']])) {
           trigger_error ('Missing watch-descriptor for captured event');
+          
           continue;
         }
         
@@ -283,6 +312,27 @@
       }
     }
     // }}}
+    
+    // {{{ raiseWrite
+    /**
+     * Callback: The Event-Loop detected a write-event
+     * 
+     * @access public
+     * @return void  
+     **/
+    public function raiseWrite () { }
+    // }}}
+    
+    // {{{ raiseError
+    /**
+     * Callback: The Event-Loop detected an error-event
+     * 
+     * @access public
+     * @return void  
+     **/
+    public function raiseError () { }
+    // }}}
+    
     
     // {{{ inotifyEvent
     /**

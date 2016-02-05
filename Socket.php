@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Asyncronous Sockets
-   * Copyright (C) 2013 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,7 +18,9 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Event.php');
+  require_once ('qcEvents/IOStream.php');
+  require_once ('qcEvents/Interface/Timer.php');
+  require_once ('qcEvents/Trait/Timer.php');
   
   /**
    * Event Socket
@@ -27,9 +29,18 @@
    * 
    * @class qcEvents_Socket
    * @package qcEvents
-   * @revision 02
+   * @revision 03
    **/
-  class qcEvents_Socket extends qcEvents_Event {
+  class qcEvents_Socket extends qcEvents_IOStream implements qcEvents_Interface_Timer {
+    use qcEvents_Trait_Timer;
+    
+    /* Error-types */
+    const ERROR_NET_UNKNOWN    =  0;
+    const ERROR_NET_DNS_FAILED = -1;
+    const ERROR_NET_TLS_FAILED = -2;
+    const ERROR_NET_TIMEOUT    = -3;
+    const ERROR_NET_REFUSED    = -4;
+    
     /* Socket-Types */
     const TYPE_TCP = 0;
     const TYPE_UDP = 1;
@@ -97,12 +108,9 @@
     /* Size for Read-Requests */
     private $bufferSize = 0;
     
-    /* Run in buffered mode */
-    private $isReadBuffered = false;
-    private $isWriteBuffered = true;
-    
     /* Local read-buffer */
     private $readBuffer = '';
+    private $readBufferLength = 0;
     
     /* Local write-buffer */
     private $writeBuffer = '';
@@ -177,7 +185,7 @@
      **/
     function __destruct () {
       if ($this->isConnected ())
-        $this->disconnect ();
+        $this->close ();
     }
     // }}}
     
@@ -190,7 +198,7 @@
      **/
     function __sleep () {
       if ($this->isConnected ())
-        $this->disconnect ();
+        $this->close ();
       
       return array ('Type');
     }
@@ -263,7 +271,10 @@
         $Port = $this::FORCE_PORT;
       
       // Make sure we have an event-base assigned
-      if (!$this->haveEventBase () && (($newBase === null) || !$this->setEventBase ($newBase))) {
+      if ($newBase)
+        $this->setEventBase ($newBase);
+      
+      if (!$this->getEventBase ()) {
         trigger_error ('No Event-Base assigned or could not assign Event-Base');
         
         return false;
@@ -271,7 +282,7 @@
       
       // Try to close any open connection before creating a new one
       # TODO: Make disconnect async
-      if (!$this->isDisconnected () && !$this->disconnect ())
+      if (!$this->isDisconnected () && !$this->close ())
         return false;
       
       // Reset internal addresses
@@ -346,11 +357,14 @@
       }
       
       // Make sure we have an event-base assigned
-      if (!$this->haveEventBase () && (($newBase === null) || !$this->setEventBase ($newBase)))
+      if ($newBase)
+        $this->setEventBase ($newBase);
+      
+      if (!$this->getEventBase ())
         return false;
       
       // Try to close any open connection before creating a new one
-      if (!$this->isDisconnected () && !$this->disconnect ())
+      if (!$this->isDisconnected () && !$this->close ())
         return false;
       
       // Reset internal addresses
@@ -376,11 +390,11 @@
           return $this->socketConnectTimeout ();
         
         // Forward the result
-        return $this->socketResolverResultArray ($Result, $Addtl, $Domain, null, $Type);
+        return $this->socketResolverResultArray ($Result, $Addtl, $Domain, DNS_SRV, null, $Type);
       }
       
       // Perform asyncronous lookup
-      require_once ('qcEvents/Socket/Client/DNS.php');
+      require_once ('qcEvents/Client/DNS.php');
       
       return $this->socketResolveDo ($Label, null, $Type, qcEvents_Stream_DNS_Message::TYPE_SRV);
     }
@@ -407,26 +421,29 @@
       // Create new client-socket
       $URI = ($this->socketAddress [3] === self::TYPE_TCP ? 'tcp' : 'udp') . '://' . $this->socketAddress [1] . ':' . $this->socketAddress [2];
       
-      if (!is_resource ($Socket = stream_socket_client ($URI, $errno, $err, 5, STREAM_CLIENT_ASYNC_CONNECT)))
+      if (!is_resource ($Socket = stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, STREAM_CLIENT_ASYNC_CONNECT)))
         return false;
       
       stream_set_blocking ($Socket, 0);
       
       // Set our new status
-      if (!$this->setFD ($Socket, true, true, true))
+      if (!$this->setStreamFD ($Socket))
         return false;
       
-      // Make sure we are bound
-      $this->bind ();
+      // Make sure we are watching events
+      $this->watchWrite (true);
+      $this->isWatching (true);
       
+      // Setup our internal buffer-size
       $this->bufferSize = ($this->socketAddress [3] === self::TYPE_UDP ? self::READ_UDP_BUFFER : self::READ_TCP_BUFFER);
       $this->lastEvent = time ();
       
       // Set our connection-state
-      if ($this->socketAddress [3] === self::TYPE_UDP ? true : null)
+      if ($this->socketAddress [3] !== (self::TYPE_UDP ? true : null)) {
+        $this->addTimer (self::CONNECT_TIMEOUT, false, array ($this, 'socketConnectTimeout'));
+        $this->addHook ('eventWritable', array ($this, 'socketHandleConnected'), null, true);
+      } else
         $this->socketHandleConnected ();
-      else
-        $this->addTimeout (self::CONNECT_TIMEOUT, false, array ($this, 'socketConnectTimeout'));
       
       return true;
     }
@@ -460,7 +477,7 @@
         stream_set_blocking ($Connection, 0);
         
         // Store the connection
-        $this->setFD ($Connection, true, false);
+        $this->setStreamFD ($Connection);
       }
       
       // Store our parent server-handle
@@ -485,10 +502,13 @@
     /**
      * Internal Callback: Our socket is now in connected state
      * 
-     * @access private
+     * @access public
      * @return void
      **/
-    private function socketHandleConnected () {
+    public function socketHandleConnected () {
+      // Unwatch writes - as we are buffered all the time, this should be okay
+      $this->watchWrite (false);
+      
       if ($this->Connected !== true) {
         // Set connection-status
         $this->Connected = true;
@@ -504,19 +524,21 @@
         $this->socketAddresses = null;
         
         // Destroy our resolver
-        if (is_object ($this->internalResolver)) {
-          $this->internalResolver->unbind ();
+        if (is_object ($this->internalResolver))
           $this->internalResolver = true;
-        }
         
         // Check wheter to enable TLS
         if (($this->tlsStatus === true) && !$this->tlsEnable ())
           return $this->tlsEnable (true, array ($this, 'socketHandleConnected'));
       }
       
+      // Check our TLS-Status and treat as connection failed if required
+      if (($this->tlsStatus === true) && !$this->tlsEnable ())
+        return $this->socketHandleConnectFailed ($this::ERROR_NET_TLS_FAILED);
+      
       // Fire custom callback
       if ($this->socketCallback) {
-        call_user_func ($this->socketCallback, $this, true, $this->socketCallbackPrivate);
+        $this->___raiseCallback ($this->socketCallback, true, $this->socketCallbackPrivate);
         
         $this->socketCallback = null;
         $this->socketCallbackPrivate = null;
@@ -531,13 +553,15 @@
     /**
      * Internal Callback: Pending connection could not be established
      * 
+     * @param enum $Error (optional)
+     * 
      * @access private
      * @return void
      **/
-    private function socketHandleConnectFailed () {
+    private function socketHandleConnectFailed ($Error = self::ERROR_NET_UNKNOWN) {
       // Mark this host as failed
       if ($this->socketAddress !== null) {
-        $this->___callback ('socketTryConnectFailed', $this->socketAddress [0], $this->socketAddress [1], $this->socketAddress [2], $this->socketAddress [3]);
+        $this->___callback ('socketTryConnectFailed', $this->socketAddress [0], $this->socketAddress [1], $this->socketAddress [2], $this->socketAddress [3], $Error);
         $this->socketAddress = null;
       }
       
@@ -545,17 +569,17 @@
       if (!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0)) {
         // Fire custom callback
         if ($this->socketCallback) {
-          call_user_func ($this->socketCallback, $this, true, $this->socketCallbackPrivate);
+          $this->___raiseCallback ($this->socketCallback, false, $this->socketCallbackPrivate);
           
           $this->socketCallback = null;
           $this->socketCallbackPrivate = null;
         }
         
         // Fire the callback
-        $this->___callback ('socketConnectionFailed');
+        $this->___callback ('socketConnectionFailed', $Error);
         
         // Disconnect cleanly
-        return $this->disconnect ();
+        return $this->close ();
       }
       
       // Try the next host
@@ -582,9 +606,9 @@
       
       // Create a new resolver
       if (!is_object ($this->internalResolver)) {
-        require_once ('qcEvents/Socket/Client/DNS.php');
+        require_once ('qcEvents/Client/DNS.php');
         
-        $this->internalResolver = new qcEvents_Socket_Client_DNS ($this->getEventBase ());
+        $this->internalResolver = new qcEvents_Client_DNS ($this->getEventBase ());
       }
       
       // Check which types to resolve
@@ -592,7 +616,7 @@
         $Types = array (  
           qcEvents_Stream_DNS_Message::TYPE_A,
           qcEvents_Stream_DNS_Message::TYPE_AAAA,
-          qcEvents_Stream_DNS_Message::TYPE_CNAME,
+          # qcEvents_Stream_DNS_Message::TYPE_CNAME,
         );
       elseif (!is_array ($Types))
         $Types = array ($Types);
@@ -601,11 +625,14 @@
       $Private = array (
         $Hostname,
         $Port,
-        $Type
+        $Type,
+        0,
       );
       
-      foreach ($Types as $Type)
+      foreach ($Types as $Type) {
+        $Private [3] = $Type;
         $this->internalResolver->resolve ($Hostname, $Type, null, array ($this, 'socketResolverResult'), $Private);
+      }
       
       // Update last action
       $this->lastEvent = time ();
@@ -614,7 +641,7 @@
       $this->___callback ('socketResolve', array ($Hostname), $Types);
       
       // Setup a timeout
-      $this->addTimeout (self::CONNECT_TIMEOUT, false, array ($this, 'socketConnectTimeout'));
+      $this->addTimer (self::CONNECT_TIMEOUT, false, array ($this, 'socketConnectTimeout'));
     }
     // }}}
     
@@ -622,7 +649,7 @@
     /**
      * Internal Callback: Our resolver returned a result
      * 
-     * @param qcEvents_Socket_Client_DNS $Resolver
+     * @param qcEvents_Client_DNS $Resolver
      * @param string $orgHostname
      * @param array $Answers
      * @param array $Authorities
@@ -631,7 +658,7 @@
      * @access public
      * @return void
      **/
-    public function socketResolverResult (qcEvents_Socket_Client_DNS $Resolver, $orgHostname, $Answers, $Authorities, $Additionals, $Private, $Message) {
+    public function socketResolverResult (qcEvents_Client_DNS $Resolver, $orgHostname, $Answers, $Authorities, $Additionals, $Message, $Private) {
       // Discard any result if we are connected already
       if ($this->isConnected ())
         return;
@@ -649,7 +676,7 @@
       else
         $Result = $Addtl = array ();
       
-      return $this->socketResolverResultArray ($Result, $Addtl, $Private [0], $Private [1], $Private [2]);
+      return $this->socketResolverResultArray ($Result, $Addtl, $Private [0], $Private [3], $Private [1], $Private [2]);
     }
     
     // {{{ socketResolverResultArray
@@ -659,18 +686,19 @@
      * @param array $Results Results returned from the resolver
      * @param array $Addtl Additional results returned from the resolver
      * @param string $Hostname The Hostname we are looking for
+     * @param enum $rType DNS-Record-Type we are looking for
      * @param int $Port The port we want to connect to
      * @param enum $Type The type of socket we wish to create
      * 
      * @access private
      * @return void
      **/
-    private function socketResolverResultArray ($Results, $Addtl, $Hostname, $Port, $Type) {
+    private function socketResolverResultArray ($Results, $Addtl, $Hostname, $rType, $Port, $Type) {
       // Check if there are no results
       if ((count ($Results) == 0) && (!is_object ($this->internalResolver) || !$this->internalResolver->isActive ())) {
         // Mark connection as failed if there are no addresses pending and no current address
         if ((!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0)) && ($this->socketAddress === null))
-          return $this->socketHandleConnectFailed ();
+          return $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED);
         
         return;
       }
@@ -689,11 +717,15 @@
           
           $Addrs [] = $Addr = ($Record ['type'] == 'AAAA' ? $Record ['ipv6'] : $Record ['ip']);
           $this->socketAddresses [] = array ($Hostname, $Addr, (isset ($Record ['port']) ? $Record ['port'] : $Port), $Type);
-        
+          
         // Handle canonical names
         } elseif ($Record ['type'] == 'CNAME') {
           // Check additionals
           $Found = false;
+          
+          foreach ($Results as $Record2)
+            if ($Found = ($Record2 ['host'] == $Record ['target']))
+              break;
           
           foreach ($Addtl as $Record2)
             if ($Record2 ['host'] == $Record ['target']) {
@@ -702,10 +734,11 @@
             }
           
           // Check wheter to enqueue this name as well
-          if (!$Found) {
-            $Resolve [] = $Record ['target'];
-            $this->socketResolveDo ($Record ['target'], $Port, $Type);
-          }
+          if ($Found)
+            continue;
+          
+          $Resolve [] = $Record ['target'];
+          $this->socketResolveDo ($Record ['target'], $Port, $Type, array ($rType));
         
         // Handle SRV-Records
         } elseif ($Record ['type'] == 'SRV') {
@@ -755,7 +788,7 @@
         return;
       
       // Mark this connection as failed
-      $this->socketHandleConnectFailed ();
+      $this->socketHandleConnectFailed ($this::ERROR_NET_TIMEOUT);
     }
     // }}}
     
@@ -781,14 +814,14 @@
     }
     // }}}
     
-    // {{{ disconnect
+    // {{{ ___close
     /**
      * Gracefully close our connection
      * 
      * @access public
      * @return bool
      **/
-    public function disconnect () {
+    public function ___close () {
       // Check if we are connected/connecting
       if ($this->isDisconnected ())
         return true;
@@ -802,10 +835,10 @@
       
       // Close our own connection
       } else {
-        @fclose ($this->getFD ());
+        @fclose ($this->getReadFD ());
         
         if (is_object ($this->serverParent))
-          $this->serverParent->___callback ('serverClientClosed', $this->getRemoteName (), $this);
+          $this->serverParent->disconnectChild ($this);
       }
       
       // Reset our status
@@ -813,17 +846,15 @@
       $this->tlsEnabled = false;
       
       // Unbind from our event-base
-      $this->unbind ();
+      $this->isWatching (false);
       
       // Destroy our resolver
-      if (is_object ($this->internalResolver)) {
-        $this->internalResolver->unbind ();
+      if (is_object ($this->internalResolver))
         $this->internalResolver = true;
-      }
       
       // Clean up buffers
       $this->readBuffer = ''; 
-      $this->writeBuffer = '';
+      $this->readBufferLength = 0;
       
       // Fire up callback
       $this->___callback ('socketDisconnected');
@@ -904,7 +935,10 @@
     
     // {{{ getRemoteName
     /**
+     * Retrive the hostname/ip-address and port of the remote party
      * 
+     * @access public
+     * @return string
      **/
     public function getRemoteName () {
       if ($this->remoteName !== null)
@@ -914,134 +948,6 @@
     }
     // }}}
     
-    
-    // {{{ isBuffered
-    /**
-     * Check or set if we are in buffered mode
-     * 
-     * @param bool $Toggle (optional)
-     * 
-     * @access public
-     * @return bool
-     * @deprecated
-     **/
-    public function isBuffered ($Toggle = null) {
-      trigger_error ('Please use isReadBuffered() and isWriteBuffered()', E_USER_DEPRECATED);
-      
-      // Check wheter to set a new status
-      if ($Toggle !== null) {
-        // Set the new status
-        $this->isReadBuffered = $this->isWriteBuffered = ($Toggle ? true : false);
-        
-        // Flush the read-buffer if there is data waiting
-        if (!$this->isReadBuffered && (strlen ($this->readBuffer) > 0)) {
-          $this->___callback ('socketReceive', $this->readBuffer);
-          $this->readBuffer = '';
-        }
-      }
-      
-      return $this->isReadBuffered && $this->isWriteBuffered;
-    }
-    // }}}
-    
-    // {{{ isReadBuffered
-    /**
-     * Check or set if reads will be buffered
-     * 
-     * @param bool $Toggle (optional)
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function isReadBuffered ($Toggle = null) {
-      // Check wheter to set a new status
-      if ($Toggle !== null) {
-        // Set the new status
-        $this->isReadBuffered = ($Toggle ? true : false);
-        
-        // Flush the read-buffer if there is data waiting
-        if (!$this->isReadBuffered && (strlen ($this->readBuffer) > 0)) {
-          $this->___callback ('socketReceive', $this->readBuffer);
-          $this->readBuffer = '';
-        }
-      }
-      
-      return $this->isReadBuffered;
-    }
-    // }}}
-    
-    // {{{ isWriteBuffered
-    /**
-     * Check or set if writes are buffered
-     * 
-     * @parma bool $Toggle (optional)
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function isWriteBuffered ($Toggle = null) {
-      // Check wheter to set a new status
-      if ($Toggle !== null)
-        // Set the new status
-        $this->isWriteBuffered = ($Toggle ? true : false);
-      
-      return $this->isWriteBuffered;
-    }
-    // }}}
-    
-    // {{{ readBuffer
-    /**
-     * Read from our internal buffer
-     * 
-     * @param int $Size (optional)
-     * 
-     * @remark We have to be in buffered mode for this to work
-     * 
-     * @access public
-     * @return string
-     **/
-    public function readBuffer ($Size = null) {
-      // Check if we are in buffered mode
-      if (!$this->isReadBuffered)
-        return false;
-      
-      // Retrive the requested data from the buffer
-      if ($Size === null) {
-        $Buffer = $this->readBuffer;
-        $this->readBuffer = '';
-      } else {
-        $Buffer = substr ($this->readBuffer, 0, $Size);
-        $this->readBuffer = substr ($this->readBuffer, $Size);
-      }
-      
-      return $Buffer;
-    }
-    // }}}
-    
-    // {{{ write
-    /**
-     * Write data to our connection
-     * 
-     * @param string $Data
-     * 
-     * @access public
-     * @return bool  
-     **/
-    public function write ($Data) {
-      // Check wheter to write to our internal buffer first
-      if ($this->isWriteBuffered) {
-        $this->writeBuffer .= $Data;
-        
-        if ((strlen ($this->writeBuffer) > 0) && !$this->watchWrite ())
-          $this->watchWrite (true);
-        
-        return;
-      }
-      
-      // Perform a normal unbuffered write
-      return ($this->writeInternal ($Data) > 0);
-    }
-    // }}}
     
     // {{{ mwrite
     /**
@@ -1067,7 +973,34 @@
     }
     // }}}
     
-    // {{{ writeInternal
+    // {{{ write
+    /**
+     * Write data to this sink
+     * 
+     * @param string $Data The data to write to this sink
+     * @param callable $Callback (optional) The callback to raise once the data was written
+     * @param mixed $Private (optional) A private parameter to pass to the callback
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function write ($Data, callable $Callback = null, $Private = null) {
+      // Bypass write-buffer in UDP-Server-Mode
+      if ($this->Type == self::TYPE_UDP_SERVER) {
+        $this->___write ($Data);
+        
+        if ($Callback)
+          call_user_func ($Callback, $this, true, $Private);
+        
+        return;
+      }
+      
+      // Let our parent class handle the write-stuff
+      return parent::write ($Data, $Callback, $Private);
+    }
+    // }}}
+    
+    // {{{ ___write
     /**
      * Forward data for writing to our socket
      * 
@@ -1076,10 +1009,10 @@
      * @access private
      * @return int Number of bytes written
      **/
-    private function writeInternal ($Data) {
+    protected function ___write ($Data) {
       // Make sure we have a socket available
-      if ((($this->Type == self::TYPE_UDP_SERVER) && (!is_object ($this->serverParent) || !is_resource ($fd = $this->serverParent->getFD ()))) ||
-          (($this->Type != self::TYPE_UDP_SERVER) && !is_resource ($fd = $this->getFD ())))
+      if ((($this->Type == self::TYPE_UDP_SERVER) && (!is_object ($this->serverParent) || !is_resource ($fd = $this->serverParent->getWriteFDforClient ($this)))) ||
+          (($this->Type != self::TYPE_UDP_SERVER) && !is_resource ($fd = $this->getWriteFD ())))
         return false;
       
       // Perform a normal unbuffered write
@@ -1116,66 +1049,69 @@
      * @return bool  
      **/
     public function tlsEnable ($Toggle = null, $Callback = null, $Private = null) {
-      // Check wheter to change the status
-      if ($Toggle !== null) {
-        // Check if we are in an unclean status at the moment
-        if ($this->tlsEnabled === null)
-          return false;
-        
-        # TODO: No clue at the moment how to do this on UDP-Server
-        # TODO: Check if this simply works - we are doing this in non-blocking mode,
-        #       so it might be possible to distinguish by normal peer-multiplexing
-        if ($this->Type == self::TYPE_UDP_SERVER)
-          return false;
-        
-        // Clean up the flag
-        $Toggle = ($Toggle ? true : false);
-        
-        // Check wheter to do anything
-        if ($Toggle === $this->tlsEnabled)
-          return true;
-        
-        // Set internal status
-        if (($Callback !== null) && !is_callable ($Callback))
-          $Callback = null;
-        
-        $this->tlsEnabled = null;
-        $this->tlsCallback = $Callback;
-        $this->tlsPrivate = $Private;
-        
-        # TODO: Add external API for this!
-        if ($this->tlsStatus = $Toggle)
-          stream_context_set_option ($this->getFD (), array (
-            'ssl' => array (
-              // General settings
-              # 'ciphers' => '',
-              'capture_peer_cert' => true,
-              'capture_peer_cert_chain' => true,
-              'SNI_enabled' => true,
-              # 'SNI_server_name' => '', // Domainname for SNI
-              
-              // Parameters for verification
-              'verify_peer' => false,
-              # 'verify_depth' => 1, // How many levels to check
-              'allow_self_signed' => true,
-              # 'cafile' => null, // CAfile for verify_peer
-              # 'capath' => null, // See cafile
-              # 'CN_match' => null, // Expected commonname
-              
-              // Remote authentication
-              # 'local_cert' => null, // PEM of local certificate
-              # 'local_pk' => null, // Undocumented: Path to private key
-              # 'passphrase' => null, // Passphrase for local_cert
-            )
-          ));
-        
-        // Forward the request
-        $this->setTLSMode ();
-        
-        return true;
-      }
+      // Check wheter only to return the status
+      if ($Toggle === null)
+        return ($this->tlsEnabled == true);
       
-      return ($this->tlsEnabled == true);
+      // Check if we are in an unclean status at the moment
+      if ($this->tlsEnabled === null)
+        return false;
+      
+      # TODO: No clue at the moment how to do this on UDP-Server
+      # TODO: Check if this simply works - we are doing this in non-blocking mode,
+      #       so it might be possible to distinguish by normal peer-multiplexing
+      if ($this->Type == self::TYPE_UDP_SERVER)
+        return false;
+      
+      // Clean up the flag
+      $Toggle = ($Toggle ? true : false);
+      
+      // Check wheter to do anything
+      if ($Toggle === $this->tlsEnabled)
+        return true;
+      
+      // Set internal status
+      if (($Callback !== null) && !is_callable ($Callback))
+        $Callback = null;
+      
+      $this->tlsEnabled = null;
+      $this->tlsCallback = $Callback;
+      $this->tlsPrivate = $Private;
+      
+      # TODO: Add external API for this!
+      if ($this->tlsStatus = $Toggle)
+        stream_context_set_option ($this->getReadFD (), array (
+          'ssl' => array (
+            // General settings
+            # 'ciphers' => '',
+            'capture_peer_cert' => true,
+            'capture_peer_cert_chain' => true,
+            'SNI_enabled' => true,
+            # 'SNI_server_name' => '', // Domainname for SNI
+            'disable_compression' => true, // Always disable compression because of CRIME
+            
+            // Parameters for verification
+            # 'peer_name' => '', // Name of peer to expect
+            'verify_peer' => false,
+            'verify_peer_name' => false,
+            # 'verify_depth' => 1, // How many levels to check
+            'allow_self_signed' => true,
+            # 'cafile' => null, // CAfile for verify_peer
+            # 'capath' => null, // See cafile
+            # 'CN_match' => null, // Expected commonname
+            # 'peer_fingerprint' => '',
+            
+            // Remote authentication
+            # 'local_cert' => null, // PEM of local certificate
+            # 'local_pk' => null, // Undocumented: Path to private key
+            # 'passphrase' => null, // Passphrase for local_cert
+          )
+        ));
+      
+      // Forward the request
+      $this->setTLSMode ();
+      
+      return true;
     }
     // }}}
     
@@ -1188,7 +1124,7 @@
      **/
     private function setTLSMode () {
       // Make sure we know our connection
-      if (!is_resource ($fd = $this->getFD ()))
+      if (!is_resource ($fd = $this->getReadFD ()))
         return false;
       
       // Issue the request to enter or leave TLS-Mode
@@ -1201,9 +1137,8 @@
       if ($tlsRequest === true) {
         $this->tlsEnabled = $this->tlsStatus;
         
-        if ($this->tlsCallback !== null)
-          call_user_func ($this->tlsCallback, $this->tlsStatus, $this->tlsPrivate);
-        
+        $tlsCallback = $this->tlsCallback;
+        $tlsPrivate = $this->tlsPrivate;
         $this->tlsCallback = null;
         $this->tlsPrivate = null;
         
@@ -1211,18 +1146,23 @@
           $this->___callback ('tlsEnabled');
         else
           $this->___callback ('tlsDisabled');
+        
+        if ($tlsCallback !== null)
+          $this->___raiseCallback ($tlsCallback, $this->tlsStatus, $tlsPrivate);
       
       // Check if the request failed
       } elseif ($tlsRequest === false) {
         $this->tlsEnabled = false;
         
-        if ($this->tlsCallback !== null)
-          call_user_func ($this->tlsCallback, null, $this->tlsPrivate);
-        
+        $tlsCallback = $this->tlsCallback;
+        $tlsPrivate = $this->tlsPrivate;
         $this->tlsCallback = null;
         $this->tlsPrivate = null;
         
         $this->___callback ('tlsFailed');
+        
+        if ($tlsCallback !== null)
+          $this->___raiseCallback ($tlsCallback, null, $tlsPrivate);
       }
     }
     // }}}
@@ -1240,24 +1180,33 @@
     // }}}
     
     
-    // {{{ readEvent
+    // {{{ raiseRead
     /**
-     * Handle incoming events
+     * Handle incoming read-events
      * 
      * @access public
      * @return void  
      **/
-    public final function readEvent () {
+    public final function raiseRead () {
       // Let TLS intercept here
       if ($this->tlsEnabled === null)
         return $this->setTLSMode ();
       
+      // Check if our buffer reached the watermark
+      if ($this->readBufferLength >= 10485760)
+        return;
+      
       // Read incoming data from socket
-      if (($Data = fread ($this->getFD (), $this->bufferSize)) == '') {
+      if (($Data = fread ($this->getReadFD (), $this->bufferSize)) === '') {
         if ($this->isConnecting ())
-          return $this->socketHandleConnectFailed ();
+          return $this->socketHandleConnectFailed ($this::ERROR_NET_REFUSED);
         
-        return $this->disconnect ();
+        // Check if the socket is really closed
+        if (!feof ($this->getReadFD ()))
+          return;
+        
+        // Close the socket on this side
+        return $this->close ();
       }
       
       // Check if we are in connecting state
@@ -1278,7 +1227,7 @@
      * @access public
      * @return void
      **/
-    public function readUDPServer ($Data, $Server) {
+    public function readUDPServer ($Data, qcEvents_Socket_Server $Server) {
       // Validate the incoming request
       if (($this->Type !== self::TYPE_UDP_SERVER) || ($Server !== $this->serverParent))
         return false;
@@ -1301,63 +1250,41 @@
       // Set the last event
       $this->lastEvent = time ();
       
-      // Forward to our handler
-      if ($this->isReadBuffered) {
-        $this->readBuffer .= $Data;
-       
-        $this->___callback ('socketReadable');
-      } else
-        $this->___callback ('socketReceive', $Data);
+      // Forward to read-buffer
+      $this->readBuffer .= $Data;
+      $this->readBufferLength += strlen ($Data);
+      
+      // Fire up the callbacks
+      $this->___callback ('eventReadable');
+      $this->___callback ('socketReadable');
     }
     // }}}
     
-    // {{{ writeEvent
+    // {{{ ___read
     /**
-     * Recognize when the socket becomes writeable
+     * Read data from our internal buffer
      * 
-     * @access public
-     * @return void  
+     * @param int $Length (optional)
+     * 
+     * @access protected
+     * @return string
      **/
-    public final function writeEvent () {
-      // Check if we are currently connecting
-      if ($this->isConnecting ()) {
-        // Remove the write-events
-        if (!$this->isWriteBuffered || (strlen ($this->writeBuffer) == 0))
-          $this->watchWrite (false);
-        
-        // Fire up the callback
-        $this->socketHandleConnected ();
+    protected function ___read ($Length = null) {
+      // Check if a length was requested
+      if (($Length === null) || ($Length >= $this->readBufferLength)) {
+        $Buffer = $this->readBuffer;
+        $this->readBuffer = '';
+        $this->readBufferLength = 0;
+      } else {
+        $Buffer = substr ($this->readBuffer, 0, $Length = abs ($Length));
+        $this->readBuffer = substr ($this->readBuffer, $Length);
+        $this->readBufferLength -= $Length;
       }
       
-      // Let TLS intercept here
-      if ($this->tlsEnabled === null)
-        return $this->setTLSMode ();
-      
-      // Handle buffered writes
-      if ($this->isWriteBuffered && (strlen ($this->writeBuffer) > 0)) {
-        $length = $this->writeInternal ($this->writeBuffer);
-        
-        // Check if the write succeded
-        if ($length > 0) {
-          $this->lastEvent = time ();
-          
-          // Remove the written bytes from the buffer
-          $this->writeBuffer = substr ($this->writeBuffer, $length);
-          
-          // Check if the buffer is empty now
-          if (strlen ($this->writeBuffer) == 0) {
-            $this->watchWrite (false);
-            $this->___callback ('socketDrained');
-          }
-        }
-      } else
-        $this->watchWrite (false);
+      return $Buffer;
     }
     // }}}
     
-    public final function errorEvent () {
-      echo 'Error Event', "\n";
-    }
     
     // {{{ socketTryConnect
     /**
@@ -1381,12 +1308,13 @@
      * @param string $desiredHost
      * @param string $Host
      * @param int $Port   
-     * @param enum $Type  
+     * @param enum $Type
+     * @param enum $Error
      * 
      * @access protected
      * @return void
      **/
-    protected function socketTryConnectFailed ($desiredHost, $Host, $Port, $Type) { }
+    protected function socketTryConnectFailed ($desiredHost, $Host, $Port, $Type, $Error) { }
     // }}}
     
     // {{{ socketResolve
@@ -1430,10 +1358,12 @@
     /**
      * Callback: Connection could not be established
      * 
+     * @param enum $Error
+     * 
      * @access protected
      * @return void
      **/
-    protected function socketConnectionFailed () { }
+    protected function socketConnectionFailed ($Error) { }
     // }}}
     
     // {{{ socketReadable
@@ -1444,18 +1374,6 @@
      * @return void
      **/
     protected function socketReadable () { }
-    // }}}
-    
-    // {{{ socketReceive
-    /**
-     * Callback: Data was received on this connection
-     * 
-     * @param string $Data
-     * 
-     * @access protected
-     * @return void
-     **/
-    protected function socketReceive ($Data) { }
     // }}}
     
     // {{{ socketDrained

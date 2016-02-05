@@ -1,8 +1,8 @@
 <?PHP
 
   /**
-   * qcEvents - HTTP-Stream Header Object
-   * Copyright (C) 2013 Bernd Holzmueller <bernd@quarxconnect.de>
+   * qcEvents - HTTP Header Object
+   * Copyright (C) 2015 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -19,19 +19,15 @@
    **/
   
   /**
-   * HTTP Header
-   * -----------
-   * Simple object to carry HTTP-Headers
+   * Generic HTTP Header
+   * -------------------
+   * Simple object to carry HTTP-like Headers
    * 
    * @class qcEvents_Stream_HTTP_Header
    * @package qcEvents
-   * @revision 02
+   * @revision 03
    **/
   class qcEvents_Stream_HTTP_Header {
-    /* Request-Types */
-    const METHOD_GET = 'GET';
-    const METHOD_POST = 'POST';
-    
     /* Type of this header */
     const TYPE_REQUEST = 0;
     const TYPE_RESPONSE = 1;
@@ -39,14 +35,25 @@
     private $Type = qcEvents_Stream_HTTP_Header::TYPE_REQUEST;
     
     /* Version of this header */
+    protected static $protoName = 'HTTP';
     private $Version = '';
     
     /* Properties for a request */
-    private $Method = qcEvents_Stream_HTTP_Header::METHOD_GET;
+    private $Method = '';
     private $URI = '';
     
+    protected static $Methods = array (
+      'GET',
+      'POST',
+      'PUT',
+      'PATCH',
+      'DELETE',
+      'HEAD',
+      'OPTIONS',
+    );
+    
     /* Properties for a response */
-    private $Code = '';
+    private $Code = null;
     private $Message = '';
     
     /* All header-values */
@@ -54,23 +61,23 @@
     
     // {{{ __construct
     /**
-     * Create a new HTTP-Header
+     * Create a new generic HTTP-Header
      * 
      * @param array $Data
      * 
      * @access friendly
      * @return void
      **/
-    function __construct ($Data) {
+    function __construct (array $Data) {
       // Check the type of this header
       $Identifier = array_shift ($Data);
       
-      if (substr ($Identifier, 0, 5) == 'HTTP/') {
+      if (substr ($Identifier, 0, strlen ($this::$protoName) + 1) == $this::$protoName . '/') {
         $this->Type = self::TYPE_RESPONSE;
         
-        $this->Version = substr ($Identifier, 0, 8);
-        $this->Code = intval (substr ($Identifier, 9, 3));
-        $this->Message = substr ($Identifier, 13);
+        $this->Version = substr ($Identifier, 0, ($p = strpos ($Identifier, ' ')));
+        $this->Code = intval (substr ($Identifier, $p + 1, 3));
+        $this->Message = substr ($Identifier, $p + 5);
       } else {
         $this->Type = self::TYPE_REQUEST;
         
@@ -124,15 +131,87 @@
     }
     // }}}
     
+    // {{{ getMethod
+    /**
+     * Retrive the HTTP-Method if this is a request-header
+     * 
+     * @access public
+     * @return enum
+     **/
+    public function getMethod () {
+      return $this->Method;
+    }
+    // }}}
+    
+    // {{{ setMethod
+    /**
+     * Set the method of a request-header
+     * 
+     * @param enum $Method
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setMethod ($Method) {
+      if (!in_array ($Method, $this::$Methods))
+        return false;
+      
+      $this->Method = $Method;
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ getStatus
+    /**
+     * Retrive the status-code from a http-response
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getStatus () {
+      return $this->Code;
+    }
+    // }}}
+    
+    // {{{ isError
+    /**
+     * Check if this header indicates an error-status
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isError () {
+      return ($this->Code >= 400);
+    }
+    // }}}
+    
+    // {{{ getMessage
+    /**
+     * Retrive the message that was associated with the repsonse-code
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getMessage () {
+      return $this->Message;
+    }
+    // }}}
+    
     // {{{ getVersion
     /**
      * Retrive the version of this header
      * 
+     * @param bool $asString (optional)
+     * 
      * @access public
-     * @return float
+     * @return mixed
      **/
-    public function getVersion () {
-      return floatval ($this->Version);
+    public function getVersion ($asString = false) {
+      if ($asString)
+        return substr ($this->Version, strlen ($this::$protoName) + 1);
+      
+      return floatval (substr ($this->Version, strlen ($this::$protoName) + 1));
     }
     // }}}
     
@@ -148,25 +227,28 @@
     }
     // }}}
     
-    // {{{ setMethod
+    // {{{ getURI
     /**
-     * Set the method of a request-header
-     * 
-     * @param enum $Method
+     * Retrive the request-uri
      * 
      * @access public
-     * @return bool
+     * @return string
      **/
-    public function setMethod ($Method) {
-      switch ($Method) {
-        case self::METHOD_GET:
-        case self::METHOD_POST:
-          $this->Method = $Method;
-          
-          return true;
-      }
-      
-      return false;
+    public function getURI () {
+      return $this->URI;
+    }
+    // }}}
+    
+    // {{{ getURL
+    /**
+     * Retrive the URL from this header (only if it is a request)
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getURL () {
+      # TODO: This is HTTP
+      return 'http://' . $this->getField ('Host') . $this->URI;
     }
     // }}}
     
@@ -184,21 +266,23 @@
       if (!is_array ($URL) && !($URL = parse_url ($URL)))
         return false;
       
+      # TODO: Add support for full URIs
+      
       // Store the URI
       $this->URI = $URL ['path'] . (isset ($URL ['query']) && ($URL ['query'] !== null) ? '?' . $URL ['query'] : '');
       
       // Setup host-entry
       if (!isset ($URL ['host']) || ($URL ['host'] === null)) {
         $this->unsetField ('Host');
-        $this->Version = 'HTTP/1.0';
+        $this->Version = $this::$protoName . '/1.0'; # TODO: This is HTTP
       } else {
         $this->setField ('Host', $URL ['host'] . (isset ($URL ['port']) && ($URL ['port'] !== null) ? ':' . $URL ['port'] : ''));
-        $this->Version = 'HTTP/1.1';
+        $this->Version = $this::$protoName . '/1.1'; # TODO: This is HTTP
       }
       
       // Set credentials (if applicable)
       if (isset ($URL ['user']))
-        $this->setCredentials ($URL ['user'], $URL ['pass']);
+        $this->setCredentials ($URL ['user'], (isset ($URL ['pass']) ? $URL ['pass'] : ''));
       
       return true;
     }

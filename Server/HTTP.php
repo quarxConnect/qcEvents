@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - HTTP-Server Implementation
-   * Copyright (C) 2013 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
    **/
   
   require_once ('qcEvents/Stream/HTTP.php');
+  require_once ('qcEvents/Stream/HTTP/Request.php');
   
   /**
    * HTTP-Server
@@ -29,7 +30,7 @@
    * @package qcEvents
    * @revision 03
    **/
-  class qcEvents_Socket_Server_HTTP extends qcEvents_Stream_HTTP {
+  class qcEvents_Server_HTTP extends qcEvents_Stream_HTTP {
     /* Maximum numbers of requests for this connection */
     private $maxRequestCount = 50;
     
@@ -59,11 +60,8 @@
      * @return void
      **/
     function __construct () {
-      // Inherit to our parent
-      call_user_func_array ('parent::__construct', func_get_args ());
-        
-      // Register hooks
-      $this->addHook ('httpFinished', array ($this, 'httpdRequestReady'));
+      // Set the header-class
+      $this->setHeaderClass ('qcEvents_Stream_HTTP_Request');
     }
     // }}}
     
@@ -80,8 +78,11 @@
      **/
     public function httpdSetResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response, $Body = null) {
       // Check if the given request matches the current one
-      if ($Request !== $this->Request)
+      if ($Request !== $this->Request) {
+        trigger_error ('Request is not active');
+        
         return false;
+      }
       
       // Make sure there is a line-break at the end of body
       if (substr ($Body, -2, 2) != "\r\n")
@@ -92,7 +93,9 @@
       
       // Write out the response
       $this->httpHeaderWrite ($Response);
-      $this->write ($Body);
+      
+      if (($Source = $this->getPipeSource ()) && ($Source instanceof qcEvents_Interface_Sink))
+        $Source->write ($Body);
       
       // Reset the current state
       $this->httpdFinish ();
@@ -152,10 +155,13 @@
         return false;
       
       // Write out the chunk
+      if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Sink))
+        return;
+      
       if ($this->Response->getVersion () < 1.1)
-        $this->write ($Body);
+        $Source->write ($Body);
       else
-        $this->mwrite (dechex (strlen ($Body)), "\r\n", $Body, "\r\n");
+        $Source->mwrite (dechex (strlen ($Body)), "\r\n", $Body, "\r\n");
       
       return true;
     }
@@ -176,15 +182,18 @@
       if (($Request !== $this->Request) || !$this->Response)
         return false;
       
+      if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Sink))
+        return;
+      
       // Write out last chunk
-      $this->write ("0\r\n");
+      $Source->write ("0\r\n");
       
       // Check for tailing header
       if (is_object ($Trailer)) {
         $Header = strval ($Trailer);
-        $this->write (substr ($Header, strpos ($Header, "\r\n") + 2));
+        $Source->write (substr ($Header, strpos ($Header, "\r\n") + 2));
       } else
-        $this->write ("\r\n");
+        $Source->write ("\r\n");
       
       // Reset ourself
       $this->httpdFinish ();
@@ -203,17 +212,18 @@
     private function httpdFinish () {
       // Handle response-headers
       if ($this->Response && $this->Response->hasField ('Connection')) {
-        if ($this->Response->getField ('Connection') == 'close')
-          $this->disconnect ();
-        else
-          $this->addTimeout ($this->keepAliveTimeout, false, array ($this, 'httpdCheckKeepAlive'));
+        if ($this->Response->getField ('Connection') == 'close') {
+          if ($Source = $this->getPipeSource ())
+            $Source->close ();
+        } elseif (($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Timer)
+          $Source->addTimer ($this->keepAliveTimeout, false, array ($this, 'httpdCheckKeepAlive'));
       }
-      
-      // Make sure pending requests are processed (with a cleaned up stack)
-      $this->forceOnNextIteration (self::EVENT_TIMER);
       
       // Reset ourself
       $this->reset ();
+      
+      // Process any waiting events
+      $this->httpdDispatchQueue ();
     }
     // }}}
     
@@ -225,6 +235,9 @@
      * @return void
      **/
     protected function reset () {
+      #$t = debug_backtrace (DEBUG_BACKTRACE_IGNORE_ARGS, 1);
+      #echo 'RESET from ', $t [0]['file'], ' ', $t [0]['line'], "\n";
+      
       // Reset ourself
       $this->Request = null;
       $this->RequestBody = null;
@@ -256,7 +269,7 @@
         $Header->setField ('Date', date ('r'));
       
       // Check wheter to force a close on the connection
-      if ($this->RequestCount >= $this->maxRequestCount)
+      if (($this->RequestCount >= $this->maxRequestCount) || ($Header->getVersion () < 1.1))
         $Header->setField ('Connection', 'close');
       elseif (!$Header->hasField ('Connection')) {
         $Header->setField ('Connection', 'Keep-Alive');
@@ -334,26 +347,69 @@
       if ($this->Request)
         return;
       
+      if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Socket))
+        return;
+      
       // Check if the timeout was reached
-      $Duration = time () - $this->getLastEvent ();
+      $Duration = time () - $Source->getLastEvent ();
       
       if ($Duration >= $this->keepAliveTimeout)
-        return $this->disconnect ();
+        return $Source->close ();
       
       // Requeue the timeout
-      $this->addTimeout (max (1, $this->keepAliveTimeout - $Duration), false, array ($this, 'httpdCheckKeepAlive'));
+      $Source->addTimer (max (1, $this->keepAliveTimeout - $Duration), false, array ($this, 'httpdCheckKeepAlive'));
     }
     // }}}
     
-    // {{{ timerEvent
+    // {{{ initConsumer
     /**
-     * Internal Callback: Check for pending requests
+     * Setup ourself to consume data from a source
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be raised in the form of
+     * 
+     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     * 
+     * @access public
+     * @return callable
+     **/
+    public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+      // Make sure the source is a socket and close the connection if it misses to send the first request
+      if (($rc = parent::initConsumer ($Source, $Callback, $Private)) && ($Source instanceof qcEvents_Socket))
+        $Source->addTimer ($this->keepAliveTimeout, false, array ($this, 'httpdCheckKeepAlive'));
+      
+      // Register our hooks
+      if ($rc)
+        $this->addHook ('httpFinished', array ($this, 'httpdRequestReady'));
+      
+      return $rc;
+    }
+    // }}}
+    
+    // {{{ deinitConsumer
+    /**
+     * Callback: A source was removed from this consumer
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be raised in the form of 
+     * 
+     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return void
-     **/
-    public final function timerEvent () {
-      return $this->httpdDispatchQueue ();
+     **/  
+    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+      // Remove our hooks again
+      $this->removeHook ('httpFinished', array ($this, 'httpdRequestReady'));
+      
+      // Forward to our parent
+      return parent::deinitConsumer ($Source, $Callback, $Private);
     }
     // }}}
     

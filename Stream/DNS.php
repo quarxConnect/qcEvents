@@ -18,15 +18,30 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Socket.php');
+  require_once ('qcEvents/Interface/Consumer.php');
+  require_once ('qcEvents/Trait/Hookable.php');
   require_once ('qcEvents/Stream/DNS/Message.php');
   
-  abstract class qcEvents_Stream_DNS extends qcEvents_Socket {
+  class qcEvents_Stream_DNS implements qcEvents_Interface_Consumer {
+    use qcEvents_Trait_Hookable;
+    
     /* Internal DNS-Buffer for TCP-Mode */
     private $dnsBuffer = '';
     
     /* Expected length of dnsBuffer */
     private $dnsLength = null;
+    
+    /* Active queries */
+    private $dnsQueries = array ();
+    
+    /* Timeout for queries */
+    private $dnsTimeout = 4;
+    
+    /* Forced Datagram-size for EDNS-Messages */
+    private $dnsDatagramSize = 1200;
+    
+    /* Source of our pipe */
+    private $Source = null;
     
     // {{{ dnsParseMessage
     /**
@@ -40,68 +55,168 @@
     protected function dnsParseMessage ($Data) {
       $Message = new qcEvents_Stream_DNS_Message;
       
-      if ($Message->parse ($Data))
+      // Try to parse the message and push back if everything was successfull
+      if (($rCode = $Message->parse ($Data)) === true)
         return $Message;
+      
+      // Check for a generic failure
+      if (($rCode === false) || ($rCode === null)) {
+        trigger_error ('Parse failed instantly');
+        
+        return false;
+      } else
+        trigger_error ('Received Malformed DNS-Message, dropping with error-response');
+      
+      // Handle a DNS-Error
+      $Response = $Message->createClonedResponse ();
+      $Response->setError ($rCode);
+      
+      $this->dnsStreamSendMessage ($Response);
       
       return false;
     }
     // }}}
     
-    // {{{ dnsSendMessage
+    // {{{ dnsStreamSendMessage
     /**
      * Write a DNS-Message to the wire
      * 
      * @param qcEvents_Stream_DNS_Message $Message
      * 
-     * @access protected
+     * @access public
      * @return bool
      **/
-    protected function dnsSendMessage (qcEvents_Stream_DNS_Message $Message) {
+    public function dnsStreamSendMessage (qcEvents_Stream_DNS_Message $Message) {
+      // Make sure we have a source available
+      if (!$this->Source)
+        return false;
+      
+      // Check if this is a query
+      $Query = $Message->isQuestion ();
+      
+      // Try to override datagram-size
+      if ($this->dnsDatagramSize !== null)
+        $Message->setDatagramSize ($this->dnsDatagramSize);
+      
       // Convert the Message into a string
       $Data = $Message->toString ();
       
       // Handle UDP-Writes
-      if ($this->isUDP ()) {
-        // Make sure that the payload is at most 512 Bytes
-        while (strlen ($Data) > 512) {
+      if ($this->Source->isUDP ()) {
+        // Check the maximum size for datagram-transport
+        if (!$Query && isset ($this->dnsQueries [$Message->getID ()]))
+          $Size = $this->dnsQueries [$Message->getID ()]->getDatagramSize ();
+        else
+          $Size = $Message->getDatagramSize ();
+        
+        // Make sure that the payload is not too long
+        while (strlen ($Data) > $Size) {
           if (!$Message->truncate ())
             return false;
           
           $Data = $Message->toString ();
         }
-        
-        return $this->write ($Data);
-      }
       
-      // Write out TCP-Mode
-      return $this->write (chr ((strlen ($Data) & 0xFF00) >> 8) . chr (strlen ($Data) & 0xFF) . $Data);
+      // Handle TCP-Writes
+      } else
+        $Data = chr ((strlen ($Data) & 0xFF00) >> 8) . chr (strlen ($Data) & 0xFF) . $Data;
+      
+      // Add to local storage if it is a query
+      if ($Query && ($this->Source instanceof qcEvents_Interface_Timer)) {
+        $this->dnsQueries [$Message->getID ()] = $Message;
+        $this->Source->addTimer ($this->dnsTimeout, false, array ($this, 'dnsStreamTimeout'), $Message);
+      
+      // Or remove from queue if this is a response
+      } elseif (!$Query)
+        unset ($this->dnsQueries [$Message->getID ()]);
+      
+      return $this->Source->write ($Data);
     }
     // }}}
     
-    // {{{ socketReadable
+    // {{{ dnsStreamParse
     /**
-     * Internal callback: There is data available on the buffer
+     * Parse a received DNS-Message
      * 
-     * @access protected
+     * @param string $Data
+     * 
+     * @access private
      * @return void
      **/
-    protected function socketReadable () {
-      return $this->socketReceive ($this->readBuffer ());
+    private function dnsStreamParse ($Data) {
+      // Try to parse the 
+      if (!is_object ($Message = $this->dnsParseMessage ($Data))) {
+        trigger_error ('Malformed DNS-Message');
+        
+        return false;
+      }
+      
+      // Fire initial callback
+      $this->___callback ('dnsMessageReceived', $Message);
+      
+      // Process depending on message-type
+      if (!$Message->isQuestion ()) {
+        // Check if we have the corresponding query saved
+        unset ($this->dnsQueries [$Message->getID ()]);
+        
+        return $this->___callback ('dnsResponseReceived', $Message);
+      }
+      
+      if ($this->Source instanceof qcEvents_Interface_Timer) {
+        $this->dnsQueries [$Message->getID ()] = $Message;
+        $this->Source->addTimer ($this->dnsTimeout, false, array ($this, 'dnsStreamTimeout'), $Message);
+      }
+      
+      return $this->___callback ('dnsQuestionReceived', $Message);
     }
     // }}}
     
-    // {{{ socketReceive
+    // {{{ dnsStreamTimeout
+    /**
+     * Timeout a localy queued query
+     * 
+     * @param qcEvents_Socket $Socket
+     * @param qcEvents_Stream_DNS_Message $Message
+     * 
+     * @access public
+     * @return void
+     **/
+    public function dnsStreamTimeout (qcEvents_Socket $Socket, qcEvents_Stream_DNS_Message $Message) {
+      // Retrive the ID of the message
+      $ID = $Message->getID ();
+      
+      // Sanatize the call
+      if (($Socket !== $this->Source) || !isset ($this->dnsQueries [$ID]) || ($this->dnsQueries [$ID] !== $Message))
+        return;
+      
+      // Remove from the queue
+      unset ($this->dnsQueries [$ID]);
+      
+      // Fire a callback
+      $this->___callback ('dnsQuestionTimeout', $Message);
+    }
+    // }}}
+    
+    // {{{ consume
     /**
      * Internal Callback: Data was received over the wire
      * 
      * @param string $Data
+     * @param qcEvents_Interface_Source $Source
      * 
-     * @access protected
+     * @access public
      * @return void
      **/
-    protected function socketReceive ($Data) {
+    public function consume ($Data, qcEvents_Interface_Source $Source) {
+      // Make sure we have a source
+      if (!$this->Source) {
+        trigger_error ('consume() without Source assigned');
+        
+        return;
+      }
+      
       // Just forward the data in UDP-Mode
-      if ($this->isUDP ())
+      if ($this->Source->isUDP ())
         return $this->dnsStreamParse ($Data);
       
       // Append the data to our buffer
@@ -137,27 +252,141 @@
     }
     // }}}
     
-    // {{{ dnsStreamParse
+    // {{{ close
     /**
-     * Parse a received DNS-Message
+     * Close this event-interface
      * 
-     * @param string $Data
+     * @param callable $Callback (optional) Callback to raise once the interface is closed
+     * @param mixed $Private (optional) Private data to pass to the callback
+     * 
+     * @access public
+     * @return void
+     **/
+    public function close (callable $Callback = null, $Private = null) {
+      // Just raise callbacks
+      $this->___raiseCallback ($Callback, $Private);
+      $this->___callback ('eventClosed');
+    }
+    // }}}
+    
+    // {{{ reset
+    /**
+     * Reset our internal state
      * 
      * @access private
      * @return void
      **/
-    private function dnsStreamParse ($Data) {
-      // Try to parse the 
-      if (!is_object ($Message = $this->dnsParseMessage ($Data)))
-        return false;
+    private function reset () {
+      $this->dnsBuffer = '';
+      $this->dnsLength = null;
+      $this->dnsQueries = array ();
+    }
+    // }}}
+    
+    // {{{ initConsumer
+    /**
+     * Setup ourself to consume data from a source
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be raised in the form of
+     *  
+     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *    
+     * @access public
+     * @return callable
+     **/
+    public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+      // Check if this source is already set
+      if ($this->Source === $Source) {
+        $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+        
+        return;
+      }
       
-      // Fire callbacks
-      $this->___callback ('dnsMessageReceived', $Message);
+      // Check if there is an existing source
+      if ($this->Source)
+        $this->deinitConsumer ($Source);
       
-      if ($Message->isQuery ())
-        $this->___callback ('dnsQuestionReceived', $Message);
-      else
-        $this->___callback ('dnsResponseReceived', $Message);
+      // Reset ourself
+      $this->reset ();
+      
+      // Set the new source
+      $this->Source = $Source;
+      
+      // Raise an event for this
+      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___callback ('eventPiped', $Source);
+    }
+    // }}}
+    
+    // {{{ initStreamConsumer
+    /**
+     * Setup ourself to consume data from a stream
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be raised in the form of
+     * 
+     *   function (qcEvents_Interface_Stream $Source, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     * 
+     * @access public
+     * @return callable
+     **/
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+      // Check if this source is already set
+      if ($this->Source === $Source) {
+        $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+        
+        return;
+      }
+      
+      // Check if there is an existing source
+      if ($this->Source)
+        $this->deinitConsumer ($Source);
+      
+      // Reset ourself
+      $this->reset ();
+      
+      // Set the new source
+      $this->Source = $Source;
+      
+      // Raise an event for this
+      $this->___callback ('eventPipedStream', $Source);
+      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+    }
+    // }}}
+    
+    // {{{ deinitConsumer
+    /**
+     * Callback: A source was removed from this sink
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be raised in the form of 
+     * 
+     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     * 
+     * @access public
+     * @return void  
+     **/
+    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+      // Check if this is the right source
+      if ($this->Source !== $Source)
+        return $this->___raiseCallback ($Callback, $Source, $this, false, $Private);
+      
+      // Unset the source
+      $this->Source = null;
+      
+      // Raise an event for this
+      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___callback ('eventUnpiped', $Source);
     }
     // }}}
     
@@ -196,6 +425,64 @@
      * @return void
      **/  
     protected function dnsResponseReceived (qcEvents_Stream_DNS_Message $Message) { }
+    // }}}
+    
+    // {{{ dnsQuestionTimeout
+    /**
+     * Callback: A DNS-Question as been timed out
+     * 
+     * @param qcEvents_Stream_DNS_Message $Message
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function dnsQuestionTimeout (qcEvents_Stream_DNS_Message $Message) { }
+    // }}}
+    
+    // {{{ eventClosed
+    /**
+     * Callback: This stream was closed
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function eventClosed () { }
+    // }}}
+    
+    // {{{ eventPiped
+    /**
+     * Callback: A source was attached to this consumer
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function eventPiped (qcEvents_Interface_Source $Source) { }
+    // }}}
+    
+    // {{{ eventPipedStream
+    /**
+     * Callback: A stream was attached to this consumer
+     * 
+     * @param qcEvents_Interface_Stream $Source
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function eventPipedStream (qcEvents_Interface_Stream $Source) { }
+    // }}}
+    
+    // {{{ eventUnpiped
+    /**
+     * Callback: A source was removed from this consumer
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function eventUnpiped (qcEvents_Interface_Source $Source) { }
     // }}}
   }
 

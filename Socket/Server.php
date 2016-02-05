@@ -18,7 +18,11 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Event.php');
+  require_once ('qcEvents/Interface/Loop.php');
+  require_once ('qcEvents/Interface/Hookable.php');
+  require_once ('qcEvents/Interface/Timer.php');
+  require_once ('qcEvents/Trait/Hookable.php');
+  require_once ('qcEvents/Trait/Timer.php');
   require_once ('qcEvents/Socket.php');
   
   /**
@@ -28,9 +32,11 @@
    * 
    * @class qcEvents_Socket_Server
    * @package qcEvents
-   * @revision 02
+   * @revision 03
    **/
-  class qcEvents_Socket_Server extends qcEvents_Event {
+  class qcEvents_Socket_Server implements qcEvents_Interface_Loop, qcEvents_Interface_Hookable, qcEvents_Interface_Timer {
+    use qcEvents_Trait_Hookable, qcEvents_Trait_Timer;
+    
     /* Base-Class for Child-Connections */
     const CHILD_CLASS_BASE = 'qcEvents_Socket';
     
@@ -41,10 +47,20 @@
     const TYPE_TCP = qcEvents_Socket::TYPE_TCP;
     const TYPE_UDP = qcEvents_Socket::TYPE_UDP;
     
+    /* Our assigned event-loop */
+    private $eventLoop = null;
+    
+    /* Our server-socket */
+    private $Socket = null;
+    
+    /* Type of our server-socket */
     private $Type = qcEvents_Socket_Server::TYPE_TCP;
     
     /* Class for new child-connections (should be at least qcEvents_Socket) */
     private $childClass = qcEvents_Socket_Server::CHILD_CLASS_BASE;
+    
+    /* Use Child-Class as pipe-consumer, not as socket */
+    private $childClassPiped = false;
     
     /* Registered hooks for our children */
     private $childHooks = array ();
@@ -67,22 +83,20 @@
      * @param int $Port (optional) Port to listen on
      * @param enum $Type (optional) Type of socket to use (TCP/UDP)
      * @param string $Class (optional) Class for Child-Connections
+     * @param bool $Piped (optional) Use Child-Class as Pipe-Consumer
      * @param array $Hooks (optional) Hooks for Child-Connections
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Base $Base = null, $Host = null, $Port = null, $Type = null, $Class = null, $Hooks = null) {
-      // Don't do anything withour an events-base
-      if ($Base === null)
-        return;
-      
+    function __construct (qcEvents_Base $Base = null, $Host = null, $Port = null, $Type = null, $Class = null, $Piped = false, $Hooks = null) {
       // Set our handler
-      $this->setEventBase ($Base);
+      if ($Base !== null)
+        $this->setEventBase ($Base);
       
       // Set child-class
       if ($Class !== null)
-        $this->setChildClass ($Class);
+        $this->setChildClass ($Class, $Piped);
       
       // Register any hooks
       if (is_array ($Hooks))
@@ -98,23 +112,117 @@
     }
     // }}}
     
+    // {{{ getEventBase
+    /**
+     * Retrive the handle of the current event-loop-handler
+     * 
+     * @access public
+     * @return qcEvents_Base May be NULL if none is assigned
+     **/
+    public function getEventBase () {
+      return $this->eventLoop;
+    }  
+    // }}}
+    
+    // {{{ setEventBase
+    /**
+     * Set a new event-loop-handler
+     * 
+     * @param qcEvents_Base $Base
+     * 
+     * @access public
+     * @return void  
+     **/
+    public function setEventBase (qcEvents_Base $Base) {
+      // Check if the event-loop if different from the current one
+      if ($Base === $this->eventLoop)
+        return;
+      
+      // Remove ourself from the current event loop
+      if ($this->eventLoop)
+        $this->eventLoop->removeEvent ($this);
+      
+      // Assign the new event-loop
+      $this->eventLoop = $Base;   
+      
+      $Base->addEvent ($this);
+    }
+    // }}}
+    
+    // {{{ unsetEventBase
+    /**
+     * Remove any assigned event-loop-handler
+     * 
+     * @access public
+     * @return void  
+     **/
+    public function unsetEventBase () {
+      if (!$this->eventLoop)
+        return;
+      
+      $this->eventLoop->removeEvent ($this);
+      $this->eventLoop = null;
+    }
+    // }}}
+    
+    // {{{ getReadFD
+    /**
+     * Retrive the stream-resource to watch for reads
+     * 
+     * @access public
+     * @return resource May return NULL if no reads should be watched
+     **/
+    public function getReadFD () {
+      return $this->Socket;
+    }
+    // }}}
+    
+    // {{{ getWriteFD
+    /**
+     * Retrive the stream-resource to watch for writes
+     * 
+     * @access public
+     * @return resource May return NULL if no writes should be watched
+     **/
+    public function getWriteFD () { }
+    // }}}
+    
+    // {{{ getWriteFDforClient
+    /**
+     * Retrive the Write-FD for one of our clients
+     * 
+     * @param qcEvents_Socket $Client
+     * 
+     * @access public
+     * @return resource
+     **/
+    public function getWriteFDforClient (qcEvents_Socket $Client) {
+      if (($this->Type != self::TYPE_UDP) || !in_array ($Client, $this->Clients, true))
+        return false;
+      
+      return $this->Socket;
+    }
+    // }}}
+    
     // {{{ setChildClass
     /**
      * Set class to use for incoming connections
      * 
      * @param string $Classname
+     * @param bool $Piped (optional) Treat the class as pipe-consumer, not as socket
      * 
      * @access public
      * @return bool
      **/
-    public function setChildClass ($Classname) {
+    public function setChildClass ($Classname, $Piped = false) {
       // Verify the class
-      if (($Classname == $this::CHILD_CLASS_BASE) ||
-          !is_subclass_of ($Classname, $this::CHILD_CLASS_BASE))
+      if ((!$Piped && !is_a ($Classname, $this::CHILD_CLASS_BASE, true)) ||
+          ($Piped && !is_a ($Classname, 'qcEvents_Interface_Consumer', true)))
         return false;
       
       // Set the class
       $this->childClass = $Classname;
+      $this->childClassPiped = $Piped;
       
       return true;
     }
@@ -181,12 +289,10 @@
       if (!is_resource ($Socket = stream_socket_server ($Proto . '://' . $Host . ':' . $Port, $ErrNo, $ErrStr, $Flags, $Context)))
         return false;
       
-      // Setup the event-handler
-      if (!$this->setFD ($Socket, true, false)) {
-        fclose ($Socket);
-        
-        return false;
-      }
+      $this->Socket = $Socket;
+      
+      if ($this->eventLoop)
+        $this->eventLoop->updateEvent ($this);
       
       // Set ourself to online
       $this->Type = $Type;
@@ -199,17 +305,44 @@
     }
     // }}}
     
-    // {{{ readEvent
+    // {{{ close
+    /**
+     * Close this event-interface
+     * 
+     * @param callable $Callback (optional) Callback to raise once the interface is closed
+     * @param mixed $Private (optional) Private data to pass to the callback
+     * 
+     * @access public
+     * @return void  
+     **/
+    public function close (callable $Callback = null, $Private = null) {
+      // Check wheter to really close the server
+      if ($Open = $this->Socket) {
+        fclose ($this->Socket);
+        
+        $this->Socket = null;
+      }
+      
+      // Raise Callbacks
+      if ($Callback !== null)
+        call_user_func ($Callback, $Private);
+      
+      if ($Open)
+        $this->___callback ('serverOffline');
+    }
+    // }}}
+    
+    // {{{ raiseRead
     /**
      * Handle events on our server-socket
      * 
      * @access public
      * @return void
      **/
-    public final function readEvent () {
+    public final function raiseRead () {
       // Handle UDP-Events
       if ($this->Type == self::TYPE_UDP) {
-        if (($Data = stream_socket_recvfrom ($fd = $this->getFD (), qcEvents_Socket::READ_UDP_BUFFER, 0, $Remote)) === false)
+        if (($Data = stream_socket_recvfrom ($this->Socket, qcEvents_Socket::READ_UDP_BUFFER, 0, $Remote)) === false)
           # TODO: What to do here?
           return false;
         
@@ -224,7 +357,7 @@
           
           // Make sure we have a timer
           if (!$this->haveUDPTimer) {
-            $this->addTimeout (max (2, intval (self::CHILD_UDP_TIMEOUT / 4)), true, array ($this, 'checkUDPChildren'));
+            $this->addTimer (max (2, intval (self::CHILD_UDP_TIMEOUT / 4)), true, array ($this, 'checkUDPChildren'));
             $this->haveUDPTimer = true;
           }
         
@@ -238,7 +371,7 @@
       // Handle TCP-Events (accept an incoming connection)
       } elseif ($this->Type == self::TYPE_TCP) {
         // Accept incoming connection
-        if (!is_resource ($Connection = stream_socket_accept ($this->getFD (), 0, $Remote)))
+        if (!is_resource ($Connection = stream_socket_accept ($this->Socket, 0, $Remote)))
           return false;
         
         // Fire callback first
@@ -246,8 +379,32 @@
           return;
         
         // Create new Client if neccessary
-        $Client = $this->serverCreateChild ($Remote, $Connection);
+        $this->Clients [$Remote] = $this->serverCreateChild ($Remote, $Connection);
       }
+    }
+    // }}}
+    
+    // {{{ raiseWrite
+    /**
+     * Callback: Handle Write-Events (not gonna happen, but the interface wants us to have this function)
+     * 
+     * @access public
+     * @return void
+     **/
+    public function raiseWrite () { }
+    // }}}
+    
+    // {{{ raiseError
+    /**
+     * Callback: There was an error on our socket
+     * 
+     * @access public
+     * @return void
+     **/
+    public function raiseError () {
+      trigger_error ('Error on server-socket');
+      
+      $this->close ();
     }
     // }}}
     
@@ -259,21 +416,36 @@
      * @param resource $Connection (optional)
      * 
      * @access private
-     * @return object
+     * @return qcEvents_Socket
      **/
     private function serverCreateChild ($Remote, $Connection = null) {
-      // Create a new object of childClass
-      $Client = new $this->childClass ($this->getEventBase ());
+      // Create Socket and client
+      if ($this->childClassPiped) {
+        $socketClass = $this::CHILD_CLASS_BASE;
+        $Socket = new $socketClass ($this->getEventBase ());
+        $Client = new $this->childClass ($this->getEventBase ());
+      } else
+        $Client = $Socket = new $this->childClass ($this->getEventBase ());
       
       // Register hooks at the child
       foreach ($this->childHooks as $Hook=>$Hooks)
-        foreach ($Hooks as $Info)
-          $Client->addHook ($Hook, $Info [0], $Info [1]);
+        foreach ($Hooks as $Info) {
+          @$Client->addHook ($Hook, $Info [0], $Info [1]);
+          
+          if ($Client !== $Socket)
+            @$Socket->addHook ($Hook, $Info [0], $Info [1]);
+        }
       
       // Register ourself at the child
-      $Client->connectServer ($this, $Remote, $Connection);
+      $Socket->connectServer ($this, $Remote, $Connection);
       
-      return $Client;
+      // Pipe if client and socket are not the same
+      if ($Socket !== $Client)
+        $Socket->pipe ($Client);
+      
+      $this->___callback ('serverClientNew', $Socket, $Client);
+      
+      return $Socket;
     }
     // }}}
     
@@ -287,10 +459,6 @@
      * @return bool
      **/
     public function disconnectChild (qcEvents_Socket $Child) {
-      // This only applies to UDP-Mode
-      if ($this->Type != self::TYPE_UDP)
-        return false;
-      
       // Retrive name of the peer on the child
       $Peer = $Child->getRemoteName ();
       
@@ -322,7 +490,7 @@
       
       foreach ($this->Clients as $C)
         if ($t - $C->getLastEvent () > self::CHILD_UDP_TIMEOUT)
-          $C->disconnect ();
+          $C->close ();
     }
     // }}}
     
@@ -337,6 +505,16 @@
     protected function serverOnline () { }
     // }}}
     
+    // {{{ serverOffline
+    /**
+     * Callback: The server was closed
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function serverOffline () { }
+    // }}}
+    
     // {{{ serverClientAccept
     /**
      * Callback: Accept a new incoming connection
@@ -349,6 +527,19 @@
     protected function serverClientAccept ($Remote) { }
     // }}}
     
+    // {{{ serverClientNew
+    /**
+     * Callback: A new client was created
+     * 
+     * @param qcEvents_Socket $Client
+     * @param qcEvents_Interface_Consumer $Consumer
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function serverClientNew (qcEvents_Socket $Socket, qcEvents_Interface_Consumer $Consumer = null) { }
+    // }}}
+    
     // {{{ serverClientClosed
     /**
      * Callback: Client-Connection was/will be closed
@@ -359,7 +550,7 @@
      * @access protected
      * @return void
      **/
-    protected function serverClientClosed ($Remote, qcEvents_Socket $Client) { }
+    protected function serverClientClosed ($Remote, qcEvents_Socket $Socket) { }
     // }}}
   }
 

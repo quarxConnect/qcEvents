@@ -11,38 +11,52 @@
    * 
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
-   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
    * 
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Stream/HTTP/Header.php');
+  require_once ('qcEvents/Stream/HTTP.php');
   
-  class qcEvents_Socket_Client_HTTP_Request extends qcEvents_Stream_HTTP_Header {
-    // Use TLS for this request
+  class qcEvents_Stream_HTTP_Request extends qcEvents_Stream_HTTP {
+    /* Use TLS for this request */
     private $useTLS = false;
     
-    // Values to upload with this request
+    /* Values to upload with this request */
     private $Values = array ();
     
-    // Files to upload with this request
+    /* Files to upload with this request */
     private $Files = array ();
     
-    // User-defined body for this request
+    /* User-defined body for this request */
     private $Body = null;
+    
+    /* Maximum number of redirects */
+    private $maxRedirects = 20;
     
     // {{{ __construct
     /**
      * Create a new HTTP-Request
      * 
+     * @param mixed $Parameter (optional) Initialize the request with this headers or URL
+     * 
      * @access friendly
      * @return void
      **/
-    function __construct ($URL = null) {
+    function __construct ($Parameter = null) {
+      // Handle the parameter
+      $Header = array ('GET / HTTP/1.0', 'Connection: keep-alive');
+      $URL = null;
+      
+      if (is_array ($Parameter))
+        $Header = $Parameter;
+      elseif (is_string ($Parameter))
+        $URL = $Parameter;
+      
       // Setup the header using a dummy
-      parent::__construct (array ('GET / HTTP/1.0', 'Connection: keep-alive'));
+      parent::__construct ($Header);
       
       // Store the requested URL
       if ($URL !== null)
@@ -81,7 +95,7 @@
         $Boundary = '----qcEvents-' . md5 (time ());
         
         // Always transfer files and values using POST
-        $this->setMethod (self::METHOD_POST);
+        $this->setMethod ('POST');
         $this->setField ('Content-Type', 'multipart/form-data; boundary="' . $Boundary . '"');
         
         // Generate body of request
@@ -110,13 +124,13 @@
         
       // Use a user-defined body
       } elseif ($this->Body !== null) {
-        $this->setMethod (self::METHOD_POST);
+        $this->setMethod ('POST');
         
         $Body =& $this->Body;
       
       // Make sure we are not in POST-Mode if no body is present
-      } elseif ($this->getMethod () == self::METHOD_POST)
-        $this->setMethod (self::METHOD_GET);
+      } elseif ($this->getMethod () == 'POST')
+        $this->setMethod ('GET');
       
       // Let our parent create the header
       $buf = parent::__toString ();
@@ -193,7 +207,7 @@
         return false;
       
       // Store the TLS-Status
-      $this->useTLS = ($URL ['scheme'] == 'https');
+      $this->useTLS = (isset ($URL ['scheme']) && ($URL ['scheme'] == 'https'));
       
       // Forward to our parent
       return parent::setURL ($URL);
@@ -230,6 +244,32 @@
         $this->setField ('Content-Type', 'application/octet-stream');
       
       return true;
+    }
+    // }}}
+    
+    // {{{ getMaxRedirects
+    /**
+     * Retrive the maximum number of redirects
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getMaxRedirects () {
+      return $this->maxRedirects;
+    }
+    // }}}
+    
+    // {{{ setMaxRedirects
+    /**
+     * Set the maximum number of redirects
+     * 
+     * @param int $Redirects
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setMaxRedirects ($Redirects) {
+      $this->maxRedirects = max (0, (int)$Redirects);
     }
     // }}}
     
@@ -298,6 +338,110 @@
       
       return true;
     }
+    // }}}
+    
+    
+    // {{{ httpSocketConnected
+    /**
+     * Internal Callback: Our underlying socket was connected
+     * 
+     * @param qcEvents_Socket $Socket
+     * 
+     * @access public
+     * @return void
+     **/
+    public final function httpSocketConnected (qcEvents_Socket $Socket) {
+      # TODO: Sanity-Check the socket
+      
+      // Remove the hook again
+      $Socket->removeHook ('socketConnected', array ($this, 'httpSocketConnected'));
+      
+      // Write out the request
+      $this->httpHeaderWrite ($this);
+    }
+    // }}}
+    
+    // {{{ httpFinished
+    /**
+     * Internal Callback: Single HTTP-Request/Response was finished
+     * 
+     * @param qcEvents_Stream_HTTP_Header $Header
+     * @param string $Body
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected final function httpFinished (qcEvents_Stream_HTTP_Header $Header, $Body) {
+      // Make sure the header is a response
+      if ($Header->getType () != qcEvents_Stream_HTTP_Header::TYPE_RESPONSE)
+        return;
+     
+      // Raise the callback
+      $this->___callback ('httpRequestResult', $Header, $Body);
+    }
+    // }}}
+    
+    // {{{ httpFailed
+    /**
+     * Internal Callback: Sinlge HTTP-Request/Response was not finished properly
+     * 
+     * @param qcEvents_Stream_HTTP_Header $Header (optional)
+     * @param string $Body (optional)
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected final function httpFailed (qcEvents_Stream_HTTP_Header $Header = null, $Body = null) {
+      // Make sure the header is a response
+      if ($Header && ($Header->getType () != qcEvents_Stream_HTTP_Header::TYPE_RESPONSE))
+        return;
+      
+      // Raise the callback
+      $this->___callback ('httpRequestResult', $Header, $Body);
+    }
+    // }}}
+    
+    // {{{ initConsumer
+    /**
+     * Setup ourself to consume data from a source
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be raised in the form of
+     * 
+     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     * 
+     * @access public
+     * @return callable
+     **/
+    public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+      // Inherit to our parent
+      if (($rc = parent::initConsumer ($Source, $Callback, $Private)) && ($Source instanceof qcEvents_Socket)) {
+        if ($Source->isConnected ())
+          $this->httpSocketConnected ($Source);
+        else
+          $Source->addHook ('socketConnected', array ($this, 'httpSocketConnected'));
+      }
+      
+      return $rc;
+    }
+    // }}}
+    
+    
+    // {{{ httpRequestResult
+    /**
+     * Callback: HTTP-Request is finished
+     *    
+     * @param qcEvents_Socket_Client_HTTP_Request $Request
+     * @param qcEvents_Stream_HTTP_Header $Header (optional)
+     * @param string $Body (optional)
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function httpRequestResult (qcEvents_Stream_HTTP_Header $Header = null, $Body = null) { }
     // }}}
   }
 
