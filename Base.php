@@ -344,7 +344,9 @@
         if ((count ($readFDs) == 0) && (count ($writeFDs) == 0) && (count ($errorFDs) == 0)) {
           $Count = 0;
           
-          usleep ($usecs);
+          // Sleep if we are in a normal loop
+          if ($this->loopState == 0)
+            usleep ($usecs);
         } else {
           $secs = floor ($usecs / 1000000);
           $usecs -= $secs * 1000000;
