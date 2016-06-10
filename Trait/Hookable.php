@@ -182,9 +182,9 @@
         
         // Merge into local hooks
         if (isset ($this->Hooks [$Name]))
-          $this->Hooks = array_merge ($this->Hooks, $Hooks);
+          $this->Hooks [$Name] = array_merge ($this->Hooks [$Name], $Hooks);
         else
-          $this->Hooks = $Hooks;
+          $this->Hooks [$Name] = $Hooks;
         
         // Indicate that all hooks have been merged
         $this->hooksAdapted = true;
@@ -286,7 +286,7 @@
       
       // Make sure we have all registered hooks
       if (!$this->hooksAdapted)
-        $this->getHooks ();
+        $this->getHooks ($Name);
       
       // Retrive all given parameters
       $Args = func_get_args ();
