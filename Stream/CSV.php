@@ -20,7 +20,7 @@
   
   require_once ('qcEvents/Interface/Consumer.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
-  require_once ('qcEvents/Abstract/Source.php');
+  require_once ('qcEvents/Hookable.php');
   
   /**
    * CSV-Stream
@@ -31,7 +31,7 @@
    * @package qcEvents
    * @revision 01
    **/
-  class qcEvents_Stream_CSV extends qcEvents_Abstract_Source implements qcEvents_Interface_Consumer, qcEvents_Interface_Stream_Consumer {
+  class qcEvents_Stream_CSV extends qcEvents_Hookable implements qcEvents_Interface_Consumer, qcEvents_Interface_Stream_Consumer {
     /* Separator of fields on CSV-Stream */
     private $csvSeparator = ',';
     
@@ -122,7 +122,12 @@
             $csvOffset += $csvLineEndLength;
             
             $this->csvPushRecord ();
-          }
+          } elseif (substr ($this->csvBuffer, $csvOffset, $csvSeparatorLength) != $this->csvSeparator)
+            # TODO: How to handle this?
+            trigger_error ('No separator next to enclosure');
+            
+          else
+            $csvOffset += $csvSeparatorLength;
           
         // Check if there is the end of a normal field on the buffer
         } else {
@@ -167,13 +172,24 @@
       $Record = $this->csvRecord; 
       $this->csvRecord = array ();
       
+      // Ignore empty records
+      if (($Length = count ($Record)) == 0)
+        return;
+      
       // Check wheter to use this as a header
       if ($this->csvHeader === true)
         return $this->___callback ('csvHeaderRecevied', $this->csvHeader = $Record);
       
       // Check wheter to apply a header
-      if ($this->csvHeader !== false)
+      if ($this->csvHeader !== false) {
+        if (count ($this->csvHeader) != $Length) {
+          return;
+          var_dump ($this->csvHeader);
+          var_dump ($Record);
+        }
+        
         $Record = array_combine ($this->csvHeader, $Record);
+      }
       
       // Run the callback
       $this->___callback ('csvRecordReceived', $Record);
@@ -251,11 +267,43 @@
       $this->csvBuffer = '';
       $this->csvBufferLength = 0;
       
+      if (is_array ($this->csvHeader))
+        $this->csvHeader = true;
+      
       // Run the callback
       $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
     }
     // }}}
     
+    // {{{ close
+    /**   
+     * Close this event-interface
+     * 
+     * @param callable $Callback (optional) Callback to raise once the interface is closed
+     * @param mixed $Private (optional) Private data to pass to the callback
+     * 
+     * @access public   
+     * @return void  
+     **/  
+    public function close (callable $Callback = null, $Private = null) {
+      if ($this->csvBufferLength > 0)
+        $this->consume ($this->csvLineEnding, $this->Source);
+      
+      $this->___raiseCallback ($Callback, $Private);
+      $this->___callback ('eventClosed');
+    }
+    // }}}
+    
+    
+    // {{{ eventClosed
+    /**
+     * Callback: We were closed
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function eventClosed () { }
+    // }}}
     
     // {{{ csvHeaderRecevied
     /**
