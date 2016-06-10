@@ -217,8 +217,11 @@
     public function setChildClass ($Classname, $Piped = false) {
       // Verify the class
       if ((!$Piped && !is_a ($Classname, $this::CHILD_CLASS_BASE, true)) ||
-          ($Piped && !is_a ($Classname, 'qcEvents_Interface_Consumer', true)))
+          ($Piped && !is_a ($Classname, 'qcEvents_Interface_Consumer', true) && !is_a ($Classname, 'qcEvents_Interface_Stream_Consumer', true))) {
+        trigger_error ($Classname . ' has to implement ' . ($Piped ? 'qcEvents_Interface_Consumer or qcEvents_Interface_Stream_Consumer' : $this::CHILD_CLASS_BASE));
+        
         return false;
+      }
       
       // Set the class
       $this->childClass = $Classname;
@@ -440,8 +443,12 @@
       $Socket->connectServer ($this, $Remote, $Connection);
       
       // Pipe if client and socket are not the same
-      if ($Socket !== $Client)
-        $Socket->pipe ($Client);
+      if ($Socket !== $Client) {
+        if ($Client instanceof qcEvents_Interface_Stream_Consumer)
+          $Socket->pipeStream ($Client);
+        else
+          $Socket->pipe ($Client);
+      }
       
       $this->___callback ('serverClientNew', $Socket, $Client);
       
@@ -532,12 +539,12 @@
      * Callback: A new client was created
      * 
      * @param qcEvents_Socket $Client
-     * @param qcEvents_Interface_Consumer $Consumer
+     * @param mixed $Consumer
      * 
      * @access protected
      * @return void
      **/
-    protected function serverClientNew (qcEvents_Socket $Socket, qcEvents_Interface_Consumer $Consumer = null) { }
+    protected function serverClientNew (qcEvents_Socket $Socket, $Consumer = null) { }
     // }}}
     
     // {{{ serverClientClosed
