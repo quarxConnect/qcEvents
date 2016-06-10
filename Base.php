@@ -314,7 +314,8 @@
       }
       
       // Reset the loop-state
-      $this->loopState = ($Single ? 1 : 0);
+      if (!($doubleState = (($this->loopState >= 0) && $Single)))
+        $this->loopState = ($Single ? 1 : 0);
       
       // Main-Loop
       do {
@@ -387,7 +388,8 @@
       } while ($this->loopState < 1);
       
       // Reset the loop-state
-      $this->loopState = -1;
+      if (!$doubleState)
+        $this->loopState = -1;
       
       // Indicate success
       return true;
@@ -402,8 +404,11 @@
      * @return void
      **/
     public function loopBreak () {
-      if ($this->loopState < 0)
+      if ($this->loopState < 0) {
+        trigger_error ('Invalid loop-state: ' . $this->loopState);
+        
         return;
+      }
       
       $this->loopState = 2;
     }
