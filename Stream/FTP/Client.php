@@ -917,6 +917,7 @@
     protected function ftpAuthenticated ($Username, $Account = null) { }
     protected function ftpWorkingDirectory ($Path) { }
     protected function ftpProtocolError () { }
+    protected function eventReadable () { }
     protected function eventClosed () { }
   }
 
