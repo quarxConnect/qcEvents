@@ -63,7 +63,7 @@
     protected function socketReadable () {
       // Check wheter to forward this data to the per-line-parser
       if ($this::USE_LINE_BUFFER)
-        return $this->receiveLine ($this->readBuffer ());
+        return $this->receiveLine ($this->read ());
     }
     // }}}
     
