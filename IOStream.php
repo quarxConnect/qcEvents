@@ -420,8 +420,11 @@
       $this->isWatching (false);
       
       // Fire callbacks
-      if ($Callback !== null)
+      if ($Callback !== null) {
+        $this->isClosing = false;
+        
         call_user_func ($Callback, $Private);
+      }
       
       $this->___callback ('eventClosed');
     }
