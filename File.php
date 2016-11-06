@@ -9,6 +9,51 @@
     /* Modification-time to set on close */
     private $modificationTime = null;
     
+    // {{{ readFileContents
+    /**
+     * Read full content of a file and pass to a given callback
+     * 
+     * @param qcEvents_Base $Base Event-Base to use
+     * @param string $Filename Path to file
+     * @param callable $Callback Callback to raise when all contents were read
+     * @param mixed $Private (optional) Private data to pass to the callback
+     * 
+     * Once completed the callback will be raised in the form of
+     * 
+     *   function (string $Content = null, mixed $Private = null) { }
+     * 
+     * @access public
+     * @return qcEvents_File
+     **/
+    public static function readFileContents (qcEvents_Base $Base, $Filename, callable $Callback, $Private = null) {
+      // Try to create a file-stream
+      try {
+        $File = new static ($Base, $Filename, true, false, false);
+      } catch (Exception $E) {
+        return call_user_func ($Callback, null, $Private);
+      }
+      
+      // Bind Event-Handlers
+      $Buffer = '';
+      
+      $File->addHook ('eventReadable', function ($File) use (&$Buffer) {
+        // Try to read from stream
+        if (($Data = $File->read ()) === false)
+          return;
+        
+        // Push to our buffer
+        $Buffer .= $Data;
+      });
+      
+      $File->addHook ('eventClosed', function ($File) use ($Callback, $Private, &$Buffer) {
+        // Forward the callback
+        return call_user_func ($Callback, $Buffer, $Private);
+      });
+      
+      return $File;
+    }
+    // }}}
+    
     // {{{ __construct
     /**
      * Create a new File I/O-Stream
@@ -129,10 +174,6 @@
       
       // Try to read from file
       $Result = fread ($fd, $Length);
-      
-      #// Check if the file was read completely
-      #if (is_string ($Result) && (strlen ($Result) == 0) && feof ($fd))
-      #  $this->close ();
       
       return $Result;
     }
