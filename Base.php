@@ -350,6 +350,10 @@
         if ((count ($readFDs) == 0) && (count ($writeFDs) == 0) && (count ($errorFDs) == 0)) {
           $Count = 0;
           
+          // Check if there are timers enqueued
+          if ($this->TimerNext === null)
+            trigger_error ('Empty loop without timers');
+          
           // Sleep if we are in a normal loop
           if ($this->loopState == 0)
             usleep ($usecs);
