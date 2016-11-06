@@ -32,9 +32,10 @@
     const GPIO_OUT = 1;
     
     /* GPIO-Edge */
-    const GPIO_EDGE_FALLING = 0;
-    const GPIO_EDGE_RISING = 1;
-    const GPIO_EDGE_BOTH = 2;
+    const GPIO_EDGE_NONE = 0;
+    const GPIO_EDGE_FALLING = 1;
+    const GPIO_EDGE_RISING = 2;
+    const GPIO_EDGE_BOTH = 3;
     
     /* Number of used GPIO-Pin */
     private $gpioNumber = null;
@@ -54,6 +55,9 @@
     /* Pending State-Changes */
     private $gpioSetState = null;
     
+    /* State-Callbacks */
+    private $gpioStateCallbacks = array ();
+    
     // {{{ __construct
     /**
      * Create a new GPIO-Interface
@@ -67,10 +71,10 @@
       if ($Base)
         $this->setEventBase ($Base);
       
-      if ($Direction !== null)
+      if (($Direction !== null) && in_array ($Direction, array ($this::GPIO_IN, $this::GPIO_OUT)))
         $this->gpioDirection = $Direction;
       
-      if ($Edge !== null)
+      if (($Edge !== null) && in_array ($Edge, array ($this::GPIO_EDGE_NONE, $this::GPIO_EDGE_RISING, $this::GPIO_EDGE_FALLING, $this::GPIO_EDGE_BOTH)))
         $this->gpioEdge = $Edge;
     }
     // }}}
@@ -150,7 +154,7 @@
           qcEvents_File::writeFileContents (
             $this->getEventBase (),
             '/sys/class/gpio/gpio' . $Number . '/edge',
-            ($Direction == $this::GPIO_OUT ? 'none' : ($Edge == $this::GPIO_EDGE_FALLING ? 'falling' : ($Edge == $this::GPIO_EDGE_RISING ? 'rising' : 'both'))),
+            (($Direction == $this::GPIO_OUT) || ($Edge == $this::GPIO_EDGE_NONE) ? 'none' : ($Edge == $this::GPIO_EDGE_FALLING ? 'falling' : ($Edge == $this::GPIO_EDGE_RISING ? 'rising' : 'both'))),
             
             function ($Status) use ($Number, $Direction, $Edge, $Callback, $Private) {
               // Make sure it was successfull
@@ -193,7 +197,7 @@
     
     // {{{ setDirection
     /**
-     * Setup the direction of the used GPIO-Pin
+     * Switch Direction of GPIO-Pin
      * 
      * @param enum $Direction
      * @param callable $Callback (optional)
@@ -203,7 +207,61 @@
      * @return void
      **/
     public function setDirection ($Direction, callable $Callback = null, $Private = null) {
+      // Make sure the direction is correct
+      if (!in_array ($Direction, array ($this::GPIO_IN, $this::GPIO_OUT))) {
+        trigger_error ('Invalid direction');
+        
+        return $this->___raiseCallback ($Callback, false, $Private);
+      }
+      
+      // Check if the direction is already set
+      if ($this->gpioDirection == $Direction)
+        return $this->___raiseCallback ($Callback, true, $Private);
+      
+      // Check if we are already bound
+      if ($this->gpioNumber)
+        return $this->setGPIOAttach ($this->gpioNumber, $Direction, $this->gpioEdge, $Callback, $Private);
+      
+      // Just store the new direction
+      $this->gpioDirection = $Direction;
+      
+      // Raise callback
+      return $this->___raiseCallback ($Callback, true, $Private);
+    }
+    // }}}
     
+    // {{{ setEdge
+    /**
+     * Switch Event-Edge of GPIO-Pin
+     * 
+     * @param enum $Edge
+     * @param callable $Callback (optional)
+     * @param mixed $Private (optional)
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setEdge ($Edge, callable $Callback = null, $Private = null) {
+      // Make sure the edge is correct
+      if (!in_array ($Edge, array ($this::GPIO_EDGE_NONE, $this::GPIO_EDGE_RISING, $this::GPIO_EDGE_FALLING, $this::GPIO_EDGE_BOTH))) {
+        trigger_error ('Invalid edge');
+          
+        return $this->___raiseCallback ($Callback, false, $Private);
+      }
+       
+      // Check if the edge is already set
+      if ($this->gpioEdge == $Edge)
+        return $this->___raiseCallback ($Callback, true, $Private);
+      
+      // Check if we are already bound 
+      if ($this->gpioNumber)
+        return $this->setGPIOAttach ($this->gpioNumber, $this->gpioDirection, $Edge, $Callback, $Private);
+      
+      // Just store the new edge
+      $this->gpioEdge = $Edge;
+      
+      // Raise callback
+      return $this->___raiseCallback ($Callback, true, $Private);
     }
     // }}}
     
@@ -228,6 +286,7 @@
       
       // Enqueue the state
       $this->gpioSetState = $Status;
+      $this->gpioStateCallbacks [] = array ($Callback, $Private);
       
       // Try to write
       if ($Base = $this->getEventBase ())
@@ -298,11 +357,18 @@
         fseek ($this->gpioFD, 0);
         fwrite ($this->gpioFD, ($this->gpioSetState ? '1' : '0'));
         
-        echo 'GPIO ', $this->gpioNumber, ': WRITE ', ($this->gpioSetState ? '1' : '0'), "\n";
-        
         // Remove local write-request
         $this->gpioState = $this->gpioSetState;
         $this->gpioSetState = null;
+        
+        // Raise callbacks
+        $Callbacks = $this->gpioStateCallbacks;
+        $this->gpioStateCallbacks = array ();
+        
+        foreach ($Callbacks as $Callback)
+          $this->___raiseCallback ($Callback [0], $Callback [1]);
+        
+        $this->___callback ('gpioStateChanged', $this->gpioState);
       }
       
       // Remove ourself from write-queue
@@ -351,7 +417,7 @@
      * @access protected
      * @return void
      **/
-    protected function gpioStateChanged ($State) { echo 'GPIO ', $this->gpioNumber, ': State change', "\n"; }
+    protected function gpioStateChanged ($State) { }
     // }}}
   }
 
