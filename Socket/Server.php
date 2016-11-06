@@ -187,6 +187,19 @@
     public function getWriteFD () { }
     // }}}
     
+    // {{{ getErrorFD
+    /**
+     * Retrive an additional stream-resource to watch for errors
+     * @remark Read-/Write-FDs are always monitored for errors
+     * 
+     * @access public
+     * @return resource May return NULL if no additional stream-resource should be watched
+     **/
+    public function getErrorFD () {
+      return null;  
+    }
+    // }}}
+    
     // {{{ getWriteFDforClient
     /**
      * Retrive the Write-FD for one of our clients
@@ -401,10 +414,12 @@
     /**
      * Callback: There was an error on our socket
      * 
+     * @param resource $fd
+     * 
      * @access public
      * @return void
      **/
-    public function raiseError () {
+    public function raiseError ($fd) {
       trigger_error ('Error on server-socket');
       
       $this->close ();

@@ -123,6 +123,11 @@
       } else
         unset ($this->writeFDs [$Index]);
       
+      if (is_resource ($errorFD = $Event->getErrorFD ())) {
+        $this->errorFDs [(int)$errorFD] = $errorFD;
+        $this->fdOwner [(int)$errorFD] = $Event;
+      }
+      
       return true;
     }
     // }}}
@@ -380,7 +385,7 @@
         
         foreach ($errorFDs as $errorFD) {
           if (isset ($this->fdOwner [(int)$errorFD]))
-            $this->fdOwner [(int)$errorFD]->raiseError ();  
+            $this->fdOwner [(int)$errorFD]->raiseError ($errorFD);  
           
           if ($this->loopState > 1)
             break (2);

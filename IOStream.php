@@ -372,6 +372,18 @@
     }
     // }}}
     
+    // {{{ getErrorFD
+    /**
+     * Retrive an additional stream-resource to watch for errors
+     * @remark Read-/Write-FDs are always monitored for errors
+     * 
+     * @access public
+     * @return resource May return NULL if no additional stream-resource should be watched
+     **/
+    public function getErrorFD () {
+      return null;
+    }
+    // }}}
     
     /*****************************************************************
      * Stream closeing                                               *
@@ -562,10 +574,12 @@
     /**
      * Callback: The Event-Loop detected an error-event
      * 
+     * @param resource $fd
+     * 
      * @access public
      * @return void
      **/
-    public function raiseError () {
+    public function raiseError ($fd) {
       $this->___callback ('eventError');
     }
     // }}}

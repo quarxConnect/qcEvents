@@ -170,6 +170,20 @@
     public final function getWriteFD () { return $this->fd; }
     // }}}
     
+    // {{{ getErrorFD
+    /**
+     * Retrive an additional stream-resource to watch for errors
+     * @remark Read-/Write-FDs are always monitored for errors
+     * 
+     * @access public
+     * @return resource May return NULL if no additional stream-resource should be watched
+     **/
+    public function getErrorFD () {
+      return null;  
+    }
+    // }}}
+    
+    
     // {{{ raiseRead
     /**
      * Callback: Our event-base caught an read-event for our FD
@@ -194,10 +208,12 @@
     /**
      * Callback: Our event-base caught an error-event for our FD
      * 
+     * @param resource $fd
+     * 
      * @access public
      * @return void
      **/
-    public final function raiseError () { $this->readMounts (); }
+    public final function raiseError ($fd) { $this->readMounts (); }
     // }}}
     
     
