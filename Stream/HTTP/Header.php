@@ -94,7 +94,15 @@
         
         // Store the header
         $Name = substr ($Line, 0, $p);
-        $this->Headers [strtolower ($Name)] = array ($Name, trim (substr ($Line, $p + 1)));
+        $lName = strtolower ($Name);
+        
+        if (isset ($this->Headers [$lName])) {
+          if (is_array ($this->Headers [$lName]))
+            $this->Headers [$lName][] = array ($Name, trim (substr ($Line, $p + 1)));
+          else
+            $this->Headers [$lName] = array ($this->Headers [$lName], array ($Name, trim (substr ($Line, $p + 1))));
+        } else
+          $this->Headers [$lName] = array ($Name, trim (substr ($Line, $p + 1)));
       }
     }
     // }}}
@@ -113,7 +121,11 @@
         $buf = $this->Method . ' ' . $this->URI . ' ' . $this->Version . "\r\n";
       
       foreach ($this->Headers as $Header)
-        $buf .= $Header [0] . ': ' . $Header [1] . "\r\n";
+        if (is_array ($Header [0]))
+          foreach ($Header as $Entity)
+            $buf .= $Entity [0] . ': ' . $Entity [1] . "\r\n";
+        else
+          $buf .= $Header [0] . ': ' . $Header [1] . "\r\n";
       
       return $buf . "\r\n";
     }
@@ -322,19 +334,33 @@
      * Retrive a field from this header
      * 
      * @param string $Field
+     * @param bool $allowMulti (optional)
      * 
      * @access public
      * @return string
      **/
-    public function getField ($Field) {
+    public function getField ($Field, $allowMulti = false) {
       // Retrive the key for that field
       $Key = strtolower ($Field);
       
       // Check if the field is present
-      if (isset ($this->Headers [$Key]))
+      if (!isset ($this->Headers [$Key]))
+        return null;
+      
+      // Check for a multi-valued header
+      if (!is_array ($this->Headers [$Key][0]))
         return $this->Headers [$Key][1];
       
-      return null;
+      // Collect all values
+      $Values = array ();
+      
+      foreach ($this->Headers [$Key] as $Header)
+        $Values [] = $Header [1];
+        
+      if ($allowMulti)
+        return $Values;
+      
+      return array_shift ($Values);
     }
     // }}}
     
@@ -370,6 +396,30 @@
      **/
     public function unsetField ($Name) {
       unset ($this->Headers [strtolower ($Name)]);
+    }
+    // }}}
+    
+    // {{{ getFields
+    /**
+     * Retrive all fields from this header
+     * 
+     * @access public
+     * @return array
+     **/
+    public function getFields () {
+      $Result = array ();
+      
+      foreach ($this->Headers as $Header)
+        if (is_array ($Header [0]))
+          foreach ($Header as $Entity) {
+            $Result [$Entity [0]] = $Entity [1];
+            
+            break;
+          }
+        else
+          $Result [$Header [0]] = $Header [1];
+      
+      return $Result;
     }
     // }}}
     

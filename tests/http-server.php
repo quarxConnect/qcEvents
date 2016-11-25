@@ -6,7 +6,6 @@
   
   echo 'Started at ', $s = microtime (true), "\n";
   
-  
   // Create a new event-base for the test
   require_once ('qcEvents/Base.php');
   
@@ -28,7 +27,11 @@
     echo 'Request received for ', $Request->getURI (), "\n";
     
     // Create Response-Header
-    $Response = new qcEvents_Stream_HTTP_Header (array ('HTTP/' . $Request->getVersion (true) . ' 200 Ok', 'Server: quarxConnect httpd/0.1', 'Content-Type: text/plain'));
+    $Response = new qcEvents_Stream_HTTP_Header (array (
+      'HTTP/' . $Request->getVersion (true) . ' 200 Ok',
+      'Server: quarxConnect httpd/0.1',
+      'Content-Type: text/plain'
+    ));
     
     // Set the response
     # $Server->httpdSetResponse ($Request, $Response, 'Hallo Welt!');
