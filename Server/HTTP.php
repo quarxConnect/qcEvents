@@ -269,7 +269,7 @@
         $Header->setField ('Date', date ('r'));
       
       // Check wheter to force a close on the connection
-      if (($this->RequestCount >= $this->maxRequestCount) || ($Header->getVersion () < 1.1))
+      if (($this->RequestCount >= $this->maxRequestCount) || ($Header->getVersion () < 1.1) || (strcasecmp ($this->Request->getField ('Connection'), 'close') == 0))
         $Header->setField ('Connection', 'close');
       elseif (!$Header->hasField ('Connection')) {
         $Header->setField ('Connection', 'Keep-Alive');
