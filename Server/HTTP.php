@@ -84,10 +84,6 @@
         return false;
       }
       
-      // Make sure there is a line-break at the end of body
-      if (substr ($Body, -2, 2) != "\r\n")
-        $Body .= "\r\n";
-      
       // Set length of content
       $Response->setField ('Content-Length', strlen ($Body));
       
