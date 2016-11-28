@@ -19,13 +19,15 @@
    **/
   
   require_once ('qcEvents/Interface/Loop.php');
+  require_once ('qcEvents/Interface/Timer.php');
   require_once ('qcEvents/Trait/Parented.php');
+  require_once ('qcEvents/Trait/Timer.php');
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/File.php');
   
-  class qcEvents_SysFS_GPIO extends qcEvents_Hookable implements qcEvents_Interface_Loop {
+  class qcEvents_SysFS_GPIO extends qcEvents_Hookable implements qcEvents_Interface_Loop, qcEvents_Interface_Timer {
     /* Re-use common functions for our interface */
-    use qcEvents_Trait_Parented;
+    use qcEvents_Trait_Parented, qcEvents_Trait_Timer;
     
     /* GPIO-Direction */
     const GPIO_IN = 0;
@@ -110,15 +112,84 @@
           trigger_error ('Failed to query GPIO-Export');
           
           return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
-        } elseif (!is_dir ('/sys/class/gpio/gpio' . $Number)) {
+        }
+        
+        // Wait for directiory to appear
+        if (!is_dir ('/sys/class/gpio/gpio' . $Number))
+          return $this->setGPIOWait (0, $Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+        
+        // Check modes
+        if (!is_array ($Ctrl = @stat ('/sys/class/gpio/export')))
+          return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+        
+        if (!is_array ($Stat = stat ('/sys/class/gpio/gpio' . $Number . '/direction')) ||
+          (!is_writable ('/sys/class/gpio/gpio' . $Number . '/direction') &&
+           (($Ctrl ['mode'] != $Stat ['mode']) ||
+            ($Ctrl ['gid'] != $Stat ['gid']))))
+          return $this->setGPIOWait (0, $Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+        
+        // Attach ourself to that GPIO
+        return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+      });
+    }
+    // }}}
+    
+    // {{{ setGPIOWait
+    /**
+     * Wait for GPIO-Pin to be setup by system
+     * 
+     * @param int $Iteration
+     * @param int $Number
+     * @param enum $Direction
+     * @param enum $Edge
+     * @param callable $Callback (optional)
+     * @param mixed $Private (optional)
+     * 
+     * @access private
+     * @return void
+     **/
+    private function setGPIOWait ($Iteration, $Number, $Direction, $Edge, callable $Callback = null, $Private = null) {
+      // Empty cache
+      clearstatcache (false, '/sys/class/gpio/gpio' . $Number);
+      
+      // Check if the directory appeared
+      if (!is_dir ('/sys/class/gpio/gpio' . $Number)) {
+        // Check for a timeout
+        if ($Iteration > 100) {
           trigger_error ('GPIO was not exported');
           
           return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
         }
         
-        // Attach ourself to that GPIO
+        // Wait a while
+        return $this->getEventBase ()->addTimer ($this, array (0, 10), false, function () use ($Iteration, $Number, $Direction, $Edge, $Callback, $Private) {
+          return $this->setGPIOWait (++$Iteration, $Number, $Direction, $Edge, $Callback, $Private);
+        });
+      }
+      
+      // Try to check modes
+      if (!is_array ($Ctrl = @stat ('/sys/class/gpio/export')))
         return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
-      });
+      
+      if (!is_array ($Stat = stat ('/sys/class/gpio/gpio' . $Number . '/direction')) ||
+          (!is_writable ('/sys/class/gpio/gpio' . $Number . '/direction') &&
+           (($Ctrl ['mode'] != $Stat ['mode']) ||
+            ($Ctrl ['gid'] != $Stat ['gid'])))) {
+        // Check for a timeout
+        if ($Iteration > 100) {
+          trigger_error ('GPIO-Modes were not changed');
+          
+          return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
+        }
+        
+        // Wait a while
+        return $this->getEventBase ()->addTimer ($this, array (0, 10), false, function () use ($Iteration, $Number, $Direction, $Edge, $Callback, $Private) {
+          return $this->setGPIOWait (++$Iteration, $Number, $Direction, $Edge, $Callback, $Private);
+        });
+      }
+      
+      // Just try to attach
+      return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
     }
     // }}}
     
