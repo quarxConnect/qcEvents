@@ -496,14 +496,18 @@
         }
         
         foreach ($Timers as $USec=>$Events) {
-          // Check if we have moved too far
-          if (($Sec == $Now [0]) && ($USec > $Now [1])) {
-            $this->TimerNext [1] = $USec;
+          // Check if we are dealing with realy present events
+          if ($Sec == $Now [0]) {
+            // Check if we have moved too far
+            if ($USec > $Now [1]) {
+              $this->TimerNext [1] = $USec;
+              
+              break (2);
+            }
             
-            break (2);
+            // Remove this distinct usec from queue
+            unset ($this->Timers [$Sec][$USec]);
           }
-          
-          unset ($this->Timers [$Sec][$USec]);
           
           // Run all events
           foreach ($Events as $Event) {
@@ -528,7 +532,7 @@
         }
         
         // Remove the second if all timers were fired
-        if (isset ($this->Timers [$Sec]) && (count ($this->Timers [$Sec]) == 0))
+        if (($Sec < $Now [0]) || (isset ($this->Timers [$Sec]) && (count ($this->Timers [$Sec]) == 0)))
           unset ($this->Timers [$Sec]);
       }
       
