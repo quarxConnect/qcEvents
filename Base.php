@@ -344,9 +344,21 @@
         $writeFDs = $this->writeFDs;
         $errorFDs = $this->errorFDs;
         
-        // Check wheter to select or just wait
-        $usecs = $this->getTimerWaitTime ();
+        // Check if there are events forced 
+        if (count ($this->forcedEvents) > 0) {
+          $usecs = 1;
         
+        // Check if there is a timer queued
+        } elseif ($this->TimerNext !== null) {
+          // Get the current time
+          $Now = $this->getTimer ();
+          
+          // Return the wait-time
+          $usecs = max (1, (($this->TimerNext [0] - $Now [0]) * 1000000) + ($this->TimerNext [1] - $Now [1]));
+        } else
+          $usecs = 5000000;
+        
+        // Check wheter to select or just wait
         if ((count ($readFDs) == 0) && (count ($writeFDs) == 0) && (count ($errorFDs) == 0)) {
           $Count = 0;
           
@@ -365,7 +377,8 @@
         }
         
         // Check for pending signals
-        $this->runTimers ();
+        if ($this->TimerNext !== null)
+          $this->runTimers ();
         
         // Stop here if there are no events pending
         if ($Count == 0)
@@ -448,30 +461,6 @@
     }
     // }}}
     
-    // {{{ getTimerWaitTime
-    /**
-     * Retrive the wait-time until the next timer-event in microseconds
-     * 
-     * @access private
-     * @return int
-     **/
-    private function getTimerWaitTime () {
-      // Check if there are events forced
-      if (count ($this->forcedEvents) > 0)
-        return 1;
-      
-      // Check if there is a timer queued
-      if ($this->TimerNext === null)
-        return 5000000;
-      
-      // Get the current time
-      $Now = $this->getTimer ();
-      
-      // Return the wait-time
-      return max (1, (($this->TimerNext [0] - $Now [0]) * 1000000) + ($this->TimerNext [1] - $Now [1]));
-    }
-    // }}}
-    
     // {{{ runTimers
     /**
      * Run any pending timer-event
@@ -496,9 +485,7 @@
       $Current = $this->TimerNext;
       
       foreach ($this->Timers as $Sec=>$Timers) {
-        // Get the current time
-        $Now = $this->getTimer ();
-        
+        // Check if we have moved too far
         if ($Sec > $Now [0]) {
           if (($this->TimerNext !== null) && (($this->TimerNext [0] == $Current [0]) || ($this->TimerNext [0] > $Sec))) {
             reset ($this->Timers);
@@ -509,10 +496,8 @@
         }
         
         foreach ($Timers as $USec=>$Events) {
-          // Get the current time
-          $Now = $this->getTimer ();
-          
-          if ($USec > $Now [1]) {
+          // Check if we have moved too far
+          if (($Sec == $Now [0]) && ($USec > $Now [1])) {
             $this->TimerNext [1] = $USec;
             
             break (2);
@@ -537,6 +522,9 @@
             if ($Event [2])
               $this->addTimer ($Event [0], $Event [1], $Event [2], $Event [3], $Event [4]);
           }
+          
+          // Get the current time
+          $Now = $this->getTimer ();
         }
         
         // Remove the second if all timers were fired
