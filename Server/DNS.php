@@ -34,8 +34,36 @@
      **/
     function __construct () {
       // Register hooks
-      $this->addHook ('dnsQuestionReceived', array ($this, 'dnsServerQuery'));
-      $this->addHook ('dnsQuestionTimeout', array ($this, 'dnsServerQueryTimeout'));
+      $this->addHook ('dnsQuestionReceived', function (qcEvents_Server_DNS $Self, qcEvents_Stream_DNS_Message $Message) {
+        // Store the ID as known
+        $this->IDs [$Message->getID ()] = $Message;
+        
+        // Fire a callback
+        if (!is_object ($rc = $this->___callback ('dnsQueryReceived', $Message)) || !($rc instanceof qcEvents_Stream_DNS_Message))
+          return;
+        
+        // Overwrite the ID
+        $rc->setID ($Message->getID ());
+        
+        // Write out the reply
+        $this->dnsQueryReply ($rc);
+      });
+      
+      $this->addHook ('dnsQuestionTimeout', function (qcEvents_Server_DNS $Self, qcEvents_Stream_DNS_Message $Message) {
+        // Retrive the ID from that message
+        $ID = $Message->getID ();
+        
+        // Check if the query is still queued
+        if (!isset ($this->IDs [$ID]))
+          return;
+        
+        // Create a response
+        $Response = $this->IDs [$ID]->createClonedResponse ();
+        $Response->setError (qcEvents_Stream_DNS_Message::ERROR_SERVER);
+        
+        // Write out the response
+        $this->dnsQueryReply ($Response);
+      });
     }
     // }}}
     
@@ -63,55 +91,22 @@
     }
     // }}}
     
-    // {{{ dnsServerQuery
+    // {{{ dnsQueryDiscard
     /**
-     * Internal Callback: A DNS-Query was received
+     * Discaed a cached DNS-Query
      * 
-     * @param qcEvents_Stream_DNS_Message $Message
-     * 
-     * @access protected
-     * @return void
-     **/
-    protected final function dnsServerQuery (qcEvents_Stream_DNS_Message $Message) {
-      // Store the ID as known
-      $this->IDs [$Message->getID ()] = $Message;
-      
-      // Fire a callback
-      if (!is_object ($rc = $this->___callback ('dnsQueryReceived', $Message)) || !($rc instanceof qcEvents_Stream_DNS_Message))
-        return;
-      
-      // Overwrite the ID
-      $rc->setID ($Message->getID ());
-      
-      // Write out the reply
-      $this->dnsQueryReply ($rc);
-    }
-    // }}}
-    
-    // {{{ dnsServerQueryTimeout
-    /** 
-     * Generate a timeout for a queued DNS-Query
-     * 
-     * @param qcEvents_DNS_Stream $Stream
      * @param qcEvents_Stream_DNS_Message $Message
      * 
      * @access public
      * @return void
      **/
-    public final function dnsServerQueryTimeout (qcEvents_Stream_DNS_Message $Message) {
-      // Retrive the ID from that message
+    public function dnsQueryDiscard (qcEvents_Stream_DNS_Message $Message) {
+      // Retrive the ID of that message
       $ID = $Message->getID ();
       
-      // Check if the query is still queued
-      if (!isset ($this->IDs [$ID]))
-        return;
-      
-      // Create a response
-      $Response = $this->IDs [$ID]->createClonedResponse ();
-      $Response->setError (qcEvents_Stream_DNS_Message::ERROR_SERVER);
-      
-      // Write out the response
-      $this->dnsQueryReply ($Response);
+      // Try to removed
+      if (isset ($this->IDs [$ID]) && ($this->IDs [$ID] === $Message))
+        unset ($this->IDs [$ID]);
     }
     // }}}
     

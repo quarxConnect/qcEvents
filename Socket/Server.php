@@ -305,19 +305,35 @@
       if (!is_resource ($Socket = stream_socket_server ($Proto . '://' . $Host . ':' . $Port, $ErrNo, $ErrStr, $Flags, $Context)))
         return false;
       
-      $this->Socket = $Socket;
-      
-      if ($this->eventLoop)
-        $this->eventLoop->updateEvent ($this);
-      
-      // Set ourself to online
-      $this->Type = $Type;
-      $this->Listening = true;
+      $this->setServerSocket ($Socket, $Type, true);
       
       // Fire callback
       $this->___callback ('serverOnline');
       
       return true;
+    }
+    // }}}
+    
+    // {{{ setServerSocket
+    /**
+     * Internally override our server-socket
+     * 
+     * @param resource $Socket
+     * @param enum $Type
+     * @param bool $Listening
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function setServerSocket ($Socket, $Type, $Listening) {
+      // Update ourself
+      $this->Socket = $Socket;
+      $this->Type = $Type;
+      $this->Listening = $Listening;
+      
+      // Update our parent
+      if ($this->eventLoop)
+        $this->eventLoop->updateEvent ($this);
     }
     // }}}
     
