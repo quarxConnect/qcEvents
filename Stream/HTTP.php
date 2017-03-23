@@ -386,6 +386,32 @@
     }
     // }}}
     
+    // {{{ getRemoteHost
+    /**
+     * Retrive the hostname of the remote party
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getRemoteHost () {
+      if ($this->Source instanceof qcEvents_Socket)
+        return $this->Source->getRemoteHost ();
+    }
+    // }}}
+
+    // {{{ getRemotePort
+    /**
+     * Retrive the port we are connected to
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getRemotePort () {
+      if ($this->Source instanceof qcEvents_Socket)
+        return $this->Source->getRemotePort ();
+    }
+    // }}}
+    
     // {{{ reset
     /**
      * Reset our internal data
