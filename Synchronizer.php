@@ -105,13 +105,12 @@
       $Method = new ReflectionMethod ($Handler, $Function);
       $CallbackIndex = null;
       
-      #if (version_compare(PHP_VERSION, '7.0.0', '>='))
-        foreach ($Method->getParameters () as $Index=>$Parameter) 
-          if ($Parameter->isCallable ()) {
-            $CallbackIndex = $Index;
-            
-            break;
-          }
+      foreach ($Method->getParameters () as $Index=>$Parameter) 
+        if ($Parameter->isCallable ()) {
+          $CallbackIndex = $Index;
+          
+          break;
+        }
       
       // Store the callback on parameters
       if ($CallbackIndex !== null) {
