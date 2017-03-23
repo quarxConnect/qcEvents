@@ -178,6 +178,7 @@
       $Request->addHook ('httpRequestResult', function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, $Body = null) use ($Callback, $Private, $URL, $Destination, &$File) {
         // Process etag
         if ($Header && $Header->hasBody () && !$Header->isError () && (($etag = $Header->getField ('ETag')) !== null))
+          # TODO: This is not async!
           file_put_contents ($Destination . '.etag', $etag);
         
         // Run the final callback
