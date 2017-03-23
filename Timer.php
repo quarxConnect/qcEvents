@@ -34,6 +34,22 @@
    **/
   class qcEvents_Timer implements qcEvents_Interface_Timer {
     use qcEvents_Trait_Timer, qcEvents_Trait_Hookable, qcEvents_Trait_Parented;
+    private $Queued = false;
+    
+    // {{{ __construct
+    /**
+     * Create a new Timer
+     * 
+     * @param qcEvents_Base $Base (optional)
+     * 
+     * @access friendly
+     * @return void
+     **/
+    function __construct (qcEvents_Base $Base = null) {
+      if ($Base)
+        $this->setEventBase ($Base);
+    }
+    // }}}
     
     // {{{ raiseTimer
     /**
@@ -46,7 +62,6 @@
       $this->___callback ('eventTimer');
     }
     // }}}
-    
     
     // {{{ eventTimer
     /**
