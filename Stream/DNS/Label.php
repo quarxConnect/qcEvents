@@ -18,7 +18,8 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  class qcEvents_Stream_DNS_Label implements Countable {
+  class qcEvents_Stream_DNS_Label implements Countable, ArrayAccess {
+    /* All parts of this label */
     private $Parts = array ();
     
     // {{{ __construct
@@ -28,9 +29,71 @@
      * @access friendly
      * @return void
      **/
-    function __construct ($Parts = array ()) {
-      if (is_array ($Parts))
-        $this->Parts = $Parts;
+    function __construct (array $Parts = array ()) {
+      $this->Parts = $Parts;
+    }
+    // }}}
+    
+    // {{{ offsetGet
+    /**
+     * Retrive a single label from a given position
+     * 
+     * @param int $Index
+     * 
+     * @access public
+     * @return string NULL if Index is out of bounds
+     **/
+    public function offsetGet ($Index) {
+      if (isset ($this->Parts [$Index]))
+        return $this->Parts [$Index];
+    }
+    // }}}
+    
+    // {{{ offsetSet
+    /**
+     * Set a DNS-Label at a given position
+     * 
+     * @param int $Index
+     * @param string $Value
+     * 
+     * @access public
+     * @return void
+     **/
+    public function offsetSet ($Index, $Value) {
+      # TODO: Validate the label
+      
+      if ($Index !== null)
+        $this->Parts [(int)$Index] = $Value;
+      else
+        array_unshift ($this->Parts, $Value);
+    }
+    // }}}
+    
+    // {{{ offsetExists
+    /**
+     * Check if an indexed DNS-Label exists
+     * 
+     * @param int $Index
+     * 
+     * @access public
+     * @return int
+     **/
+    public function offsetExists ($Index) {
+      return isset ($this->Parts [$Index]);
+    }
+    // }}}
+    
+    // {{{ offsetUnset
+    /**
+     * Remove a DNS-Label
+     * 
+     * @param int $Index
+     * 
+     * @access public
+     * @return void
+     **/
+    public function offsetUnset ($Index) {
+      unset ($this->Parts [$Index]);
     }
     // }}}
     
@@ -46,9 +109,17 @@
     }
     // }}}
     
+    // {{{ count
+    /**
+     * Retrive the number of labels
+     * 
+     * @access public
+     * @return int
+     **/
     public function count () {
       return count ($this->Parts);
     }
+    // }}}
     
     // {{{ getParts
     /**
