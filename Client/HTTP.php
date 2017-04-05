@@ -339,7 +339,7 @@
           
           // Clean up sockets on pool
           # $this->releaseSockets ();
-        }
+        }, null, true
       );
       
       return true;
