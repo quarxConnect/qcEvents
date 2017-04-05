@@ -115,8 +115,8 @@
       // Register the hook
       if (isset (self::$classHooks [$Class][$Name])) {
         // Check if the callback is already registered
-        foreach (self::$classHooks [$Class][$Name] as $ID=>$Hook)
-          if (($Hook [0] === $Callback) && ($Hook [1] === $Private)) {
+        foreach (self::$classHooks [$Class][$Name] as $ID=>$Callback)
+          if (($Callback [0] === $Hook) && ($Callback [1] === $Private)) {
             // Just handle the once-bit
             if (!$Once)
               self::$classHooks [$Class][$Name][$ID][2] = false;
@@ -124,11 +124,11 @@
             return true;
           }
          
-        self::$classHooks [$Class][$Name][] = array ($Callback, $Private, $Once);
+        self::$classHooks [$Class][$Name][] = array ($Hook, $Private, $Once);
       } elseif (isset (self::$classHooks [$Class]))
-        self::$classHooks [$Class][$Name] = array (array ($Callback, $Private, $Once));
+        self::$classHooks [$Class][$Name] = array (array ($Hook, $Private, $Once));
       else
-        self::$classHooks [$Class] = array ($Name => array (array ($Callback, $Private, $Once)));
+        self::$classHooks [$Class] = array ($Name => array (array ($Hook, $Private, $Once)));
       
       return true;
     }
@@ -155,8 +155,8 @@
         return;
     
       // Search for the callback
-      foreach (self::$classHooks [$Class][$Name] as $ID=>$Hook)
-        if ($Hook [0] === $Callback)  
+      foreach (self::$classHooks [$Class][$Name] as $ID=>$Callback)
+        if ($Callback [0] === $Hook)
           unset (self::$classHooks [$Class][$Name][$ID]);
     }
     // }}}
@@ -228,7 +228,7 @@
           if (($Hook [0] === $Callback) && ($Hook [1] === $Private)) {
             // Just handle the once-bit
             if (!$Once)
-              $this->Hooks [$Name][$ID] = false;
+              $this->Hooks [$Name][$ID][2] = false;
             
             return true;
           }
