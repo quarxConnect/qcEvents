@@ -614,8 +614,8 @@
       // Check which types to resolve
       if ($Types === null)
         $Types = array (  
-          qcEvents_Stream_DNS_Message::TYPE_A,
           qcEvents_Stream_DNS_Message::TYPE_AAAA,
+          qcEvents_Stream_DNS_Message::TYPE_A,
           # qcEvents_Stream_DNS_Message::TYPE_CNAME,
         );
       elseif (!is_array ($Types))
@@ -715,7 +715,7 @@
           if (!is_array ($this->socketAddresses))
             $this->socketAddresses = array ();
           
-          $Addrs [] = $Addr = ($Record ['type'] == 'AAAA' ? $Record ['ipv6'] : $Record ['ip']);
+          $Addrs [] = $Addr = ($Record ['type'] == 'AAAA' ? '[' . $Record ['ipv6'] . ']' : $Record ['ip']);
           $this->socketAddresses [] = array ($Hostname, $Addr, (isset ($Record ['port']) ? $Record ['port'] : $Port), $Type);
           
         // Handle canonical names
