@@ -29,7 +29,7 @@
     private $Hooks = array ();
     
     /* Have hooks from class-scope been adapted? */
-    private $hooksAdapted = false;
+    private $hooksAdapted = array ();
     
     // {{{ getRegisteredHooks
     /**
@@ -63,15 +63,15 @@
         // Check wheter to return hooks by a given name
         if ($Name !== null) {
           // Check if there are such hooks
-          if (!isset (self::$classHooks [$hName]))
+          if (!isset (self::$classHooks [$Class][$Name]))
             continue;
           
           // Append hooks to result
-          $Result = array_merge ($Result, self::$classHooks [$hName]);
+          $Result = array_merge ($Result, self::$classHooks [$Class][$Name]);
         
         // Return all hooks for this class
         } else
-          foreach (self::$classHooks as $hName=>$Hooks)
+          foreach (self::$classHooks [$Class] as $hName=>$Hooks)
             if (isset ($Result [$hName]))
               $Result [$hName] = array_merge ($Result [$hName], $Hooks);
             else
@@ -176,7 +176,7 @@
       $Name = strtolower ($Name);
       
       // Check wheter to adapt hooks from class-scopes
-      if (!$this->hooksAdapted) {
+      if (!isset ($this->hooksAdapted [$Name])) {
         // Retrive all hooks for this instance
         $Hooks = $this::getRegisteredHooks ($Name);
         
@@ -187,7 +187,7 @@
           $this->Hooks [$Name] = $Hooks;
         
         // Indicate that all hooks have been merged
-        $this->hooksAdapted = true;
+        $this->hooksAdapted [$Name] = true;
       }
       
       // Check if there are hooks registered
@@ -285,7 +285,7 @@
       $Name = strtolower ($Name);
       
       // Make sure we have all registered hooks
-      if (!$this->hooksAdapted)
+      if (!isset ($this->hooksAdapted [$Name]))
         $this->getHooks ($Name);
       
       // Retrive all given parameters
