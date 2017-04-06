@@ -1083,20 +1083,22 @@
       if ($this->tlsStatus = $Toggle)
         stream_context_set_option ($this->getReadFD (), array (
           'ssl' => array (
+            // Server-Name-Indication
+            'SNI_enabled' => true,
+            'peer_name' => $this->remoteHost, // Domainname for SNI
+            'SNI_server_name' => $this->remoteHost, # Deprecated as of PHP 5.6 (replaced by peer_name)
+            
             // General settings
             # 'ciphers' => '',
-            'capture_peer_cert' => true,
-            'capture_peer_cert_chain' => true,
-            'SNI_enabled' => true,
-            # 'SNI_server_name' => '', // Domainname for SNI
+            'capture_peer_cert' => false, # Unused
+            'capture_peer_cert_chain' => false, # Unused
             'disable_compression' => true, // Always disable compression because of CRIME
             
             // Parameters for verification
-            # 'peer_name' => '', // Name of peer to expect
-            'verify_peer' => false,
-            'verify_peer_name' => false,
+            'verify_peer' => true,
+            'verify_peer_name' => true,
             # 'verify_depth' => 1, // How many levels to check
-            'allow_self_signed' => true,
+            'allow_self_signed' => false,
             # 'cafile' => null, // CAfile for verify_peer
             # 'capath' => null, // See cafile
             # 'CN_match' => null, // Expected commonname

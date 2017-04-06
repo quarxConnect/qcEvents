@@ -51,7 +51,7 @@
       echo 'FAILED', "\n";
   });
   
-  $Request = $Pool->addNewRequest ('http://www.tiggerswelt.net/hosting');
+  $Request = $Pool->addNewRequest ('https://www.tiggerswelt.net/hosting');
   
   // Enter main-loop
   $Base->loop ();

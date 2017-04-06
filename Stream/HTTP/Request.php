@@ -406,26 +406,6 @@
     }
     
     
-    // {{{ httpSocketConnected
-    /**
-     * Internal Callback: Our underlying socket was connected
-     * 
-     * @param qcEvents_Socket $Socket
-     * 
-     * @access public
-     * @return void
-     **/
-    public final function httpSocketConnected (qcEvents_Socket $Socket) {
-      # TODO: Sanity-Check the socket
-      
-      // Remove the hook again
-      $Socket->removeHook ('socketConnected', array ($this, 'httpSocketConnected'));
-      
-      // Write out the request
-      $this->httpHeaderWrite ($this);
-    }
-    // }}}
-    
     // {{{ httpFinished
     /**
      * Internal Callback: Single HTTP-Request/Response was finished
@@ -484,10 +464,14 @@
     public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       // Inherit to our parent
       if (($rc = parent::initConsumer ($Source, $Callback, $Private)) && ($Source instanceof qcEvents_Socket)) {
-        if ($Source->isConnected ())
-          $this->httpSocketConnected ($Source);
-        else
-          $Source->addHook ('socketConnected', array ($this, 'httpSocketConnected'));
+        if (!$Source->isConnected ())
+          return $Source->addHook ('socketConnected', function ($Socket) {
+            // Write out the request
+            $this->httpHeaderWrite ($this);
+          }, null, true);
+        
+        // Write out the request
+        $this->httpHeaderWrite ($this);
       }
       
       return $rc;
