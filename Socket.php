@@ -38,9 +38,9 @@
     const ERROR_NET_UNKNOWN     =  0;
     const ERROR_NET_DNS_FAILED  = -1;
     const ERROR_NET_TLS_FAILED  = -2;
-    const ERROR_NET_TIMEOUT     = -3;
-    const ERROR_NET_REFUSED     = -4;
-    const ERROR_NET_UNREACHABLE = -5;
+    const ERROR_NET_TIMEOUT     = -110;
+    const ERROR_NET_REFUSED     = -111;
+    const ERROR_NET_UNREACHABLE = -101;
     
     /* Socket-Types */
     const TYPE_TCP = 0;
@@ -435,7 +435,7 @@
       $URI = ($this->socketAddress [3] === self::TYPE_TCP ? 'tcp' : 'udp') . '://' . $this->socketAddress [1] . ':' . $this->socketAddress [2];
       
       if (!is_resource ($Socket = @stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, STREAM_CLIENT_ASYNC_CONNECT)))
-        return false;
+        return $this->socketHandleConnectFailed (-$errno);
       
       stream_set_blocking ($Socket, 0);
       
