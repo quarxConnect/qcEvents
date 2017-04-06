@@ -68,9 +68,17 @@
     }
     // }}}
     
+    // {{{ getEventBase
+    /**
+     * Retive the assigned event-base of this client
+     * 
+     * @access public
+     * @return qcEvents_Base
+     **/
     public function getEventBase () {
       return $this->eventBase;
     }
+    // }}}
     
     // {{{ setNameserver
     /**

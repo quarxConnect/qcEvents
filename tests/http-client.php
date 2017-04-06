@@ -16,14 +16,34 @@
   // At creation of the test the given URL would redirect twice
   require_once ('qcEvents/Client/HTTP.php');
   
-  qcEvents_Client_HTTP::$debugHooks = true;
+  # qcEvents_Client_HTTP::$debugHooks = true;
+  
+  qcEvents_Socket::registerHook ('socketResolve', function ($Socket, $Hostnames, $Types) {
+    echo '[RESOLVE] Resolving ', implode (', ', $Hostnames), ' Types ', implode (', ', $Types), "\n";
+  });
+  
+  qcEvents_Socket::registerHook ('socketResolved', function ($Socket, $Hostname, $Addresses) {
+    echo '[RESOLVE] Resolved ', $Hostname, ' to ', implode (', ', $Addresses), "\n";
+  });
+  
+  qcEvents_Socket::registerHook ('socketTryConnect', function ($Socket, $Host, $Addr, $Port) {
+    echo '[CONNECT] Try to connect to ', $Host, ' via ', $Addr, ' on port ', $Port, "\n";
+  });
+  
+  qcEvents_Socket::registerHook ('socketTryConnectFailed', function ($Socket, $Host, $Addr, $Port) {
+    echo '[CONNECT] Connection to ', $Host, ' via ', $Addr, ' on port ', $Port, " failed\n";
+  });
+  
+  qcEvents_Socket::registerHook ('socketConnected', function ($Socket) {
+    echo '[CONNECT] Socket connected to ', $Socket->getRemoteName (), "\n";
+  });
   
   $Pool = new qcEvents_Client_HTTP ($Base);
   $Pool->addHook ('httpRequestRediect', function (qcEvents_Client_HTTP $Pool, qcEvents_Stream_HTTP_Request $Request, $Location) {
-    echo 'Redirecting HTTP-Request for ', $Request->getURL (), ' to ', $Location, "\n";
+    echo '[HTTP   ] Redirecting HTTP-Request for ', $Request->getURL (), ' to ', $Location, "\n";
   });
   $Pool->addHook ('httpRequestResult', function (qcEvents_Client_HTTP $Pool, qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, $Body = null) {
-    echo 'Received HTTP-Response for ', $Request->getURL (), ': ';
+    echo '[HTTP   ] Received HTTP-Response for ', $Request->getURL (), ': ';
     
     if ($Header)
       echo "\n", $Header;
@@ -31,8 +51,7 @@
       echo 'FAILED', "\n";
   });
   
-  # $Request = $Pool->addNewRequest ('https://www.tiggerswelt.net/hosting');
-  $Request = $Pool->addNewRequest ('https://mas.anno-online.com/mas/revisiondata/19?platform=ios%20ipad');
+  $Request = $Pool->addNewRequest ('http://www.tiggerswelt.net/hosting');
   
   // Enter main-loop
   $Base->loop ();

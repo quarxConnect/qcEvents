@@ -35,11 +35,12 @@
     use qcEvents_Trait_Timer;
     
     /* Error-types */
-    const ERROR_NET_UNKNOWN    =  0;
-    const ERROR_NET_DNS_FAILED = -1;
-    const ERROR_NET_TLS_FAILED = -2;
-    const ERROR_NET_TIMEOUT    = -3;
-    const ERROR_NET_REFUSED    = -4;
+    const ERROR_NET_UNKNOWN     =  0;
+    const ERROR_NET_DNS_FAILED  = -1;
+    const ERROR_NET_TLS_FAILED  = -2;
+    const ERROR_NET_TIMEOUT     = -3;
+    const ERROR_NET_REFUSED     = -4;
+    const ERROR_NET_UNREACHABLE = -5;
     
     /* Socket-Types */
     const TYPE_TCP = 0;
@@ -48,6 +49,7 @@
     
     /* Timeouts */
     const CONNECT_TIMEOUT = 5;
+    const UNREACHABLE_TIMEOUT = 10;
     
     /* Buffers */
     const READ_TCP_BUFFER = 4096;
@@ -59,6 +61,9 @@
     
     const FORCE_TYPE = null;
     const FORCE_PORT = null;
+    
+    /* Known unreachable addresses */
+    private static $Unreachables = array ();
     
     /* Our connection-state */
     private $Connected = false;
@@ -418,10 +423,18 @@
       // Fire a callback for this
       $this->___callback ('socketTryConnect', $this->socketAddress [0], $this->socketAddress [1], $this->socketAddress [2], $this->socketAddress [3]);
       
+      // Check unreachable-cache
+      if (isset (self::$Unreachables [$Key = $this->socketAddress [1] . ':' . $this->socketAddress [2] . ':' . $this->socketAddress [3]])) {
+        if (time () - self::$Unreachables [$Key] < $this::UNREACHABLE_TIMEOUT)
+          return $this->socketHandleConnectFailed (self::ERROR_NET_UNREACHABLE);
+        
+        unset (self::$Unreachables [$Key]);
+      }
+      
       // Create new client-socket
       $URI = ($this->socketAddress [3] === self::TYPE_TCP ? 'tcp' : 'udp') . '://' . $this->socketAddress [1] . ':' . $this->socketAddress [2];
       
-      if (!is_resource ($Socket = stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, STREAM_CLIENT_ASYNC_CONNECT)))
+      if (!is_resource ($Socket = @stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, STREAM_CLIENT_ASYNC_CONNECT)))
         return false;
       
       stream_set_blocking ($Socket, 0);
@@ -561,12 +574,23 @@
     private function socketHandleConnectFailed ($Error = self::ERROR_NET_UNKNOWN) {
       // Mark this host as failed
       if ($this->socketAddress !== null) {
-        $this->___callback ('socketTryConnectFailed', $this->socketAddress [0], $this->socketAddress [1], $this->socketAddress [2], $this->socketAddress [3], $Error);
+        // Reset the address
+        $Address = $this->socketAddress;
         $this->socketAddress = null;
+        
+        // Mark destination as unreachable
+        $Key = $Address [1] . ':' . $Address [2] . ':' . $Address [3];
+        
+        if (!isset (self::$Unreachables [$Key]))
+          self::$Unreachables [$Key] = time ();
+        
+        // Raise callback
+        $this->___callback ('socketTryConnectFailed', $Address [0], $Address [1], $Address [2], $Address [3], $Error);
       }
       
       // Check if there are more hosts on our list
-      if (!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0)) {
+      if ((!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0)) &&
+          (!is_object ($this->internalResolver) || !$this->internalResolver->isActive ())) {
         // Fire custom callback
         if ($this->socketCallback) {
           $this->___raiseCallback ($this->socketCallback, false, $this->socketCallbackPrivate);
@@ -622,17 +646,28 @@
         $Types = array ($Types);
       
       // Enqueue Hostnames
-      $Private = array (
-        $Hostname,
-        $Port,
-        $Type,
-        0,
-      );
-      
-      foreach ($Types as $Type) {
-        $Private [3] = $Type;
-        $this->internalResolver->resolve ($Hostname, $Type, null, array ($this, 'socketResolverResult'), $Private);
-      }
+      foreach ($Types as $rType)
+        $this->internalResolver->resolve (
+          $Hostname,
+          $rType,
+          null,
+          function (qcEvents_Client_DNS $Resolver, $orgHostname, $Answers, $Authorities, $Additionals, $Message) use ($Hostname, $Port, $Type, $rType) {
+            // Discard any result if we are connected already
+            if ($this->isConnected ())
+              return;
+            
+            // Update our last event (to prevent a pending disconnect)
+            $this->lastEvent = time ();
+            
+            // Handle all results
+            if ($Message !== null)
+              $Result = $Resolver->dnsConvertPHP ($Message, $AuthNS, $Addtl);
+            else
+              $Result = $Addtl = array ();
+            
+            return $this->socketResolverResultArray ($Result, $Addtl, $Hostname, $rType, $Port, $Type);
+          }
+        );
       
       // Update last action
       $this->lastEvent = time ();
@@ -644,40 +679,6 @@
       $this->addTimer (self::CONNECT_TIMEOUT, false, array ($this, 'socketConnectTimeout'));
     }
     // }}}
-    
-    // {{{ socketResolverResult
-    /**
-     * Internal Callback: Our resolver returned a result
-     * 
-     * @param qcEvents_Client_DNS $Resolver
-     * @param string $orgHostname
-     * @param array $Answers
-     * @param array $Authorities
-     * @param $Additionals
-     * 
-     * @access public
-     * @return void
-     **/
-    public function socketResolverResult (qcEvents_Client_DNS $Resolver, $orgHostname, $Answers, $Authorities, $Additionals, $Message, $Private) {
-      // Discard any result if we are connected already
-      if ($this->isConnected ())
-        return;
-      
-      // Check if the given resolver is our own
-      if ($Resolver !== $this->internalResolver)
-        return false;
-      
-      // Update our last event (to prevent a pending disconnect)
-      $this->lastEvent = time ();
-      
-      // Handle all results
-      if ($Message !== null)
-        $Result = $Resolver->dnsConvertPHP ($Message, $AuthNS, $Addtl);
-      else
-        $Result = $Addtl = array ();
-      
-      return $this->socketResolverResultArray ($Result, $Addtl, $Private [0], $Private [3], $Private [1], $Private [2]);
-    }
     
     // {{{ socketResolverResultArray
     /**
@@ -1327,7 +1328,7 @@
      * @access protected
      * @return void
      **/
-    protected function socketResolve ($Hostnames, $Types) { }
+    protected function socketResolve (array $Hostnames, array $Types) { }
     // }}}
     
     // {{{ socketResolved
@@ -1341,7 +1342,7 @@
      * @access protected
      * @return void
      **/
-    protected function socketResolved ($Hostname, $Addresses, $otherNames) { }
+    protected function socketResolved ($Hostname, array $Addresses, array $otherNames) { }
     // }}}
     
     // {{{ socketConnected
