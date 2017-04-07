@@ -270,6 +270,25 @@
     }
     // }}}
     
+    // {{{ getLocalName
+    /**
+     * Retrive the local sock-addr-spec of this server
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getLocalName () {
+      $Local = stream_socket_get_name ($this->Socket, false);
+      
+      if (substr ($Local, 0, 3) == ':::')
+        $Local = gethostname () . substr ($Local, 2);
+      elseif (substr ($Local, 0, 7) == '0.0.0.0')
+        $Local = gethostname () . substr ($Local, 7);
+      
+      return $Local;
+    }
+    // }}}
+    
     // {{{ listen
     /**
      * Create a the server-process
@@ -290,7 +309,7 @@
         $Context = stream_context_create (array ());
       
       if ($Host === null)
-        $Host = '0.0.0.0';
+        $Host = '[::]';
       
       // Create the socket
       if ($Type == self::TYPE_UDP) {
