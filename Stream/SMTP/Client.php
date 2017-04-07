@@ -20,10 +20,10 @@
   
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Hookable.php');
-     
+  
   /**
    * SMTP-Client
-   * ----------- 
+   * -----------
    * Simple SMTP-Client-Implementation (RFC 5321)
    * 
    * @class qcEvents_Stream_SMTP_Client
@@ -145,7 +145,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Socket_Client_SMTP $Self, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Stream_SMTP_Client $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return bool
@@ -159,42 +159,56 @@
       }
       
       // Check if TLS is already active
-      if ($this->tlsEnable ()) {
+      if ($this->Stream->tlsEnable ()) {
         $this->___raiseCallback ($Callback, true, $Private);
         
         return true;
       }
       
       // Issue the command
-      return $this->smtpCommand ('STARTTLS', null, self::SMTP_STATE_CONNECTED, self::SMTP_STATE_CONNECTING, function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Callback, $Private) {
-        // Check if the server does not want us to enable TLS
-        if ($Code >= 300) {
-          $this->___callback ('tlsFailed');
-          
-          return $this->___raiseCallback ($Callback, false, $Private);
-        }
+      return $this->issueSMTPCommand (
+        'STARTTLS',
+        null,
+        self::SMTP_STATE_CONNECTED,
+        self::SMTP_STATE_CONNECTING,
         
-        // Lock the command-pipeline
-        $this->Command = true;
-        
-        // Try to start TLS-negotiation
-        $this->tlsEnable (true, function (qcEvents_Socket $Socket, $Status) use ($Callback, $Private) {
-          // Unlock the command-pipeline
-          $this->Command = null;
-          
-          // Check if TLS-negotiation failed
-          if (!$Status)
+        function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Callback, $Private) {
+          // Check if the server does not want us to enable TLS
+          if ($Code >= 300) {
+            $this->___callback ('tlsFailed');
+            
             return $this->___raiseCallback ($Callback, false, $Private);
+          }
           
-          // Restart the connection
-          $this->connectingState = self::SMTP_HANDSHAKE_EHLO;
-          $this->serverFeatures = null;
+          // Lock the command-pipeline
+          $this->Command = true;
           
-          $this->smtpCommand ('EHLO', array ($this->getClientName ()), null, null, function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Callback, $Private) {
-            $this->___raiseCallback ($Callback, true, $Private);
+          // Try to start TLS-negotiation
+          return $this->Stream->tlsEnable (true, function (qcEvents_Socket $Socket, $Status) use ($Callback, $Private) {
+            // Unlock the command-pipeline
+            $this->Command = null;
+            
+            // Check if TLS-negotiation failed
+            if (!$Status)
+              return $this->___raiseCallback ($Callback, false, $Private);
+            
+            // Restart the connection
+            $this->connectingState = self::SMTP_HANDSHAKE_EHLO;
+            $this->serverFeatures = null;
+            
+            $this->issueSMTPCommand (
+              'EHLO',
+              array ($this->getClientName ()),
+              null,
+              null,
+              
+              function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Callback, $Private) {
+                return $this->___raiseCallback ($Callback, true, $Private);
+              }
+            );
           });
-        });
-      });
+        }
+      );
     }
     // }}}
     
@@ -269,10 +283,16 @@
           $this->connectingState = self::SMTP_HANDSHAKE_EHLO;
           $this->serverFeatures = null;
          
-          return $this->smtpCommand ('EHLO', array ($this->getClientName ()), null, null, function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Username, $Callback, $Private) {
-            $this->___raiseCallback ($Callback, $Username, true, $Private);
-          });
-        
+          return $this->issueSMTPCommand (
+            'EHLO',
+            array ($this->getClientName ()),
+            null,
+            null,
+            
+            function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Username, $Callback, $Private) {
+              return $this->___raiseCallback ($Callback, $Username, true, $Private);
+            }
+          );
         // Check wheter to send the next chunk
         } elseif (($Code >= 300) && ($Code < 400))  
           return base64_encode ($Client->getResponse ());
@@ -296,11 +316,27 @@
         }
         
         // Ask the server for that mechanism
-        $this->smtpCommand ('AUTH', array ($Mechanism, base64_encode ($Client->getInitialResponse ())), self::SMTP_STATE_CONNECTED, self::SMTP_STATE_CONNECTING, $saslFunc, null, $saslFunc);
+        return $this->issueSMTPCommand (
+          'AUTH',
+          array ($Mechanism, base64_encode ($Client->getInitialResponse ())),
+          self::SMTP_STATE_CONNECTED,
+          self::SMTP_STATE_CONNECTING,
+          $saslFunc,
+          null,
+          $saslFunc
+        );
       };
       
       // Issue the first AUTH-Command
-      return $this->smtpCommand ('AUTH', array ($Mechanism, base64_encode ($Client->getInitialResponse ())), self::SMTP_STATE_CONNECTED, self::SMTP_STATE_CONNECTING, $saslFunc, null, $saslFunc);
+      return $this->issueSMTPCommand (
+        'AUTH',
+        array ($Mechanism, base64_encode ($Client->getInitialResponse ())),
+        self::SMTP_STATE_CONNECTED,
+        self::SMTP_STATE_CONNECTING,
+        $saslFunc,
+        null,
+        $saslFunc
+      );
     }
     // }}}
     
@@ -336,7 +372,12 @@
       }
        
       // Issue the command
-      return $this->smtpCommand ('MAIL FROM:' . $Originator, $Params, self::SMTP_STATE_CONNECTED, self::SMTP_STATE_TRANSACTION,
+      return $this->issueSMTPCommand (
+        'MAIL FROM:' . $Originator,
+        $Params,
+        self::SMTP_STATE_CONNECTED,
+        self::SMTP_STATE_TRANSACTION,
+        
         function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Originator, $Params, $Callback, $Private) {
           $this->___raiseCallback ($Callback, $Originator, (is_array ($Params) ? $Params : array ()), ($Code < 400), $Private);
         }
@@ -366,7 +407,12 @@
         $Receiver = '<' . $Receiver . '>';
 
       // Issue the command
-      return $this->smtpCommand ('RCPT TO:' . $Receiver, $Params, self::SMTP_STATE_TRANSACTION, null,
+      return $this->issueSMTPCommand (
+        'RCPT TO:' . $Receiver,
+        $Params,
+        self::SMTP_STATE_TRANSACTION,
+        null,
+        
         function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Receiver, $Params, $Callback, $Private) {
           $this->___raiseCallback ($Callback, $Receiver, (is_array ($Params) ? $Params : array ()), ($Code < 400), $Private);
         }
@@ -391,7 +437,12 @@
      **/
     public function sendData ($Mail, callable $Callback, $Private = null) {
       // Issue the command
-      return $this->smtpCommand ('DATA', null, self::SMTP_STATE_TRANSACTION, self::SMTP_STATE_CONNECTED,
+      return $this->issueSMTPCommand (
+        'DATA',
+        null,
+        self::SMTP_STATE_TRANSACTION,
+        self::SMTP_STATE_CONNECTED,
+        
         function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Callback, $Private) {
           $this->___raiseCallback ($Callback, ($Code < 400), $Private);
         }, null,
@@ -424,7 +475,12 @@
      **/
     public function reset (callable $Callback = null, $Private = null) {
       // Issue the command
-      return $this->smtpCommand ('RSET', null, null, self::SMTP_STATE_CONNECTED,
+      return $this->issueSMTPCommand (
+        'RSET',
+        null,
+        null,
+        self::SMTP_STATE_CONNECTED,
+        
         function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Callback, $Private) {
           $this->___raiseCallback ($Callback, ($Code < 400), $Private);
         }
@@ -449,7 +505,12 @@
      **/
     public function verify ($Mailbox, callable $Callback, $Private = null) {
       // Issue the command
-      return $this->smtpCommand ('VRFY', array ($Mailbox), null, null,
+      return $this->issueSMTPCommand (
+        'VRFY',
+        array ($Mailbox),
+        null,
+        null,
+        
         function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Mailbox, $Callback, $Private) {
           $Fullname = null;
           
@@ -472,7 +533,7 @@
           }
           
           // Raise the callback
-          $this->___raiseCallback ($Callback, $Mailbox, $Result, $Fullname, $Status, $Private);
+          return $this->___raiseCallback ($Callback, $Mailbox, $Result, $Fullname, $Status, $Private);
         }
       );
     }
@@ -494,9 +555,14 @@
      **/
     public function noOp (callable $Callback = null, $Private = null) {
       // Issue the command
-      return $this->smtpCommand ('NOOP', null, null, null,
+      return $this->issueSMTPCommand (
+        'NOOP',
+        null,
+        null,
+        null,
+        
         function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, ($Code < 400), $Private);
+          return $this->___raiseCallback ($Callback, ($Code < 400), $Private);
         }
       );
     }
@@ -526,9 +592,14 @@
       }
       
       // Issue the command
-      return $this->smtpCommand ('ETRN', array ($Domain), null, null,
+      return $this->issueSMTPCommand (
+        'ETRN',
+        array ($Domain),
+        null,
+        null,
+        
         function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Domain, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Domain, ($Code < 400), $Private);
+          return $this->___raiseCallback ($Callback, $Domain, ($Code < 400), $Private);
         }
       );
     }   
@@ -559,14 +630,22 @@
           return;
 
         // Set disconnected state
-        $this->popSetState (self::SMTP_STATE_DISCONNECTED);
+        $this->smtpSetState (self::SMTP_STATE_DISCONNECTED);
         $this->___callback ('smtpDisconnected');
+        $this->___callback ('eventClosed');
       }
       
       // Issue the command
-      return $this->smtpCommand ('QUIT', null, null, self::SMTP_STATE_DISCONNECTING, function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Callback, $Private) {
-        $this->___raiseCallback ($Callback, (($Code >= 200) && ($Code < 300)), $Private);
-      });
+      return $this->issueSMTPCommand (
+        'QUIT',
+        null,
+        null,
+        self::SMTP_STATE_DISCONNECTING,
+        
+        function (qcEvents_Stream_SMTP_Client $Self, $Code, $Lines) use ($Callback, $Private) {
+          return $this->___raiseCallback ($Callback, (($Code >= 200) && ($Code < 300)), $Private);
+        }
+      );
     }
     // }}}
     
@@ -750,7 +829,7 @@
     }
     // }}}
     
-    // {{{ smtpCommand
+    // {{{ issueSMTPCommand
     /**
      * Issue an SMTP-Command
      * 
@@ -766,7 +845,7 @@
      * @access private
      * @return void
      **/
-    private function smtpCommand ($Verb, $Args = null, $requiredState = null, $setState = null, callable $Callback = null, $Private = null, callable $ContinuationCallback = null, $ContinuationPrivate = null) {
+    private function issueSMTPCommand ($Verb, $Args = null, $requiredState = null, $setState = null, callable $Callback = null, $Private = null, callable $ContinuationCallback = null, $ContinuationPrivate = null) {
       // Just push the command to the queue
       $this->Commands [] = array ($Verb, $Args, $ContinuationCallback, $ContinuationPrivate, $Callback, $Private, $setState, $requiredState);
       
@@ -1018,7 +1097,7 @@
             $this->connectingState = self::SMTP_HANDSHAKE_EHLO;
             $this->Command = null;
             
-            $this->smtpCommand ('EHLO', array ($this->getClientName ()), null, null, $Command [4], $Command [5], $Command [2], $Command [3]);
+            $this->issueSMTPCommand ('EHLO', array ($this->getClientName ()), null, null, $Command [4], $Command [5], $Command [2], $Command [3]);
             
             continue;
           
@@ -1042,7 +1121,7 @@
             $this->connectingState = self::SMTP_HANDSHAKE_FALLBACK;
             $this->Command = null;
             
-            $this->smtpCommand ('HELO', array ($this->getClientName ()), null, null, $Command [4], $Command [5], $Command [2], $Command [3]);
+            $this->issueSMTPCommand ('HELO', array ($this->getClientName ()), null, null, $Command [4], $Command [5], $Command [2], $Command [3]);
             
             continue;
           }
@@ -1058,7 +1137,7 @@
             $this->serverFeatures = array ();
             
             foreach ($Lines as $Line) {
-              $Info = explode (' ', $Line);
+              $Info = explode (' ', trim ($Line));
               $Keyword = strtoupper (array_shift ($Info));
               
               $this->serverFeatures [$Keyword] = $Info;
@@ -1154,6 +1233,18 @@
     protected function smtpDisconnected () { }
     // }}}
     
+    // {{{ smtpCommand
+    /**
+     * Callback: A SMTP-Command was issued to the server
+     * 
+     * @param string $Command
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function smtpCommand ($Command) { }
+    // }}}
+    
     // {{{ smtpResponse
     /**
      * Callback: A Response was received from the server
@@ -1165,6 +1256,26 @@
      * @return void
      **/
     protected function smtpResponse ($Code, $Lines) { }
+    // }}}
+    
+    // {{{ eventReadable
+    /**
+     * Callback: Never used.
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function eventReadable () { }
+    // }}}
+    
+    // {{{ eventClosed
+    /**
+     * Callback: The client-connection was closed
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function eventClosed () { }
     // }}}
   }
 

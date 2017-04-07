@@ -109,25 +109,26 @@
           if (!($this->Connected = $Status))
             return $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, false, $Private);
           
-          # TODO: Negotiate TLS whenever possible (or requested)
-          
-          // Check wheter to authenticate
-          if (($Username === null) || ($Password === null))
-            return $this->___raiseCallback ($Callback, $Hostname, $Port, null, true, $Private);
-          
-          // Try to authenticate
-          return $this->authenticate ($Username, $Password, function (qcEvents_Stream_SMTP_Client $Self, $Username, $Status) use ($Hostname, $Port, $Username, $Callback, $Private) {
-            // Check if the authentication was successfull
-            if (!$Status) {
-              // Indicate the connection as failed
-              $this->___callback ('smtpConnectionFailed');
-              
-              // Reset the stream
-              $this->close ();
-            }
+          // Always try to negotiate TLS
+          return $this->startTLS (function (qcEvents_Client_SMTP $Self, $Status) use ($Username, $Password, $Callback, $Hostname, $Port, $Private) {
+            // Check wheter to authenticate
+            if (($Username === null) || ($Password === null) || !$Status)
+              return $this->___raiseCallback ($Callback, $Hostname, $Port, null, $Status, $Private);
             
-            // Raise the requested callback
-            $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, $Status, $Private);
+            // Try to authenticate
+            return $this->authenticate ($Username, $Password, function (qcEvents_Stream_SMTP_Client $Self, $Username, $Status) use ($Hostname, $Port, $Callback, $Private) {
+              // Check if the authentication was successfull
+              if (!$Status) {
+                // Indicate the connection as failed
+                $this->___callback ('smtpConnectionFailed');
+                
+                // Reset the stream
+                $this->close ();
+              }
+              
+              // Raise the requested callback
+              $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, $Status, $Private);
+            });
           });
         });
       });
