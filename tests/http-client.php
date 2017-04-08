@@ -12,6 +12,11 @@
   
   $Base = new qcEvents_Base;
   
+  // Hack in DNS64-Prefix
+  require_once ('qcEvents/Client/DNS.php');
+  
+  qcEvents_Client_DNS::$DNS64_Prefix = '64:ff9b::';
+  
   // Create a new HTTP-Pool and a single request
   // At creation of the test the given URL would redirect twice
   require_once ('qcEvents/Client/HTTP.php');
@@ -42,16 +47,23 @@
   $Pool->addHook ('httpRequestRediect', function (qcEvents_Client_HTTP $Pool, qcEvents_Stream_HTTP_Request $Request, $Location) {
     echo '[HTTP   ] Redirecting HTTP-Request for ', $Request->getURL (), ' to ', $Location, "\n";
   });
-  $Pool->addHook ('httpRequestResult', function (qcEvents_Client_HTTP $Pool, qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, $Body = null) {
+  $Pool->addHook ('httpRequestResult', function (qcEvents_Client_HTTP $Pool, qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, $Body = null) use ($s) {
     echo '[HTTP   ] Received HTTP-Response for ', $Request->getURL (), ': ';
     
     if ($Header)
       echo "\n", $Header;
     else
       echo 'FAILED', "\n";
+    
+    $e = microtime (true);
+    echo '[HTTP   ] Result after ', number_format (($e - $s) * 1000, 2), " ms\n";
   });
   
-  $Request = $Pool->addNewRequest ('https://www.tiggerswelt.net/hosting');
+  if ($argc > 1) 
+    for ($i = 1; $i < $argc; $i++)
+      $Pool->addNewRequest ($argv [$i]);
+  else
+    $Request = $Pool->addNewRequest ('https://www.tiggerswelt.net/hosting');
   
   // Enter main-loop
   $Base->loop ();

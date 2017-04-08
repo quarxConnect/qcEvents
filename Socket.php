@@ -1085,14 +1085,14 @@
           'ssl' => array (
             // Server-Name-Indication
             'SNI_enabled' => true,
-            'peer_name' => $this->remoteHost, // Domainname for SNI
+            'peer_name' => $this->remoteHost,       // Domainname for SNI
             'SNI_server_name' => $this->remoteHost, # Deprecated as of PHP 5.6 (replaced by peer_name)
             
             // General settings
             # 'ciphers' => '',
-            'capture_peer_cert' => false, # Unused
-            'capture_peer_cert_chain' => false, # Unused
-            'disable_compression' => true, // Always disable compression because of CRIME
+            'capture_peer_cert' => false,           # Unused
+            'capture_peer_cert_chain' => false,     # Unused
+            'disable_compression' => true,          // Always disable compression because of CRIME
             
             // Parameters for verification
             'verify_peer' => true,
