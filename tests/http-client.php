@@ -6,7 +6,6 @@
   
   echo 'Started at ', $s = microtime (true), "\n";
   
-  
   // Create a new event-base for the test
   require_once ('qcEvents/Base.php');
   

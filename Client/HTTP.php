@@ -103,15 +103,15 @@
      * @access public
      * @return qcEvents_Stream_HTTP_Request
      **/
-    public function addRequest (qcEvents_Stream_HTTP_Request $Request, callable $Callback = null, $Private = null) {
+    public function addRequest (qcEvents_Stream_HTTP_Request $Request, callable $Callback = null, $Private = null, $Status = 0) {
       // Generate a key for this
       $Key = $Request->getHostname () . ':' . $Request->getPort () . ($Request->useTLS () ? '/s' : '');
       
       // Enqueue the request
       if (isset ($this->pendingRequests [$Key]))
-        $this->pendingRequests [$Key][] = array ($Request, $Callback, $Private);
+        $this->pendingRequests [$Key][] = array ($Request, $Status, $Request->getUsername (), $Request->getPassword (), $Callback, $Private);
       else
-        $this->pendingRequests [$Key] = array (array ($Request, $Callback, $Private));
+        $this->pendingRequests [$Key] = array (array ($Request, $Status, $Request->getUsername (), $Request->getPassword (), $Callback, $Private));
       
       // Try to start pending requests
       $this->startPendingRequests ();
@@ -229,7 +229,7 @@
         foreach ($this->pendingRequests as $Key=>$Requests) {
           $Request = array_shift ($this->pendingRequests [$Key]);
           
-          if ($this->startRequest ($Request [0], $Request [1], $Request [2])) {
+          if ($this->startRequest ($Request [0], $Request [1], $Request [2], $Request [3], $Request [4], $Request [5])) {
             if (count ($this->pendingRequests [$Key]) == 0)
               unset ($this->pendingRequests [$Key]);
             
@@ -246,16 +246,27 @@
      * Start a given request
      * 
      * @param qcEvents_Stream_HTTP_Request $Request
+     * @param int $Status (optional)
+     * @param string $Username (optional)
+     * @param string $Password (optional)
      * @param callable $Callback (optional)
      * @param mixed $Private (optional)
      * 
      * @access private
      * @return bool
      **/
-    private function startRequest (qcEvents_Stream_HTTP_Request $Request, callable $Callback = null, $Private = null) {
+    private function startRequest (qcEvents_Stream_HTTP_Request $Request, $Phase = 0, $Username = null, $Password = null, callable $Callback = null, $Private = null) {
       // Try to acquire a socket for this request
       if (!is_object ($Socket = $this->acquireSocket ($Request->getHostname (), $Request->getPort (), $Request->useTLS ())))
         return false;
+      
+      // Handle authenticiation more special
+      $Method = $Request->getMethod ();
+      
+      if (($Phase == 0) && (($Username !== null) || ($Password !== null))) {
+        $Request->setMethod ('OPTIONS');
+        $Request->setCredentials (null, null);
+      }
       
       // Move the request to active requests
       $this->activeRequests [] = array ($Request, $Callback, $Private, $Socket);
@@ -266,7 +277,7 @@
       // Watch events on the request
       $Request->addHook (
         'httpRequestResult',
-        function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, $Body = null) {
+        function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, $Body = null) use ($Phase, $Username, $Password, $Method) {
           // Make sure the request is one of our active ones
           $Key = null;
           
@@ -292,10 +303,90 @@
           $Req [3]->unpipe ($Req [0]);
           $this->releaseSocket ($Req [3]);
           
+          // Retrive the status of the response
+          if ($Header)
+            $Status = $Header->getStatus ();
+          else
+            $Status = 200;
+          
+          // Check for authentication
+          if (($Phase == 0) &&
+              (($Username !== null) || ($Password !== null)) &&
+              (($Status == 401) || ($Header->hasField ('WWW-Authenticate')))) {
+            // Retrive supported methods
+            $Methods = explode (',', $Header->getField ('WWW-Authenticate'));
+            $onMethod = false;
+            $aMethod = null;
+            
+            for ($i = 0; $i < count ($Methods); $i++) {
+              $Token = $Methods [$i];
+              $tToken = trim ($Token);
+              
+              if (($p = strpos ($tToken, ' ')) !== false) {
+                if ($aMethod !== null)
+                  $Request->addAuthenticationMethod ($aMethod, $mParams);
+                
+                $onMethod = true;
+                $aMethod = substr ($tToken, 0, $p);
+                $tToken = $Token = ltrim (substr (ltrim ($Token), $p + 1));
+                
+                $mParams = array ();
+              } elseif (!$onMethod) {
+                if ($aMethod !== null) {
+                  $Request->addAuthenticationMethod ($aMethod, $mParams);
+                  $aMethod = null;
+                }
+                
+                $Request->addAuthenticationMethod ($tToken);
+                
+                continue;
+              }
+              
+              if (($p = strpos ($tToken, '=')) !== false) {
+                $Name = substr ($tToken, 0, $p);
+                $Value = substr (ltrim ($Token), $p + 1);
+                
+                // Check for quotation
+                if ((strlen ($Value) > 0) && (($Value [0] == '"') || ($Value [0] == "'"))) {
+                  $Stop = $Value [0];
+                  $Value = substr ($Value, 1);
+                  
+                  if (($p = strpos ($Value, $Stop)) === false) {
+                    for ($j = $i + 1; $j < count ($Methods); $j++) {
+                      if (($p = strpos ($Methods [++$i], $Stop)) !== false) {
+                        $Value .= substr ($Methods [$i], 0, $p) . substr ($Methods [$i], $p + 1);
+                        
+                        break;
+                      } else
+                        $Value .= $Methods [$i];
+                    }
+                  } else
+                    $Value = substr ($Value, 0, $p) . substr ($Value, $p + 1);
+                }
+                
+                $mParams [$Name] = $Value;
+              } else
+                $mParams [] = $Token;
+            }
+            
+            if ($aMethod !== null)
+              $Request->addAuthenticationMethod ($aMethod, $mParams);
+            
+            // Restore the request's state
+            $Request->setMethod ($Method);
+            $Request->setCredentials ($Username, $Password);
+            
+            // Re-enqueue the request
+            $this->addRequest ($Request, $Req [1], $Req [2], 1);
+            
+            // Check if we can start waiting requests (as we can not trus that releaseSocket() did this for us)
+            return $this->startPendingRequests ();
+          }
+          
           // Check for redirects
           if ($Header &&
               ($Location = $Header->getField ('Location')) &&
-              ((($Status = $Header->getStatus ()) >= 300) && ($Status < 400)) &&
+              (($Status >= 300) && ($Status < 400)) &&
               (($max = $Request->getMaxRedirects ()) > 0) &&
               is_array ($URI = parse_url ($Location))) {
             // Make sure the URL is fully qualified
@@ -424,7 +515,7 @@
         while (count ($this->activeRequests) < $this->activeRequestsMax) {
           $Request = array_shift ($this->pendingRequests [$Key]);
           
-          if ($this->startRequest ($Request [0], $Request [1], $Request [2])) {
+          if ($this->startRequest ($Request [0], $Request [1], $Request [2], $Request [3], $Request [4], $Request [5])) {
             if (count ($this->pendingRequests [$Key]) == 0)
               unset ($this->pendingRequests [$Key]);
             

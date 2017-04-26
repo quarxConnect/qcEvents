@@ -24,6 +24,17 @@
     /* Use TLS for this request */
     private $useTLS = false;
     
+    /* Authentication-Information */
+    private static $preferedAuthenticationMethods = array (
+      'Digest',
+      'Basic'
+    );
+    
+    private $authenticationMethods = array ();
+    
+    private $Username = null;
+    private $Password = null;
+    
     /* Values to upload with this request */
     private $Values = array ();
     
@@ -76,6 +87,7 @@
     }
     // }}}
     
+    // {{{ toString
     /**
      * Convert the header into a string
      * 
@@ -214,6 +226,137 @@
     }
     // }}}
     
+    // {{{ hasCredentials
+    /**
+     * Check if this request has credentials assigned
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function hasCredentials () {
+      return (($this->Username !== null) || ($this->Password !== null));
+    }
+    // }}}
+    
+    // {{{ setCredentials
+    /**
+     * Store HTTP-Credentials
+     * 
+     * @param string $Username
+     * @param string $Password
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setCredentials ($Username, $Password) {
+      // Store the new credentials
+      $this->Username = $Username;
+      $this->Password = $Password;
+      
+      // Try to apply credentials to this request
+      $this->applyCredentials ();
+    }
+    // }}}
+    
+    // {{{ addAuthenticationMethod
+    /**
+     * Register a server-supported authentication-method
+     * 
+     * @param string $Method
+     * @param array $Parameters (optional)
+     * 
+     * @access public
+     * @return void
+     **/
+    public function addAuthenticationMethod ($Method, array $Parameters = null) {
+      // Register the method
+      $this->authenticationMethods [$Method] = $Parameters;
+      
+      // Try to apply credentials to this request
+      $this->applyCredentials ();
+    }
+    // }}}
+    
+    // {{{ getUsername
+    /**
+     * Retrive a username assigned to this request
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getUsername () {
+      return $this->Username;
+    }
+    // }}}
+    
+    // {{{ getPassword
+    /**
+     * Retrive a password assigned to this request
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getPassword () {
+      return $this->Password;
+    }
+    // }}}
+    
+    // {{{ applyCredentials
+    /**
+     * Try to add credentials to this request
+     * 
+     * @access private
+     * @return void
+     **/
+    private function applyCredentials () {
+      // Check wheter to remove an authentication-information
+      if (($this->Username === null) && ($this->Password === null))
+        return $this->unsetField ('Authorization');
+      
+      // Try supported authentication-methods in prefered order
+      foreach ($this::$preferedAuthenticationMethods as $Method)
+        if (array_key_exists ($Method, $this->authenticationMethods))
+          switch ($Method) {
+            // Digest requires parameters and is therefore processed by ourself
+            case 'Digest':
+              $P = $this->authenticationMethods ['Digest'];
+              
+              $A1 = $this->Username . ':' . $P ['realm'] . ':' . $this->Password;
+              $A2 = $this->getMethod () . ':' . $this->getURI ();
+              $NC = sprintf ('%06d', ($P ['nc'] || 0) + 1);
+              $CNonce = sprintf ('%08x%08x', time (), rand (0, 0xFFFFFFFF));
+              
+              $R = md5 (
+                md5 ($A1) . ':' .
+                $P ['nonce'] . ':' .
+                $NC . ':' .
+                $CNonce . ':' .
+                $P ['qop'] . ':' .
+                md5 ($A2)
+              );
+              
+              return $this->setField (
+                'Authorization',
+                'Digest ' .
+                  'username="' . $this->Username . '",' .
+                  'realm="' . $P ['realm'] . '",' .
+                  'uri="' . $this->getURI () . '",' .
+                  'algorithm=MD5,' .
+                  'nonce="' . $P ['nonce'] . '",' .
+                  'nc=' . $NC . ',' .
+                  'cnonce="' . $CNonce . '",' .
+                  'qop=' . $P ['qop'] . ',' .
+                  'response="' . $R . '",' .
+                  'opaque="' . $P ['opaque'] . '",' .
+                  'userhash=false'
+              );
+            // Basic-Authentication is processed by our parent
+            case 'Basic':
+              return parent::setCredentials ($this->Username, $this->Password);
+          }
+    }
+    // }}}
+    
     // {{{ setBody
     /**
      * Store a body for this request
@@ -340,6 +483,16 @@
     }
     // }}}
     
+    // {{{ serveFromFilesystem
+    /**
+     * Answer this request using a file from filesystem
+     * 
+     * @param qcEvents_Server_HTTP $Server HTTP-Server-Instance that received this request
+     * @param string $Directory Document-Root-Directory to serve the file from
+     * 
+     * @access public
+     * @return void
+     **/
     public function serveFromFilesystem (qcEvents_Server_HTTP $Server, $Directory) {
       // Sanatize the Document-Root
       if (($Directory = realpath ($Directory)) === false) {
@@ -350,6 +503,8 @@
         
         return $Server->httpdSetResponse ($this, $Response, 'Invalid document-root.' . "\n");
       }
+      
+      $Directory .= '/';
       
       // Check the requested URI 
       $URI = $this->getURI ();
@@ -404,6 +559,7 @@
         return $Server->httpdSetResponse ($this, $Response, $Content);
       });
     }
+    // }}}
     
     
     // {{{ httpFinished
