@@ -485,15 +485,15 @@
      * Callback: A queued hostname was resolved
      * 
      * @param string $askedHostname
-     * @param qcEvents_Stream_DNS_Recordset $Answers
-     * @param qcEvents_Stream_DNS_Recordset $Authorities
-     * @param qcEvents_Stream_DNS_Recordset $Additional
+     * @param qcEvents_Stream_DNS_Recordset $Answers (optional)
+     * @param qcEvents_Stream_DNS_Recordset $Authorities (optional)
+     * @param qcEvents_Stream_DNS_Recordset $Additional (optional)
      * @param qcEvents_Stream_DNS_Message $wholeMessage (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected function dnsResult ($askedHostname, qcEvents_Stream_DNS_Recordset $Answers, qcEvents_Stream_DNS_Recordset $Authorities, qcEvents_Stream_DNS_Recordset $Additionals, qcEvents_Stream_DNS_Message $wholeMessage = null) { }
+    protected function dnsResult ($askedHostname, qcEvents_Stream_DNS_Recordset $Answers = null, qcEvents_Stream_DNS_Recordset $Authorities = null, qcEvents_Stream_DNS_Recordset $Additionals = null, qcEvents_Stream_DNS_Message $wholeMessage = null) { }
     // }}}
   }
 
