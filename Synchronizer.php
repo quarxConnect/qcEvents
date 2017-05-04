@@ -90,15 +90,16 @@
         $Base = $Handler->getEventBase ();
       
       // Prepare Callback
-      $Ready = false;
+      $Ready = $Loop = false;
       $Result = null;
-      $Callback = function () use (&$Ready, &$Result, $Base) {
+      $Callback = function () use (&$Loop, &$Ready, &$Result, $Base) {
         // Store the result
         $Ready = true;
         $Result = func_get_args ();
         
         // Leave the loop
-        $Base->loopBreak ();
+        if ($Loop)
+          $Base->loopBreak ();
       };
       
       // Analyze parameters of the call
@@ -132,6 +133,8 @@
       $Method->invokeArgs ((is_object ($Handler) ? $Handler : null), $Parameters);
       
       // Run the loop until ready
+      $Loop = true;
+      
       while (!$Ready)
         $Base->loop (true);
       
