@@ -50,6 +50,10 @@
       'DELETE',
       'HEAD',
       'OPTIONS',
+      
+      // WebDAV-Stuff
+      'REPORT',
+      'PROPFIND',
     );
     
     /* Properties for a response */
@@ -186,6 +190,20 @@
     }
     // }}}
     
+    // {{{ setStatus
+    /**
+     * Set a new status code for a http-response
+     * 
+     * @param int $Code
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setStatus ($Code) {
+      $this->Code = (int)$Code;
+    }
+    // }}}
+    
     // {{{ isError
     /**
      * Check if this header indicates an error-status
@@ -200,13 +218,27 @@
     
     // {{{ getMessage
     /**
-     * Retrive the message that was associated with the repsonse-code
+     * Retrive the message that was associated with the status-code
      * 
      * @access public
      * @return string
      **/
     public function getMessage () {
       return $this->Message;
+    }
+    // }}}
+    
+    // {{{ setMessage
+    /**
+     * Store a message associated with the status-code
+     * 
+     * @param string $Message
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setMessage ($Message) {
+      $this->Message = $Message;
     }
     // }}}
     
