@@ -136,7 +136,7 @@
         
       // Use a user-defined body
       } elseif ($this->Body !== null) {
-        $this->setMethod ('POST');
+        # $this->setMethod ('POST');
         
         $Body =& $this->Body;
       
@@ -323,7 +323,7 @@
               
               $A1 = $this->Username . ':' . $P ['realm'] . ':' . $this->Password;
               $A2 = $this->getMethod () . ':' . $this->getURI ();
-              $NC = sprintf ('%06d', ($P ['nc'] || 0) + 1);
+              $NC = sprintf ('%06d', (isset ($P ['nc']) ? $P ['nc'] : 0) + 1);
               $CNonce = sprintf ('%08x%08x', time (), rand (0, 0xFFFFFFFF));
               
               $R = md5 (
@@ -354,6 +354,18 @@
             case 'Basic':
               return parent::setCredentials ($this->Username, $this->Password);
           }
+    }
+    // }}}
+    
+    // {{{ hasBody
+    /**
+     * Check if there is a stored body for this request
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function hasBody () {
+      return ((strlen ($this->Body) > 0) || parent::hasBody ());
     }
     // }}}
     
@@ -531,7 +543,7 @@
       // Handle directory-requests
       if (is_dir ($Path)) {
         // Check if it was requested as directory
-        if (substr ($Path, -1, 1) != '/') {
+        if ((strlen ($URI) > 0) && (substr ($URI, -1, 1) != '/')) {
           $Response = new qcEvents_Stream_HTTP_Header (array (
             'HTTP/' . $this->getVersion (true) . ' 302 This is a directory',
             'Location: /' . $URI . '/',

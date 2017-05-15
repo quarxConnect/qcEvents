@@ -263,7 +263,7 @@
       // Handle authenticiation more special
       $Method = $Request->getMethod ();
       
-      if (($Phase == 0) && (($Username !== null) || ($Password !== null))) {
+      if (!$Request->hasBody () && ($Phase == 0) && (($Username !== null) || ($Password !== null))) {
         $Request->setMethod ('OPTIONS');
         $Request->setCredentials (null, null);
       }
@@ -312,7 +312,7 @@
           // Check for authentication
           if (($Phase == 0) &&
               (($Username !== null) || ($Password !== null)) &&
-              (($Status == 401) || ($Header->hasField ('WWW-Authenticate')))) {
+              (($Status == 401) || ($Header && ($Header->hasField ('WWW-Authenticate'))))) {
             // Retrive supported methods
             $Methods = explode (',', $Header->getField ('WWW-Authenticate'));
             $onMethod = false;
