@@ -279,6 +279,30 @@
     }
     // }}}
     
+    // {{{ httpdHeaderReady
+    /**
+     * Internal Callback: HTTP-Header was received (body may follow)
+     * 
+     * @param qcEvents_Stream_HTTP_Header $Header
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected final function httpdHeaderReady (qcEvents_Stream_HTTP_Header $Header) {
+      // Check if the client is expecting an early response
+      if (!($Expect = $Header->getField ('Expect')) ||
+          !(strcasecmp ($Expect, '100-continue') == 0) || # TODO: Add support for extensions
+          !($Source = $this->getPipeSource ()) ||
+          !($Source instanceof qcEvents_Interface_Sink))
+        return;
+      
+      # TODO: Check here if the expection was met
+      
+      // Tell the client to proceed
+      $Source->write ('HTTP/' . $Header->getVersion () . ' 100 Continue' . "\r\n\r\n");
+    }
+    // }}}
+    
     // {{{ httpdRequestReady
     /**
      * Internal Callback: HTTP-Request was received
@@ -378,8 +402,10 @@
         $Source->addTimer ($this->keepAliveTimeout, false, array ($this, 'httpdCheckKeepAlive'));
       
       // Register our hooks
-      if ($rc)
+      if ($rc) {
         $this->addHook ('httpFinished', array ($this, 'httpdRequestReady'));
+        $this->addHook ('httpHeaderReady', array ($this, 'httpdHeaderReady'));
+      }
       
       return $rc;
     }
@@ -403,6 +429,7 @@
     public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       // Remove our hooks again
       $this->removeHook ('httpFinished', array ($this, 'httpdRequestReady'));
+      $this->removeHook ('httpHeaderReady', array ($this, 'httpdHeaderReady'));
       
       // Forward to our parent
       return parent::deinitConsumer ($Source, $Callback, $Private);
