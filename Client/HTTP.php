@@ -98,7 +98,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Response $Header, string $Body, mixed $Private) { }
+     *   function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Response $Header = null, string $Body = null, mixed $Private = null) { }
      * 
      * @access public
      * @return qcEvents_Stream_HTTP_Request
@@ -470,6 +470,40 @@
           // Check if this pool is now empty
           if (count ($this->Sockets [$Key]) == 0)
             unset ($this->Sockets [$Key]);
+        });
+        
+        $Socket->addHook ('socketConnectionFailed', function (qcEvents_Socket $Socket) use ($Key) {
+          // Try to find the socket
+          if (isset ($this->Sockets [$Key]) && (($Index = array_search ($Socket, $this->Sockets [$Key], true)) !== false))
+            // Remove the socket from pool
+            unset ($this->Sockets [$Key][$Index]);
+          
+          // Check if this pool is now empty
+          if (!isset ($this->Sockets [$Key]) || (count ($this->Sockets [$Key]) == 0)) {
+            unset ($this->Sockets [$Key]);
+            
+            // Check active requests
+            foreach ($this->activeRequests as $Request)
+              if ($Request [3] === $Socket) {
+                if ($Request [1])
+                  $this->___raiseCallback ($Request [1], $Request [0], null, null, $Request [2]);
+                
+                $this->___callback ('httpRequestResult', $Request [0], null, null);
+                break;
+              }
+            
+            // Check pending requests
+            if (isset ($this->pendingRequests [$Key])) {
+              foreach ($this->pendingRequests [$Key] as $Request) {
+                if ($Request [4])
+                  $this->___raiseCallback ($Request [4], $Request [0], null, null, $Request [5]);
+                
+                $this->___callback ('httpRequestResult', $Request [0], null, null);
+              }
+              
+              unset ($this->pendingRequests [$Key]);
+            }
+          }
         });
         
         return $Socket;
