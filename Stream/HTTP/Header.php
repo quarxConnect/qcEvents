@@ -100,13 +100,10 @@
         $Name = substr ($Line, 0, $p);
         $lName = strtolower ($Name);
         
-        if (isset ($this->Headers [$lName])) {
-          if (is_array ($this->Headers [$lName]))
-            $this->Headers [$lName][] = array ($Name, trim (substr ($Line, $p + 1)));
-          else
-            $this->Headers [$lName] = array ($this->Headers [$lName], array ($Name, trim (substr ($Line, $p + 1))));
-        } else
-          $this->Headers [$lName] = array ($Name, trim (substr ($Line, $p + 1)));
+        if (isset ($this->Headers [$lName]))
+          $this->Headers [$lName][] = array ($Name, trim (substr ($Line, $p + 1)));
+        else
+          $this->Headers [$lName] = array (array ($Name, trim (substr ($Line, $p + 1))));
       }
     }
     // }}}
@@ -125,11 +122,12 @@
         $buf = $this->Method . ' ' . $this->URI . ' ' . $this->Version . "\r\n";
       
       foreach ($this->Headers as $Header)
-        if (is_array ($Header [0]))
-          foreach ($Header as $Entity)
+        foreach ($Header as $Entity)
+          if (is_array ($Entity [1]))
+            foreach ($Entity [1] as $Value)
+              $buf .= $Entity [0] . ': ' . $Value . "\r\n";
+          else
             $buf .= $Entity [0] . ': ' . $Entity [1] . "\r\n";
-        else
-          $buf .= $Header [0] . ': ' . $Header [1] . "\r\n";
       
       return $buf . "\r\n";
     }
@@ -379,20 +377,21 @@
       if (!isset ($this->Headers [$Key]))
         return null;
       
-      // Check for a multi-valued header
-      if (!is_array ($this->Headers [$Key][0]))
-        return $this->Headers [$Key][1];
-      
       // Collect all values
       $Values = array ();
       
-      foreach ($this->Headers [$Key] as $Header)
-        $Values [] = $Header [1];
+      foreach ($this->Headers [$Key] as $Header) {
+        if (is_array ($Header [1]))
+          $Values = array_merge ($Values, $Header [1]);
+        else
+          $Values [] = $Header [1];
         
+        if (!$allowMulti)
+          return array_shift ($Values);
+      }
+      
       if ($allowMulti)
         return $Values;
-      
-      return array_shift ($Values);
     }
     // }}}
     
@@ -406,12 +405,15 @@
      * @access public
      * @return bool
      **/
-    public function setField ($Name, $Value) {
+    public function setField ($Name, $Value, $Replace = true) {
       // Retrive the key for that field
       $Key = strtolower ($Name);
       
       // Store the value
-      $this->Headers [$Key] = array ($Name, $Value);
+      if ($Replace || !isset ($this->Headers [$Key]))
+        $this->Headers [$Key] = array (array ($Name, $Value));
+      else
+        $this->Headers [$Key][] = array ($Name, $Value);
       
       return true;
     }
@@ -441,15 +443,9 @@
     public function getFields () {
       $Result = array ();
       
-      foreach ($this->Headers as $Header)
-        if (is_array ($Header [0]))
-          foreach ($Header as $Entity) {
-            $Result [$Entity [0]] = $Entity [1];
-            
-            break;
-          }
-        else
-          $Result [$Header [0]] = $Header [1];
+      foreach ($this->Headers as $Entities)
+        foreach ($Entities as $Entity)
+          $Result [$Entity [0]] = $Entity [1];
       
       return $Result;
     }
