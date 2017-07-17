@@ -122,6 +122,9 @@
      * @return mixed
      **/
     private function invokeCall (callable $Callable, array $Parameters) {
+      // Store as invoked
+      $this->Invoked [] = array ($Callable, $Parameters);
+      
       // Prepare the callback
       $Callback = function () use ($Callable, $Parameters) {
         $this->processResult ($Callable, $Parameters, func_get_args ());
@@ -158,9 +161,6 @@
         
         $Parameters [] = $Callback;
       }
-      
-      // Store as invoked
-      $this->Invoked [] = array ($Callable, $Parameters);
       
       // Do the call
       if (is_array ($Callable))
@@ -299,7 +299,7 @@
       }
       
       // Check if we may finish
-      if (count ($this->finishCallbacks) == 0)
+      if ((count ($this->finishCallbacks) == 0) && (count ($this->resultCallbacks) == 0))
         return;
       
       // Peek results
