@@ -20,14 +20,41 @@
    **/
   
   class qcEvents_Queue {
+    /* Operation-Mode */
+    const MODE_PARALLEL = 0;
+    const MODE_SERIAL = 1;
+    
+    private $Mode = qcEvents_Queue::MODE_PARALLEL;
+    
     /* Queued calls */
     private $Queue = array ();
+    
+    /* Invoked calls */
+    private $Invoked = array ();
     
     /* Call-Results */
     private $Results = array ();
     
+    /* Result-Callbacks */
+    private $resultCallbacks = array ();
+    
     /* Finish-Callbacks */
-    private $Callbacks = array ();
+    private $finishCallbacks = array ();
+    
+    // {{{ setMode
+    /**
+     * Set mode of invocation
+     * 
+     * @param enum $Mode
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setMode ($Mode) {
+      if (($Mode == self::MODE_PARALLEL) || ($Mode == self::MODE_SERIAL))
+        $this->Mode = (int)$Mode;
+    }
+    // }}}
     
     // {{{ addCall
     /**
@@ -65,31 +92,46 @@
           
           return false;
         }
-        
-        // Create Reflection-Class
-        $Function = new ReflectionMethod ($Callable [0], $Callable [1]);
       
-      // Create Reflection-Class
-      } elseif (is_callable ($Callable)) {
-        if (is_array ($Callable))
-          $Function = new ReflectionMethod ($Callable [0], $Callable [1]);
-        else
-          $Function = new ReflectionFunction ($Callable);
-      
-      // Bail out an error
-      } else {
+      // Bail out error if not callable
+      } elseif (!is_callable ($Callable)) {
         trigger_error ('First argument must be callable');
         
         return false;
       }
       
       // Push to our queue
-      $this->Queue [] = array ($Callable, $Parameters);
+      if (($this->Mode == self::MODE_SERIAL) && (count ($this->Invoked) > 0)) {
+        $this->Queue [] = array ($Callable, $Parameters);
+        
+        return;
+      }
       
+      return $this->invokeCall ($Callable, $Parameters);
+    }
+    // }}}
+    
+    // {{{ invokeCall
+    /**
+     * Invoke a callable
+     * 
+     * @param callable $Callable
+     * @param array $Parameters
+     * 
+     * @access private
+     * @return mixed
+     **/
+    private function invokeCall (callable $Callable, array $Parameters) {
       // Prepare the callback
       $Callback = function () use ($Callable, $Parameters) {
         $this->processResult ($Callable, $Parameters, func_get_args ());
       };
+      
+      // Create Reflection-Class
+      if (is_array ($Callable))
+        $Function = new ReflectionMethod ($Callable [0], $Callable [1]);
+      else
+        $Function = new ReflectionFunction ($Callable);
       
       // Analyze parameters of the call
       $CallbackIndex = null;
@@ -117,11 +159,36 @@
         $Parameters [] = $Callback;
       }
       
+      // Store as invoked
+      $this->Invoked [] = array ($Callable, $Parameters);
+      
       // Do the call
       if (is_array ($Callable))
         return $Function->invokeArgs ($Callable [0], $Parameters);
       
       return $Function->invokeArgs ($Parameters);
+    }
+    // }}}
+    
+    // {{{ onResult
+    /**
+     * Register a callback to forward results to
+     * 
+     * @param callable $Callback
+     * @param mixed $Private (optional)
+     * 
+     * @access public
+     * @return void
+     **/
+    public function onResult (callable $Callback, $Private = null) {
+      // Register the callback
+      $this->resultCallbacks [] = array ($Callback, $Private);
+      
+      // Push already pending results there
+      $Results = $this->Results;
+      
+      foreach ($Results as $Result)
+        call_user_func ($Callback, $this, $Result, $Private);
     }
     // }}}
     
@@ -137,10 +204,25 @@
      **/
     public function finish (callable $Callback, $Private = null) {
       // Push callback to callbacks
-      $this->Callbacks [] = array ($Callback, $Private);
+      $this->finishCallbacks [] = array ($Callback, $Private);
       
       // Check if we are already done
       $this->finishQueue ();
+    }
+    // }}}
+    
+    // {{{ stop
+    /**
+     * Stop processing of the queue
+     * 
+     * @access public
+     * @return void
+     **/
+    public function stop () {
+      // Just empty the queue
+      $this->Queue = array ();
+      $this->finishCallbacks = array ();
+      $this->resultCallbacks = array ();
     }
     // }}}
     
@@ -159,7 +241,7 @@
       // Find the callable on queue
       $Call = null;
       
-      foreach ($this->Queue as $Key=>$Info)
+      foreach ($this->Invoked as $Key=>$Info)
         if (($Info [0] === $Callable) && ($Info [1] === $Parameters)) {
           $Call = $Key;
           
@@ -174,13 +256,17 @@
       }
       
       // Remove the call from queue
-      unset ($this->Queue [$Call]);
+      unset ($this->Invoked [$Call]);
       
       // Push the result to results
       if (isset ($this->Results [$Call]))
         $this->Results [] = $Result;
       else
         $this->Results [$Call] = $Result;
+      
+      // Run callbacks
+      foreach ($this->resultCallbacks as $resultCallback)
+        call_user_func ($resultCallback [0], $this, $Result, $resultCallback [1]);
       
       // Try to finish the queue
       return $this->finishQueue ();
@@ -196,11 +282,24 @@
      **/
     private function finishQueue () {
       // Check if we are done
-      if (count ($this->Queue) > 0)
+      if (count ($this->Invoked) > 0)
         return;
       
+      // Check wheter to run from queue
+      if (count ($this->Queue) > 0) {
+        do {
+          // Get the next call
+          $Next = array_shift ($this->Queue);
+          
+          // Invoke
+          $this->invokeCall ($Next [0], $Next [1]);
+        } while (($this->Mode != self::MODE_SERIAL) && (count ($this->Queue) > 0));
+        
+        return;
+      }
+      
       // Check if we may finish
-      if (count ($this->Callbacks) == 0)
+      if (count ($this->finishCallbacks) == 0)
         return;
       
       // Peek results
@@ -208,7 +307,7 @@
       $this->Results = array ();
       
       // Run all callbacks
-      foreach ($this->Callbacks as $Info)
+      foreach ($this->finishCallbacks as $Info)
         call_user_func ($Info [0], $this, $Results, $Info [1]);
     }
     // }}}
