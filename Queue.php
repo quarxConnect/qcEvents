@@ -196,18 +196,19 @@
     /**
      * Register a callback to raise once completed
      * 
-     * @param callable $Callback
+     * @param callable $Callback (optional)
      * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function finish (callable $Callback, $Private = null) {
+    public function finish (callable $Callback = null, $Private = null) {
       // Push callback to callbacks
-      $this->finishCallbacks [] = array ($Callback, $Private);
+      if ($Callback)
+        $this->finishCallbacks [] = array ($Callback, $Private);
       
       // Check if we are already done
-      $this->finishQueue ();
+      $this->finishQueue ($Callback === null);
     }
     // }}}
     
@@ -280,7 +281,7 @@
      * @access private
      * @return void
      **/
-    private function finishQueue () {
+    private function finishQueue ($Force = false) {
       // Check if we are done
       if (count ($this->Invoked) > 0)
         return;
@@ -301,7 +302,7 @@
       // Check if we may finish
       if (((count ($this->finishCallbacks) == 0) && 
           (count ($this->resultCallbacks) == 0)) ||
-          (count ($this->Results) == 0))
+          ((count ($this->Results) == 0) && !$Force))
         return;
       
       // Peek results
