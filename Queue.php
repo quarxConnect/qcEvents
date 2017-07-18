@@ -299,7 +299,9 @@
       }
       
       // Check if we may finish
-      if ((count ($this->finishCallbacks) == 0) && (count ($this->resultCallbacks) == 0))
+      if (((count ($this->finishCallbacks) == 0) && 
+          (count ($this->resultCallbacks) == 0)) ||
+          (count ($this->Results) == 0))
         return;
       
       // Peek results
