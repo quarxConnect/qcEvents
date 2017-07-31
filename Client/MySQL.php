@@ -578,7 +578,7 @@
           $this->streamPending = $Stream;
           
           // Connect both streams
-          $Socket->pipeStream ($Stream, true, function (qcEvents_Interface_Stream $Socket, qcEvents_Interface_Stream_Consumer $Stream, $Finish, $Status) {
+          $Socket->pipeStream ($Stream, true, function (qcEvents_Interface_Stream $Socket, $Status) use ($Stream) {
             // Check if the connection wasn't successfull
             if (!$Status)
               return ($this->streamPending = null);

@@ -57,7 +57,7 @@
      * 
      * The callback will be raised in the form of
      *  
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
@@ -75,7 +75,7 @@
      * 
      * The callback will be raised in the form of 
      * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return void

@@ -272,7 +272,7 @@
             
             // Raise callbacks
             if ($this->initCallback)
-              $this->___raiseCallback ($this->initCallback [0], $this->initCallback [1], $this, true, $this->initCallback [2]);
+              $this->___raiseCallback ($this->initCallback [0], true, $this->initCallback [1]);
             
             $this->___callback ('xmlReceiveRoot', $this->xmlRootRemote);
             
@@ -490,7 +490,7 @@
      * 
      * The callback will be raised in the form of
      *  
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      *    
      * @access public
      * @return callable
@@ -513,7 +513,7 @@
       $this->___callback ('eventPiped', $Source);
       
       // Register Init-Callback
-      $this->initCallback = array ($Callback, $Source, $Private);
+      $this->initCallback = array ($Callback, $Private);
     }
     // }}}
     
@@ -527,7 +527,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Stream $Source, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
@@ -549,7 +549,7 @@
       $this->___callback ('eventPipedStream', $Source);
       
       // Register Init-Callback
-      $this->initCallback = array ($Callback, $Source, $Private);
+      $this->initCallback = array ($Callback, $Private);
     }
     // }}}
     
@@ -563,7 +563,7 @@
      * 
      * The callback will be raised in the form of 
      *  
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return void  
@@ -573,7 +573,7 @@
       $this->resetState ();
       
       // Fire callback
-      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___raiseCallback ($Callback, true, $Private);
       $this->___callback ('eventUnpiped', $Source);
     }
     // }}}
@@ -587,7 +587,7 @@
      **/
     private function resetState () {
       if ($this->initCallback)
-        $this->___raiseCallback ($this->initCallback [0], $this->initCallback [1], $this, false, $this->initCallback [2]);
+        $this->___raiseCallback ($this->initCallback [0], false, $this->initCallback [1]);
       
       $this->xmlBuffer = '';
       $this->xmlNodeRoot = null;

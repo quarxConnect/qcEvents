@@ -44,7 +44,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Consumer $Destination, qcEvents_Interface_Source $Source, bool $Finish, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Source $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return bool

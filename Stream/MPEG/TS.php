@@ -214,13 +214,11 @@
     }
         
     public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
-      if ($Callback)   
-        call_user_func ($Callback, $Source, $this, true, $Private);
+      $this->___raiseCallback ($Callback, true, $Private);
     }     
 
     public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
-      if ($Callback)
-        call_user_func ($Callback, $Source, $this, true, $Private);
+      $this->___raiseCallback ($Callback, true, $Private);
     }
     
     

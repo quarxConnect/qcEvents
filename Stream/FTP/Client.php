@@ -431,7 +431,7 @@
           $this->___raiseCallback ($Callback, $Private);
         });
       
-      $this->___raiseCallback ($this->StreamCallback [0], $this->StreamCallback [1], false, $this->StreamCallback [2]);
+      $this->___raiseCallback ($this->StreamCallback [0], false, $this->StreamCallback [1]);
       $this->StreamCallback = null;
       
       $this->___callback ('eventClosed');
@@ -510,7 +510,7 @@
 
         // Fire the callback
         if ($this->StreamCallback) {
-          $this->___raiseCallback ($this->StreamCallback [0], $this->StreamCallback [1], ($Code < 400), $this->StreamCallback [2]);
+          $this->___raiseCallback ($this->StreamCallback [0], ($Code < 400), $this->StreamCallback [1]);
           $this->StreamCallback = null;
         }
 
@@ -862,14 +862,14 @@
      * 
      * The callback will be raised in the form of
      *  
-     *   function (qcEvents_Interface_Stream $Source, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
      **/
     public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
       if ($this->StreamCallback)
-        $this->___raiseCallback ($this->StreamCallback [0], $this->StreamCallback [1], false, $this->StreamCallback [2]);
+        $this->___raiseCallback ($this->StreamCallback [0], false, $this->StreamCallback [1]);
       
       // Update our internal state
       $this->State = self::STATE_CONNECTING;
@@ -880,7 +880,7 @@
       $this->Stream = $Source;
       
       if ($Callback)
-        $this->StreamCallback = array ($Callback, $Source, $Private);
+        $this->StreamCallback = array ($Callback, $Private);
       else
         $this->StreamCallback = null;
     }
@@ -896,18 +896,18 @@
      * 
      * The callback will be raised in the form of 
      * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return void  
      **/
     public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       if ($this->StreamCallback) {
-        $this->___raiseCallback ($this->StreamCallback [0], $this->StreamCallback [1], false, $this->StreamCallback [2]);
+        $this->___raiseCallback ($this->StreamCallback [0], false, $this->StreamCallback [1]);
         $this->StreamCallback = null;
       }
       
-      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___raiseCallback ($Callback, true, $Private);
     }
     // }}}
     

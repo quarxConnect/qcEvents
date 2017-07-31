@@ -305,13 +305,14 @@
      * 
      * The callback will be raised in the form of
      *  
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
      **/
     public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       # TODO
+      $this->___raiseCallback ($Callback, true, $Private);
     }
     // }}}
     
@@ -325,13 +326,14 @@
      * 
      * The callback will be raised in the form of 
      * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return void  
      **/
     public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       # TODO
+      $this->___raiseCallback ($Callback, true, $Private);
     }
     // }}}
     

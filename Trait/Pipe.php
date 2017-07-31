@@ -64,7 +64,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Finish, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Source $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return bool
@@ -73,7 +73,7 @@
       // Check if there is already such pipe
       if (($key = $this->getPipeHandlerKey ($Handler)) !== false) {
         $this->Pipes [$key][1] = $Finish;
-        $this->___raiseCallback ($Callback, $this, $Handler, $Finish, true, $Private);
+        $this->___raiseCallback ($Callback, true, $Private);
         
         return true;
       }
@@ -83,7 +83,9 @@
       $this->addHook ('eventClosed', array ($this, '___pipeClose'));
       
       // Raise an event at the handler
-      if (($rc = $Handler->initConsumer ($this, $Callback, $Private)) === false)
+      if (($rc = $Handler->initConsumer ($this, function (qcEvents_Interface_Consumer $Self, $Status) use ($Callback, $Private) {
+        $this->___raiseCallback ($Callback, $Status, $Private);
+      })) === false)
         return false;
       
       // Make sure we are being informed about changes on the handler itself
@@ -109,7 +111,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Stream $Source, qcEvents_Interface_Stream_Consumer $Destination, bool $Finish, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Stream $Source, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return bool
@@ -123,7 +125,9 @@
       }
       
       // Raise an event at the handler
-      if (($rc = $Handler->initStreamConsumer ($this, $Callback, $Private)) === false)
+      if (($rc = $Handler->initStreamConsumer ($this, function (qcEvents_Interface_Stream_Consumer $Handler, $Status) use ($Callback, $Private) {
+        $this->___raiseCallback ($Callback, $Status, $Private);
+      })) === false)
         return false;
       
       // Make sure we are receiving data

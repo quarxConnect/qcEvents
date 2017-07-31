@@ -1211,13 +1211,17 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
      **/
     public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+      // Assign the source
       $this->Source = $Source;
+      
+      // Raise the callback
+      $this->___raiseCallback ($Callback, true, $Private);
     }
     // }}}
     
@@ -1231,13 +1235,17 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Stream $Source, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
      **/
     public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+      // Store the source
       $this->Source = $Source;
+      
+      // Raise the callback
+      $this->___raiseCallback ($Callback, true, $Private);
     }
     // }}}
     
@@ -1251,12 +1259,14 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return void
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) { }
+    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+      $this->___raiseCallback ($Callback, true, $Private);
+    }
     // }}}
     
     // {{{ read

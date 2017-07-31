@@ -90,9 +90,9 @@
         
         // Raise the initial callback
         if ($Status)
-          $this->___raiseCallback ($this->initCallback [0], $this->initCallback [1], $this, $Status, $this->initCallback [2]);
+          $this->___raiseCallback ($this->initCallback [0], $Status, $this->initCallback [1]);
         else
-          $this->deinitConsumer ($this->initCallback [1]);
+          $this->deinitConsumer ($Source);
         
         $this->initCallback = null;
         
@@ -387,7 +387,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
@@ -400,7 +400,7 @@
       $this->___callback ('eventPiped', $Source);
       
       // Store the requested callback
-      $this->initCallback = array ($Callback, $Source, $Private);
+      $this->initCallback = array ($Callback, $Private);
     }
     // }}}
     
@@ -414,7 +414,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Stream $Source, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
@@ -427,7 +427,7 @@
       $this->___callback ('eventPipedStream', $Source);
       
       // Store the requested callback
-      $this->initCallback = array ($Callback, $Source, $Private);
+      $this->initCallback = array ($Callback, $Private);
     }
     // }}}
     
@@ -441,7 +441,7 @@
      * 
      * The callback will be raised in the form of 
      *  
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return void
@@ -452,7 +452,7 @@
       
       // Raise a callback for this
       $this->___callback ('eventUnpiped', $Source);
-      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___raiseCallback ($Callback, true, $Private);
     } 
     // }}}
     
@@ -465,7 +465,7 @@
      **/
     private function resetState () {
       if ($this->initCallback)
-        $this->___raiseCallback ($this->initCallback [0], $this->initCallback [1], $this, false, $this->initCallback [2]);
+        $this->___raiseCallback ($this->initCallback [0], false, $this->initCallback [1]);
       
       $this->initCallback = null;
       $this->Buffer = '';

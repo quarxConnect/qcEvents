@@ -624,7 +624,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
@@ -632,6 +632,7 @@
     public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       // Inherit to our parent
       if (($rc = parent::initConsumer ($Source, $Callback, $Private)) && ($Source instanceof qcEvents_Socket)) {
+        # TODO: This is Sockets-API!
         if (!$Source->isConnected ())
           return $Source->addHook ('socketConnected', function ($Socket) {
             // Write out the request

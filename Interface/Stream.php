@@ -35,7 +35,7 @@
      * 
      * The callback will be raised in the form of
      *  
-     *   function (qcEvents_Interface_Stream_Consumer $Destination, qcEvents_Interface_Stream $Source, bool $Finish, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Stream $Self, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return bool

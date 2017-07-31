@@ -882,7 +882,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Stream $Source, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
@@ -909,7 +909,7 @@
       // Raise callbacks
       $this->___callback ('eventPipedStream', $Source);
       $this->___callback ('popConnecting');
-      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___raiseCallback ($Callback, true, $Private);
     }
     // }}}
     
@@ -918,20 +918,32 @@
      * Callback: A source was removed from this consumer
      * 
      * @param qcEvents_Interface_Source $Source
+     * @param callable $Callback (optional) Callback to raise once the pipe is ready
+     * @param mixed $Private (optional) Any private data to pass to the callback
+     * 
+     * The callback will be raised in the form of 
+     * 
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return void
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       // Check if the source is authentic
-      if ($this->Stream !== $Source)
+      if ($this->Stream !== $Source) {
+        $this->___raiseCallback ($Callback, false, $Private);
+        
         return;
+      }
       
       // Remove the stream
       $this->Stream = null;
       
       // Reset our state
-      $this->close ();  
+      $this->close ();
+      
+      // Raise the callback
+      $this->___raiseCallback ($Callback, true, $Private);
     }
     // }}}
     

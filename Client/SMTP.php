@@ -104,7 +104,7 @@
         }
         
         // Connect ourself with that socket
-        return $Socket->pipeStream ($this, true, function ($x, qcEvents_Interface_Source $Source, qcEvents_Interface_Stream_Consumer $Destination, $Finish, $Status) use ($Hostname, $Port, $Username, $Password, $Callback, $Private) {
+        return $Socket->pipeStream ($this, true, function (qcEvents_Interface_Source $Source, $Status) use ($Hostname, $Port, $Username, $Password, $Callback, $Private) {
           // Check if the connection failed
           if (!($this->Connected = $Status))
             return $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, false, $Private);

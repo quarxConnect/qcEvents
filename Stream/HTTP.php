@@ -159,7 +159,7 @@
               
               return $this->___callback ('httpFinished', $this->Header, null);
             }
-             
+            
             $this->httpSetState ($this::HTTP_STATE_BODY);
             
             // Prepare to retrive the body
@@ -275,7 +275,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
@@ -283,7 +283,7 @@
     public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       // Check if this source is already set
       if ($this->Source === $Source) {
-        $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+        $this->___raiseCallback ($Callback, true, $Private);
         
         return false;
       }
@@ -302,7 +302,7 @@
       $Source->addHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
       
       // Raise an event for this
-      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___raiseCallback ($Callback, true, $Private);
       $this->___callback ('eventPiped', $Source);
       
       return true;
@@ -319,7 +319,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Stream $Source, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
@@ -327,7 +327,7 @@
     public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
       // Check if this source is already set
       if ($this->Source === $Source) {
-        $this->___raiseCallback ($Callback, $Source, $this, false, $Private);
+        $this->___raiseCallback ($Callback, false, $Private);
         
         return false;
       }
@@ -346,7 +346,7 @@
       $Source->addHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
       
       // Raise an event for this
-      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___raiseCallback ($Callback, true, $Private);
       $this->___callback ('eventPipedStream', $Source);
       
       return true;
@@ -363,7 +363,7 @@
      * 
      * The callback will be raised in the form of 
      * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return void
@@ -371,7 +371,7 @@
     public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       // Check if this is the right source
       if ($this->Source !== $Source)
-        return $this->___raiseCallback ($Callback, $Source, $this, false, $Private);
+        return $this->___raiseCallback ($Callback, false, $Private);
       
       // Remove our hooks
       $Source->removeHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
@@ -381,7 +381,7 @@
       $this->Source = null;
       
       // Raise an event for this
-      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___raiseCallback ($Callback, true, $Private);
       $this->___callback ('eventUnpiped', $Source);
     }
     // }}}
@@ -409,6 +409,18 @@
     public function getRemotePort () {
       if ($this->Source instanceof qcEvents_Socket)
         return $this->Source->getRemotePort ();
+    }
+    // }}}
+    
+    // {{{ getBuffer
+    /**
+     * Retrive everything from our buffer
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getBuffer () {
+      return $this->bufferRead;
     }
     // }}}
     
@@ -452,7 +464,8 @@
       // Try to write out the status
       $this->Source->write (
         strval ($Header),
-        function (qcEvents_Interface_Sink $Source, $Status) {
+        function (qcEvents_Interface_Sink $Source, $Status)
+        use ($Header) {
           // Check if the header could be written
           if (!$Status)
             return $this->httpUnexpectedClose ();
@@ -460,7 +473,13 @@
           // Update the status
           if ($this->State == $this::HTTP_STATE_CONNECTING)
             $this->httpSetState (qcEvents_Stream_HTTP::HTTP_STATE_WAITING);
+          
+          // Run the callback
+          $this->___callback ('httpHeadersSent', $Header);
         });
+      
+      // Run the callback
+      $this->___callback ('httpHeadersSend', $Header);
     }
     // }}}
     
@@ -659,6 +678,30 @@
      * @return void
      **/
     protected function httpStateChanged ($newState, $oldState) { }
+    // }}}
+    
+    // {{{ httpHeadersSend
+    /**
+     * Callback: Stream is about to send HTTP-Headers to remote peer
+     * 
+     * @param qcEvents_Stream_HTTP_Header $Header
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function httpHeadersSend (qcEvents_Stream_HTTP_Header $Header) { }
+    // }}}
+    
+    // {{{ httpHeadersSent
+    /**
+     * Callback: Headers were sent to remote peer
+     * 
+     * @param qcEvents_Stream_HTTP_Header $Header
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function httpHeadersSent (qcEvents_Stream_HTTP_Header $Header) { }
     // }}}
     
     // {{{ httpHeaderReady

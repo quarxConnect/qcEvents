@@ -912,7 +912,7 @@
      * 
      * The callback will be raised in the form of
      *  
-     *   function (qcEvents_Interface_Stream $Source, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
@@ -920,7 +920,7 @@
     public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
       // Check if this is really a new stream
       if ($this->Stream === $Source) {
-        $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+        $this->___raiseCallback ($Callback, true, $Private);
         
         return;
       }
@@ -967,13 +967,17 @@
      * @param callable $Callback (optional)
      * @þaram mixed $Private (optional)
      * 
+     * The callback will be raised in the form of
+     * 
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
+     * 
      * @access public
      * @return void  
      **/
     public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       // Check if the source is authentic
       if ($this->Stream !== $Source) {
-        $this->___raiseCallback ($Callback, $Source, $this, false, $Private);
+        $this->___raiseCallback ($Callback, false, $Private);
         
         return;
       }
@@ -985,7 +989,7 @@
       $this->close ();
       
       // Raise the final callback
-      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);   
+      $this->___raiseCallback ($Callback, true, $Private);
     }
     // }}}
     
@@ -1087,7 +1091,7 @@
                 $this->___callback ('smtpConnectionFailed');
                 
                 if ($this->initCallback) {
-                  $this->___raiseCallback ($this->initCallback [0], $this->Stream, $this, null, false, $this->initCallback [1]);
+                  $this->___raiseCallback ($this->initCallback [0], false, $this->initCallback [1]);
                   $this->initCallback = null;
                 }
               });
@@ -1111,7 +1115,7 @@
                 $this->___callback ('smtpConnectionFailed');
                 
                 if ($this->initCallback) {
-                  $this->___raiseCallback ($this->initCallback [0], $this->Stream, $this, null, false, $this->initCallback [1]);
+                  $this->___raiseCallback ($this->initCallback [0], false, $this->initCallback [1]);
                   $this->initCallback = null;
                 }
               });
@@ -1155,7 +1159,7 @@
             $this->___callback ('smtpConnected');
             
             if ($this->initCallback) {
-              $this->___raiseCallback ($this->initCallback [0], $this->Stream, $this, null, true, $this->initCallback [1]);
+              $this->___raiseCallback ($this->initCallback [0], true, $this->initCallback [1]);
               $this->initCallback = null;
             }
           }

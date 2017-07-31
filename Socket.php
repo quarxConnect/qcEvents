@@ -152,6 +152,112 @@
     }
     // }}}
     
+    // {{{ ip6toBinary
+    /**
+     * Convert an IP-Adress into an IPv6 binary address
+     * 
+     * @param string $IP
+     * 
+     * @access public
+     * @return string
+     +*/
+    public static function ip6toBinary ($IP) {
+      // Check for an empty ip
+      if (strlen ($IP) == 0)
+        return "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
+      
+      // Check wheter to convert IPv4 to mapped IPv6
+      if (self::isIPv4 ($IP)) {
+        $N = explode ('.', $IP);
+        $IP = sprintf ('::ffff:%02x%02x:%02x%02x', (int)$N [0], (int)$N [1], (int)$N [2], (int)$N [3]);
+      }
+      
+      // Check for square brackets
+      if ($IP [0] == '[')
+        $IP = substr ($IP, 1, -1);
+      
+      // Split into pieces
+      $N = explode (':', $IP);
+      $C = count ($N);
+      
+      if ($C < 2)
+        return false;
+      
+      if ($C != 8)
+        for ($i = 1; $i < $C; $i++) {
+          if (strlen ($N [$i]) != 0)
+            continue;
+          
+          $N = array_merge (array_slice ($N, 0, $i), array_fill (0, (8 - count ($N)), '0'), array_slice ($N, $i));
+          
+          break;
+        }
+      
+      // Return binary
+      return pack ('nnnnnnnn', hexdec ($N [0]), hexdec ($N [1]), hexdec ($N [2]), hexdec ($N [3]), hexdec ($N [4]), hexdec ($N [5]), hexdec ($N [6]), hexdec ($N [7]));
+    }
+    // }}}
+    
+    // {{{ ip6fromBinary
+    /** 
+     * Create a human readbale IPv6-Address from its binary representation
+     * 
+     * @param string
+     * 
+     * @access public
+     * @return string
+     **/
+    public static function ip6fromBinary ($IP) {
+      // Make sure all bits are in place
+      if (strlen ($IP) != 16)
+        return false;
+      
+      // Unpack as hex-digits
+      $IP = array_values (unpack ('H4a/H4b/H4c/H4d/H4e/H4f/H4g/H4h', $IP));
+      
+      // Try to remove zero blocks
+      $b = $s = $c = $m =  null;
+      
+      for ($i = 0; $i < 8; $i++) {
+        $IP [$i] = ltrim ($IP [$i], '0');
+        
+        if (strlen ($IP [$i]) == 0) {
+          if ($s === null) {
+            $s = $i;
+            $c = 1;
+          } else
+            $c++;
+        } elseif ($s !== null) {
+          if ($c > $m) {
+            for ($j = $b; $j < $b + $m; $j++)
+              $IP [$j] = '0';
+            
+            $m = $c;
+            $b = $s;
+          } else
+            for ($j = $s; $j < $s + $c; $j++)
+              $IP [$j] = '0';
+          
+          $s = $c = null;
+        }
+      }
+      
+      if (($s !== null) && ($c > $m)) {
+        for ($j = $b; $j < $b + $m; $j++)
+          $IP [$j] = '0';
+        
+        $m = $c;
+        $b = $s;
+      }
+      
+      if (($b !== null) && ($m > 1))
+        $IP = array_merge (array_slice ($IP, 0, $b + ($b == 0 ? 2 : 1)), array_slice ($IP, $b + $m));
+      
+      // Return the IPv6
+      return implode (':', $IP);
+    }
+    // }}}
+    
     // {{{ __construct
     /**
      * Create a new event-socket
@@ -230,7 +336,6 @@
      * @param int $Port
      * @param enum $Type (optional) TCP is used by default
      * @param bool $enableTLS (optional) Enable TLS-Encryption on connect
-     * @param qcEvents_Base $newBase (optional) Try to bind to this event-base
      * @param callable $Callback (optional) Fire this callback once this operation was finished
      * @param mixed $Private (optional) Any private data to pass to the callback
      * 
@@ -246,7 +351,7 @@
      * @access public
      * @return bool
      **/
-    public function connect ($Hosts, $Port = null, $Type = null, $enableTLS = false, qcEvents_Base $newBase = null, callable $Callback = null, $Private = null) {
+    public function connect ($Hosts, $Port = null, $Type = null, $enableTLS = false, callable $Callback = null, $Private = null) {
       // Check wheter to use the default socket-type
       if ($Type === null)
         $Type = $this::DEFAULT_TYPE;
@@ -276,9 +381,6 @@
         $Port = $this::FORCE_PORT;
       
       // Make sure we have an event-base assigned
-      if ($newBase)
-        $this->setEventBase ($newBase);
-      
       if (!$this->getEventBase ()) {
         trigger_error ('No Event-Base assigned or could not assign Event-Base');
         
@@ -341,12 +443,11 @@
      * @param string $Service
      * @param enum $Type (optional)
      * @param bool $enableTLS (optional)
-     * @param qcEvents_Base $newBase (optional)
      * 
      * @access public
      * @return void
      **/
-    public function connectService ($Domain, $Service, $Type = null, $enableTLS = false, qcEvents_Base $newBase = null) {
+    public function connectService ($Domain, $Service, $Type = null, $enableTLS = false) {
       // Check wheter to use the default socket-type
       if ($Type === null)
         $Type = $this::DEFAULT_TYPE;
@@ -362,9 +463,6 @@
       }
       
       // Make sure we have an event-base assigned
-      if ($newBase)
-        $this->setEventBase ($newBase);
-      
       if (!$this->getEventBase ())
         return false;
       
@@ -527,7 +625,11 @@
         $this->Connected = true;
         
         // Set runtime-information
+        $Name = stream_socket_get_name ($this->getReadFD (), false);
+        
         $this->Type = $this->socketAddress [3];
+        $this->localAddr = substr ($Name, 0, strrpos ($Name, ':'));
+        $this->localPort = (int)substr ($Name, strrpos ($Name, ':') + 1);
         $this->remoteHost = $this->socketAddress [0];
         $this->remoteAddr = $this->socketAddress [1];
         $this->remotePort = $this->socketAddress [2];
@@ -910,6 +1012,19 @@
     }
     // }}}
     
+    // {{{ getLocalAddress
+    /**
+     * 
+     **/
+    public function getLocalAddress () {
+      return $this->localAddr;
+    }
+    // }}}
+    
+    public function getLocalPort () {
+      return $this->localPort;
+    }
+    
     // {{{ getRemoteHost
     /**
      * Retrive the hostname of the remote party
@@ -919,6 +1034,12 @@
      **/
     public function getRemoteHost () {
       return $this->remoteHost;
+    }
+    // }}}
+    
+    // {{{ getRemoteAddress
+    public function getRemoteAddress () {
+      return $this->remoteAddr;
     }
     // }}}
     

@@ -293,7 +293,7 @@
      * 
      * The callback will be raised in the form of
      *  
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      *    
      * @access public
      * @return callable
@@ -301,14 +301,14 @@
     public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       // Check if this source is already set
       if ($this->Source === $Source) {
-        $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+        $this->___raiseCallback ($Callback, true, $Private);
         
         return;
       }
       
       // Check if there is an existing source
       if ($this->Source)
-        $this->deinitConsumer ($Source);
+        $this->deinitConsumer ($this->Source);
       
       // Reset ourself
       $this->reset ();
@@ -317,7 +317,7 @@
       $this->Source = $Source;
       
       // Raise an event for this
-      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___raiseCallback ($Callback, true, $Private);
       $this->___callback ('eventPiped', $Source);
     }
     // }}}
@@ -332,7 +332,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Stream $Source, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
@@ -340,14 +340,14 @@
     public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
       // Check if this source is already set
       if ($this->Source === $Source) {
-        $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+        $this->___raiseCallback ($Callback, true, $Private);
         
         return;
       }
       
       // Check if there is an existing source
       if ($this->Source)
-        $this->deinitConsumer ($Source);
+        $this->deinitConsumer ($this->Source);
       
       // Reset ourself
       $this->reset ();
@@ -357,7 +357,7 @@
       
       // Raise an event for this
       $this->___callback ('eventPipedStream', $Source);
-      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___raiseCallback ($Callback, true, $Private);
     }
     // }}}
     
@@ -371,7 +371,7 @@
      * 
      * The callback will be raised in the form of 
      * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return void  
@@ -379,13 +379,13 @@
     public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       // Check if this is the right source
       if ($this->Source !== $Source)
-        return $this->___raiseCallback ($Callback, $Source, $this, false, $Private);
+        return $this->___raiseCallback ($Callback, false, $Private);
       
       // Unset the source
       $this->Source = null;
       
       // Raise an event for this
-      $this->___raiseCallback ($Callback, $Source, $this, true, $Private);
+      $this->___raiseCallback ($Callback, true, $Private);
       $this->___callback ('eventUnpiped', $Source);
     }
     // }}}

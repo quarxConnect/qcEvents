@@ -263,7 +263,7 @@
         }
         
         // Connect Stream with socket
-        $Socket->pipeStream ($Stream, true, function (qcEvents_Stream_FTP_Client $Stream, qcEvents_Socket $Socket, $Status) use ($Callback, $Key) {
+        $Socket->pipeStream ($Stream, true, function (qcEvents_Socket $Socket, $Status) use ($Stream, $Callback, $Key) {
           // Check if FTP could be negotiated
           if (!$Status) {
             $Socket->close ();
