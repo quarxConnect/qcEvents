@@ -107,6 +107,26 @@
      **/
     # protected function eventUnpiped (qcEvents_Interface_Source $Source);
     // }}}
+    
+    // {{{ eventReadable
+    /**
+     * Callback: A readable-event was received for this handler on the event-loop
+     * 
+     * @access protected
+     * @return void
+     **/
+    # protected function eventReadable ();
+    // }}}
+    
+    // {{{ eventClosed
+    /**
+     * Callback: The interface was closed
+     * 
+     * @access public
+     * @return void
+     **/
+    # protected function eventClosed ();
+    // }}}
   }
 
 ?>

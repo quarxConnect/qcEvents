@@ -137,6 +137,18 @@
     }
     // }}}
     
+    // {{{ isClosed
+    /**
+     * Check if this source has been closed
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isClosed () {
+      return $this->closed;
+    }
+    // }}}
+    
     // {{{ close
     /**   
      * Close this event-interface
@@ -150,8 +162,8 @@
     public function close (callable $Callback = null, $Private = null) {
       if (!$this->closed) {
         $this->closed = true;
-        $this->Buffer = '';
         $this->___callback ('eventClosed');
+        $this->Buffer = '';
       }
       
       $this->___raiseCallback ($Callback, $Private);
