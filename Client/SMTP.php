@@ -94,7 +94,7 @@
       // Try to connect to server
       $this->Connected = null;
       
-      return $Socket->connect ($Hostname, $Port, qcEvents_Socket::TYPE_TCP, false, null, function (qcEvents_Socket $Socket, $Status) use ($Hostname, $Port, $Username, $Password, $Callback, $Private) {
+      return $Socket->connect ($Hostname, $Port, qcEvents_Socket::TYPE_TCP, false, function (qcEvents_Socket $Socket, $Status) use ($Hostname, $Port, $Username, $Password, $Callback, $Private) {
         // Check if the connection was established
         if (!$Status) {
           $this->Connected = false;

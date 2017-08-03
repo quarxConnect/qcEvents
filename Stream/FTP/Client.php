@@ -715,7 +715,7 @@
               $Socket = new qcEvents_Socket ($this->Stream->getEventBase ());
               
               // Try to connect to destination and forward the handle to our caller upon completion
-              $Socket->connect ($IP, $Port, $Socket::TYPE_TCP, false, null, function (qcEvents_Socket $Socket, $Status) use ($intermediateCallback, $intermediatePrivate) {
+              $Socket->connect ($IP, $Port, $Socket::TYPE_TCP, false, function (qcEvents_Socket $Socket, $Status) use ($intermediateCallback, $intermediatePrivate) {
                 if (!$Status)
                   $Socket = null;
                 

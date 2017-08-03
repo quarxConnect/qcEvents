@@ -254,7 +254,7 @@
       // Create and connect socket
       $Socket = new qcEvents_Socket ($this->eventBase);
       
-      return $Socket->connect ($this->Hostname, $this->Port, $Socket::TYPE_TCP, false, null, function (qcEvents_Socket $Socket, $Status) use ($Key, $Stream, $Callback) {
+      return $Socket->connect ($this->Hostname, $this->Port, $Socket::TYPE_TCP, false, function (qcEvents_Socket $Socket, $Status) use ($Key, $Stream, $Callback) {
         // Check if the connection was established
         if (!$Status) {
           unset ($this->pendingStreams [$Key]);

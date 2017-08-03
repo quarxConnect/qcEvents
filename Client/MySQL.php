@@ -116,7 +116,7 @@
       $this->___callback ('mysqlConnecting', $Hostname, $Port, $Username);
       
       // Try to connect
-      return $Socket->connect ($Hostname, $Port, qcEvents_Socket::TYPE_TCP, false, null, function (qcEvents_Socket $Socket, $Status) use ($Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private) {
+      return $Socket->connect ($Hostname, $Port, qcEvents_Socket::TYPE_TCP, false, function (qcEvents_Socket $Socket, $Status) use ($Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private) {
         // Check if the connection succeeded
         if (!$Status) {
           $this->___callback ('mysqlConnectFailed', $Hostname, $Port, $Username);
@@ -569,7 +569,7 @@
         $Stream = new qcEvents_Stream_MySQL;
         
         // Try to connect
-        $this->streamPending->connect ($this->Hostname, $this->Port, qcEvents_Socket::TYPE_TCP, false, null, function (qcEvents_Socket $Socket, $Status) use ($Stream) {
+        $this->streamPending->connect ($this->Hostname, $this->Port, qcEvents_Socket::TYPE_TCP, false, function (qcEvents_Socket $Socket, $Status) use ($Stream) {
           // Check if the connection succeeded
           if (!$Status)
             return ($this->streamPending = null);
