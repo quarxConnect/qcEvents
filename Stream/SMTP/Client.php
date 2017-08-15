@@ -136,6 +136,20 @@
     }
     // }}}
     
+    // {{{ hasFeature
+    /**
+     * Check if our peer supports a given feature
+     * 
+     * @param string $Feature
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function hasFeature ($Feature) {
+      return (is_array ($this->serverFeatures) && isset ($this->serverFeatures [$Feature]));
+    }
+    // }}}
+    
     // {{{ startTLS
     /**
      * Try to enable encryption on this connection

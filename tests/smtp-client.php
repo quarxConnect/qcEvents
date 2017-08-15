@@ -8,7 +8,9 @@
   
   // Parse commandline
   $Mailserver = $Username = $Password = null;
+  $Receivers = array ();
   $Port = 587;
+  $From = 'test@quarxconnect.org';
   
   for ($p = 1; $p < $argc; $p++)
     if ($argv [$p] == '--server')
@@ -17,6 +19,10 @@
       $Username = $argv [++$p];
     elseif ($argv [$p] == '--password')
       $Password = $argv [++$p];
+    elseif ($argv [$p] == '--from')
+      $From = $argv [++$p];
+    else
+      $Receivers [] = $argv [$p];
   
   // Create a new event-base for the test
   require_once ('qcEvents/Base.php');
@@ -49,24 +55,43 @@
   // Create a new SMTP-Client
   require_once ('qcEvents/Client/SMTP.php');
   
-  $Client = new qcEvents_Client_SMTP ($Base);
+  $Client = new qcEvents_Client_SMTP ($Base, $Mailserver, $Port);
   
-  $Client->addHook ('smtpCommand', function ($Client, $Verb, $Params, $Command) {
-    echo '> ', $Command, "\n";
-  });
-  $Client->addHook ('smtpResponse', function ($Client, $Code, $Lines) {
-    foreach ($Lines as $Line)
-      echo '< ', $Code, ' ', $Line, "\n";
-  });
+  if ($Username !== null)
+    $Client->setCredentials ($Username, $Password);
   
-  // Try to create a connection with our mailserver
-  $Client->connect ($Mailserver, $Port, $Username, $Password, function (qcEvents_Client_SMTP $Client, $Hostname, $Port, $Username = null, $Status) {
-    // Check if the connection was established
-    if (!$Status)
-      die ('Failed to connect to ' . $Hostname . "\n");
-    
-    
-  });
+  $Client->sendMail (
+    $From,
+    $Receivers,
+    'Subject: Test' . "\r\n\r\n" . 'This is a test',
+    function (qcEvents_Client_SMTP $Client, $Status) {
+      if ($Status)
+        echo 'E-Mail was sent successfully', "\n";
+      else
+        echo 'E-Mail could NOT be sent', "\n";
+      
+      exit ();
+    }
+  );
+  
+  #qcEvents_Client_SMTP::$debugHooks = true;
+  #
+  #$Client->addHook ('smtpCommand', function ($Client, $Verb, $Params, $Command) {
+  #  echo '> ', $Command, "\n";
+  #});
+  #$Client->addHook ('smtpResponse', function ($Client, $Code, $Lines) {
+  #  foreach ($Lines as $Line)
+  #    echo '< ', $Code, ' ', $Line, "\n";
+  #});
+  #
+  #// Try to create a connection with our mailserver
+  #$Client->connect ($Mailserver, $Port, $Username, $Password, function (qcEvents_Client_SMTP $Client, $Hostname, $Port, $Username = null, $Status) {
+  #  // Check if the connection was established
+  #  if (!$Status)
+  #    die ('Failed to connect to ' . $Hostname . "\n");
+  #  
+  #  die ('Todo...' . "\n");
+  #});
 
   // Meanwhile enter main-loop
   $Base->loop ();
