@@ -75,7 +75,7 @@
       $Callable = array_shift ($Parameters);
       
       // Make sure we pick the right callable
-      if (is_object ($Callable)) {
+      if (is_object ($Callable) && !($Callable instanceof Closure)) {
         // Check if there were enough arguments given
         if (count ($Parameters) < 1) {
           trigger_error ('Invalid callable given - an object requires a function-name to call');
