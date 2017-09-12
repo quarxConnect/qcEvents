@@ -501,11 +501,12 @@
      * 
      * @param qcEvents_Server_HTTP $Server HTTP-Server-Instance that received this request
      * @param string $Directory Document-Root-Directory to serve the file from
+     * @param bool $allowSymlinks (optional) Allow symlinks to files outside the document-root
      * 
      * @access public
      * @return void
      **/
-    public function serveFromFilesystem (qcEvents_Server_HTTP $Server, $Directory) {
+    public function serveFromFilesystem (qcEvents_Server_HTTP $Server, $Directory, $allowSymlinks = false) {
       // Sanatize the Document-Root
       if (($Directory = realpath ($Directory)) === false) {
         $Response = new qcEvents_Stream_HTTP_Header (array (
@@ -527,11 +528,24 @@
       if ($URI [0] == '/')
         $URI = substr ($URI, 1);
       
+      // Remove pseudo-elements from URL
+      $Path = array ();
+      
+      foreach (explode ('/', $URI) as $Segment)
+        if ($Segment == '.')
+          continue;
+        elseif ($Segment == '..')
+          array_pop ($Path);
+        else
+          $Path [] = $Segment;
+      
+      $Path = implode ('/', $Path);
+      
       // Create absolute path from request
-      $Path = realpath ($Directory . $URI) . (strlen ($URI) == 0 ? '/' : '');
+      $Path = realpath ($Directory . $Path) . (strlen ($Path) == 0 ? '/' : '');
       
       // Check if the path exists and is valid
-      if (($Path === false) || !file_exists ($Path) || (substr ($Path, 0, strlen ($Directory)) != $Directory)) {
+      if (($Path === false) || !file_exists ($Path) || (!$allowSymlinks && (substr ($Path, 0, strlen ($Directory)) != $Directory))) {
         $Response = new qcEvents_Stream_HTTP_Header (array (
           'HTTP/' . $this->getVersion (true) . ' 404 Not found',
           'Content-Type: text/plain',
