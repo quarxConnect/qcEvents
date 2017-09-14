@@ -202,13 +202,13 @@
      * @access public
      * @return void
      **/
-    public function finish (callable $Callback = null, $Private = null) {
+    public function finish (callable $Callback = null, $Private = null, $Force = false) {
       // Push callback to callbacks
       if ($Callback)
         $this->finishCallbacks [] = array ($Callback, $Private);
       
       // Check if we are already done
-      $this->finishQueue ($Callback === null);
+      $this->finishQueue (($Callback === null) || $Force);
     }
     // }}}
     
