@@ -152,6 +152,20 @@
     }
     // }}}
     
+    // {{{ isIPv6
+    /**
+     * Check if a given address is valid IPv6
+     * 
+     * @param string $Address
+     * 
+     * @access public
+     * @return bool
+     **/
+    public static function isIPv6 ($Address) {
+      return (filter_var ($Address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false);
+    }
+    // }}}
+    
     // {{{ ip6toBinary
     /**
      * Convert an IP-Adress into an IPv6 binary address
@@ -625,7 +639,10 @@
         $this->Connected = true;
         
         // Set runtime-information
-        $Name = stream_socket_get_name ($this->getReadFD (), false);
+        if ($fd = $this->getReadFD ())
+          $Name = stream_socket_get_name ($Name, false);
+        elseif ($this->serverParent)
+          $Name = $this->serverParent->getLocalName ();
         
         $this->Type = $this->socketAddress [3];
         $this->localAddr = substr ($Name, 0, strrpos ($Name, ':'));
@@ -1012,18 +1029,41 @@
     }
     // }}}
     
+    // {{{ getLocalName
+    /**
+     * Retrive the local name of our socket
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getLocalName () {
+      return ($this::isIPv6 ($this->localAddr) ? '[' . $this->localAddr . ']' : $this->localAddr) . ':' . $this->localPort;
+    }
+    // }}}
+    
     // {{{ getLocalAddress
     /**
+     * Retrive the local address of our socket
      * 
+     * @access public
+     * @return string
      **/
     public function getLocalAddress () {
       return $this->localAddr;
     }
     // }}}
     
+    // {{{ getLocalPort
+    /**
+     * Retrive the local port of our socket
+     * 
+     * @access public
+     * @return int
+     **/
     public function getLocalPort () {
       return $this->localPort;
     }
+    // }}}
     
     // {{{ getRemoteHost
     /**
