@@ -82,13 +82,17 @@
      * 
      * @param string $Data
      * @param int $Offset
+     * @parma int $Length (optional)
      * 
      * @access public
      * @return qcEvents_Stream_DNS_Record
      **/
-    public static function fromString ($Data, &$Offset) {
+    public static function fromString ($Data, &$Offset, $Length = null) {
       // Check if there is enough data available
-      if (strlen ($Data) - $Offset < 10)
+      if ($Length === null)
+        $Length = strlen ($Data);
+      
+      if ($Length - $Offset < 10)
         return false;
       
       // Retrive the label of this record
@@ -329,13 +333,17 @@
      * 
      * @param string $Data
      * @param int $Offset
+     * @param int $Length (optional)
      * 
      * @access public
      * @return bool
      **/
-    public function parse ($Data, &$Offset) {
+    public function parse ($Data, &$Offset, $Length = null) {
       // Check if there is enough data available
-      if (strlen ($Data) - $Offset < 10)
+      if ($Length === null)
+        $Length = strlen ($Data);
+      
+      if ($Length - $Offset < 10)
         return false;
       
       // Retrive the label of this record

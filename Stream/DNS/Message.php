@@ -265,7 +265,7 @@
      **/
     public function parse ($Data, $parseErrors = false) {
       // Make sure we have sufficient data
-      if (strlen ($Data) < 12) {
+      if (($Length = strlen ($Data)) < 12) {
         trigger_error ('DNS-Message too short');
         
         return false;
@@ -277,7 +277,7 @@
       // Parse the header
       $Header = new qcEvents_Stream_DNS_Header;
       
-      if (!$Header->parse ($Data, $Offset)) {
+      if (!$Header->parse ($Data, $Offset, $Length)) {
         trigger_error ('Could not parse DNS-Header');
         
         return false;
@@ -290,7 +290,7 @@
       while ($c-- > 0) {
         $Question = new qcEvents_Stream_DNS_Question;
         
-        if (!$Question->parse ($Data, $Offset)) {
+        if (!$Question->parse ($Data, $Offset, $Length)) {
           trigger_error ('Failed to parse Question #' . ($Header->Questions - $c + 1));
           
           return false;
@@ -304,7 +304,7 @@
       $c = $Header->Answers;
       
       while ($c-- > 0) {
-        if (!is_object ($Record = qcEvents_Stream_DNS_Record::fromString ($Data, $Offset))) {
+        if (!is_object ($Record = qcEvents_Stream_DNS_Record::fromString ($Data, $Offset, $Length))) {
           trigger_error ('Failed to parse Answer #' . ($Header->Answers - $c + 1));
           
           return false;

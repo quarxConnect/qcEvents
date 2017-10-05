@@ -148,12 +148,16 @@
      * 
      * @param string $Data
      * @param int $Offset
+     * @param int $Length (optional)
      * 
      * @access public
      * @return bool
      **/
-    public function parse ($Data, &$Offset) {
-      if (strlen ($Data) < $Offset + 12)
+    public function parse ($Data, &$Offset, $Length = null) {
+      if ($Length === null)
+        $Length = strlen ($Data);
+      
+      if ($Length < $Offset + 12)
         return false;
       
       $this->ID = (ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]);

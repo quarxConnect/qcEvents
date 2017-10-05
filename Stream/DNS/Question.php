@@ -140,15 +140,26 @@
      * 
      * @param string $Data
      * @param int $Offset
+     * @param int $Length (optional)
      * 
      * @access public
      * @return bool
      **/
-    public function parse ($Data, &$Offset) {
+    public function parse ($Data, &$Offset, $Length = null) {
+      // Get the length of input
+      if ($Length === null)
+        $Length = strlen ($Data);
+      
       // Retrive the label
       $this->setLabel (qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset));
       
       // Retrive type and class
+      if ($Length < $Offset + 4) {
+        trigger_error ('DNS-Message too short');
+        
+        return false;
+      }
+      
       $this->setType ((ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]));
       $this->setClass ((ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]));
       
