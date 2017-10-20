@@ -167,11 +167,17 @@
       $Host = $this->getField ('Host');
       
       // Check if there is a port
-      if (($p = strpos ($Host, ':')) === false)
+      if (($p = strrpos ($Host, ':')) === false)
         return $Host;
       
       // Truncate the port
-      return substr ($Host, 0, $p);
+      $Host = substr ($Host, 0, $p);
+      
+      // Check for IPv6
+      if (($Host [0] == '[') && ($Host [strlen ($Host) - 1] == ']'))
+        $Host = substr ($Host, 1, -1);
+      
+      return $Host;
     }
     // }}}
     
@@ -184,7 +190,7 @@
      **/
     public function getPort () {
       // Check if there is a port given on header
-      if (($Host = $this->getField ('Host')) && (($p = strpos ($Host, ':')) !== false))
+      if (($Host = $this->getField ('Host')) && (($p = strrpos ($Host, ':')) !== false))
         return intval (substr ($Host, $p + 1));
       
       // Return port based on TLS-Status
