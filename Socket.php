@@ -462,11 +462,11 @@
       
       foreach ($Hosts as $Host) {
         // Check for IPv6
-        if (($IPv6 = (strpos ($Host, ':') !== false)) && ($Host [0] != '['))
+        if (($IPv6 = $this::isIPv6 ($Host)) && ($Host [0] != '['))
           $Host = '[' . $Host . ']';
         
         // Check for IPv4/v6 or wheter to skip the resolver
-        if (!$this->internalResolver || $this->isIPv4 ($Host) || $IPv6)
+        if (!$this->internalResolver || $this::isIPv4 ($Host) || $IPv6)
           $this->socketAddresses [] = array ($Host, $Host, $Port, $Type);
         else
           $Resolve [] = $Host;
@@ -753,12 +753,17 @@
           self::$Unreachables [$Key] = time ();
         
         // Check wheter to retry using IPv6
-        if (($this::$nat64Prefix !== null) && $this::isIPv4 ($Address [1])) {
-          $IP = explode ('.', $Address [1]);
+        if (($this::$nat64Prefix !== null) &&
+            (($IPv4 = $this::isIPv4 ($Address [1])) || (strtolower (substr ($Address [1], 0, 7)) == '::ffff:'))) {
+          if ($IPv4) {
+            $IP = explode ('.', $Address [1]);
+            $IP = sprintf ('[%s%02x%02x:%02x%02x]', $this::$nat64Prefix, (int)$IP [0], (int)$IP [1], (int)$IP [2], (int)$IP [3]);
+          } else
+            $IP = $this::$nat64Prefix . substr ($Address [1], 7);
           
           $this->socketAddresses [] = array (
             $Address [0],
-            sprintf ('[%s%02x%02x:%02x%02x]', $this::$nat64Prefix, (int)$IP [0], (int)$IP [1], (int)$IP [2], (int)$IP [3]),
+            $IP,
             $Address [2],
             $Address [3]
           );
