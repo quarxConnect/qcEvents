@@ -74,6 +74,12 @@
     /* Any assigned server-handle */
     private $serverParent = null;
     
+    /* Bind local socket to this ip-address */
+    private $socketBindAddress = null;
+    
+    /* Bind local socket to this port */
+    private $socketBindPort = null;
+    
     /* Set of addresses we are trying to connectl to */
     private $socketAddresses = null;
     
@@ -341,6 +347,38 @@
     }
     // }}}
     
+    // {{{ bind
+    /**
+     * Try to bind our sockets to this source-address
+     * 
+     * @param string $IP (optional)
+     * @param int $Port (optional)
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function bind ($IP = null, $Port = null) {
+      // Make sure the IP-Address is valid
+      if (($IP !== null) && !$this::isIPv4 ($IP) && !$this::isIPv6 ($IP)) {
+        trigger_error ('Not an IP-Address: ' . $IP);
+        
+        return false;
+      }
+      
+      // Make sure the Port is valid
+      if (($Port !== null) && (($Port < 1) || ($Port > 0xFFFF))) {
+        trigger_error ('Invalid port: ' . $Port);
+        
+        return false;
+      }
+      
+      // Remember the values
+      $this->socketBindAddress = $IP;
+      $this->socketBindPort = (int)$Port;
+      
+      return true;
+    }
+    // }}}
     
     // {{{ connect
     /**
@@ -360,7 +398,6 @@
      * $Status will be TRUE if the connection succeeded
      * 
      * @remark This function is asyncronous! If it returns true this does not securly mean that a connection was established!
-     * @todo Add support for "bindto"-Option
      * 
      * @access public
      * @return bool
@@ -546,7 +583,16 @@
       // Create new client-socket
       $URI = ($this->socketAddress [3] === self::TYPE_TCP ? 'tcp' : 'udp') . '://' . $this->socketAddress [1] . ':' . $this->socketAddress [2];
       
-      if (!is_resource ($Socket = @stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, STREAM_CLIENT_ASYNC_CONNECT)))
+      if (($this->socketBindAddress !== null) || ($this->socketBindPort !== null)) {
+        $isIPv6 = $this::isIPv6 ($this->socketBindAddress);
+        
+        $ctx = stream_context_create (array ('socket' => array (
+          'bindto' => ($isIPv6 ? '[' : '') . $this->socketBindAddress . ($isIPv6 ? ']' : '') . ':' . (int)$this->socketBindPort,
+        )));
+      } else 
+        $ctx = stream_context_create ();
+      
+      if (!is_resource ($Socket = @stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, STREAM_CLIENT_ASYNC_CONNECT, $ctx)))
         return $this->socketHandleConnectFailed (-$errno);
       
       stream_set_blocking ($Socket, 0);
