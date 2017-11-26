@@ -62,6 +62,9 @@
     const FORCE_TYPE = null;
     const FORCE_PORT = null;
     
+    /* NAT64-Prefix - if set map failed IPv4-connections to IPv6 */
+    public static $nat64Prefix = null;
+    
     /* Known unreachable addresses */
     private static $Unreachables = array ();
     
@@ -748,6 +751,18 @@
         
         if (!isset (self::$Unreachables [$Key]))
           self::$Unreachables [$Key] = time ();
+        
+        // Check wheter to retry using IPv6
+        if (($this::$nat64Prefix !== null) && $this::isIPv4 ($Address [1])) {
+          $IP = explode ('.', $Address [1]);
+          
+          $this->socketAddresses [] = array (
+            $Address [0],
+            sprintf ('[%s%02x%02x:%02x%02x]', $this::$nat64Prefix, (int)$IP [0], (int)$IP [1], (int)$IP [2], (int)$IP [3]),
+            $Address [2],
+            $Address [3]
+          );
+        }
         
         // Raise callback
         $this->___callback ('socketTryConnectFailed', $Address [0], $Address [1], $Address [2], $Address [3], $Error);
