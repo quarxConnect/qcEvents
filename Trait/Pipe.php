@@ -125,7 +125,7 @@
       }
       
       // Raise an event at the handler
-      if (($rc = $Handler->initStreamConsumer ($this, function (qcEvents_Interface_Stream_Consumer $Handler, $Status) use ($Callback, $Private) {
+      if (($rc = $Handler->initStreamConsumer ($this, function (qcEvents_Interface_Stream_Consumer $Handler, qcEvents_Interface_Stream $Source, $Status) use ($Callback, $Private) {
         $this->___raiseCallback ($Callback, $Status, $Private);
       })) === false)
         return false;
