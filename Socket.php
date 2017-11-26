@@ -686,7 +686,7 @@
         
         // Set runtime-information
         if ($fd = $this->getReadFD ())
-          $Name = stream_socket_get_name ($Name, false);
+          $Name = stream_socket_get_name ($fd, false);
         elseif ($this->serverParent)
           $Name = $this->serverParent->getLocalName ();
         
