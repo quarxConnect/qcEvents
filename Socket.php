@@ -171,6 +171,12 @@
      * @return bool
      **/
     public static function isIPv6 ($Address) {
+      if (strlen ($Address) == 0)
+        return false;
+      
+      if ($Address [0] == '[')
+        $Address = substr ($Address, 1, -1);
+      
       return (filter_var ($Address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false);
     }
     // }}}
@@ -595,7 +601,7 @@
       } else 
         $ctx = stream_context_create ();
       
-      if (!is_resource ($Socket = @stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, STREAM_CLIENT_ASYNC_CONNECT, $ctx)))
+      if (!is_resource ($Socket = stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, STREAM_CLIENT_ASYNC_CONNECT, $ctx)))
         return $this->socketHandleConnectFailed (-$errno);
       
       stream_set_blocking ($Socket, 0);
