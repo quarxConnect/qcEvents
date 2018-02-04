@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS Messages
-   * Copyright (C) 2015 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -428,7 +428,6 @@
         if (!($this->Header->isResponse = !$Toggle))
           $this->Header->recursionDesired = true;
         
-        
         return true;
       }
       
@@ -470,6 +469,18 @@
       $this->Additional [] = $this->ednsRecord = new qcEvents_Stream_DNS_Record_EDNS;
       
       return true;
+    }
+    // }}}
+    
+    // {{{ getHeader
+    /**
+     * Retrive the header of this message
+     * 
+     * @access public
+     * @return qcEvents_Stream_DNS_Header
+     **/
+    public function getHeader () {
+      return $this->Header;
     }
     // }}}
     
@@ -533,6 +544,20 @@
      **/
     public function getOpcode () {
       return $this->Header->getOpcode ();
+    }
+    // }}}
+    
+    // {{{ setOpcode
+    /**
+     * Set a new opcode for this message
+     * 
+     * @param enum $Opcode
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setOpcode ($Opcode) {
+      return $this->Header->setOpcode ($Opcode);
     }
     // }}}
     

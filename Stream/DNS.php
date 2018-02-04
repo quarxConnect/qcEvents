@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Generic DNS Handling
-   * Copyright (C) 2013 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -19,10 +19,11 @@
    **/
   
   require_once ('qcEvents/Interface/Consumer.php');
+  require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Trait/Hookable.php');
   require_once ('qcEvents/Stream/DNS/Message.php');
   
-  class qcEvents_Stream_DNS implements qcEvents_Interface_Consumer {
+  class qcEvents_Stream_DNS implements qcEvents_Interface_Consumer, qcEvents_Interface_Stream_Consumer {
     use qcEvents_Trait_Hookable;
     
     /* Internal DNS-Buffer for TCP-Mode */
@@ -42,6 +43,18 @@
     
     /* Source of our pipe */
     private $Source = null;
+    
+    // {{{ getSource
+    /**
+     * Retrive the source for this DNS-Stream
+     * 
+     * @access public
+     * @return qcEvents_Interface_Source
+     **/
+    public function getSource () {
+      return $this->Source;
+    }
+    // }}}
     
     // {{{ dnsParseMessage
     /**
@@ -437,6 +450,16 @@
      * @return void
      **/
     protected function dnsQuestionTimeout (qcEvents_Stream_DNS_Message $Message) { }
+    // }}}
+    
+    // {{{ eventReadable
+    /**
+     * Callback: A readable-event was received for this handler on the event-loop
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function eventReadable () { }
     // }}}
     
     // {{{ eventClosed

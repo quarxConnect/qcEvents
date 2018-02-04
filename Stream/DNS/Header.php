@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS Header
-   * Copyright (C) 2013 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -100,6 +100,22 @@
      **/
     public function getOpcode () {
       return $this->Opcode;
+    }
+    // }}}
+    
+    // {{{ setOpcode
+    /**
+     * Set the opcode of this DNS-header
+     * 
+     * @param enum $Opcode
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setOpcode ($Opcode) {
+      $this->Opcode = (int)$Opcode;
+      
+      return true;
     }
     // }}}
     

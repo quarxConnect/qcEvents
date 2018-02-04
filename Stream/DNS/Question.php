@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS Question
-   * Copyright (C) 2013 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -112,6 +112,18 @@
       $this->Type = $Type;
       
       return true;
+    }
+    // }}}
+    
+    // {{{ getClass
+    /**
+     * Retrive the class of this question
+     * 
+     * @access public
+     * @return enum
+     **/
+    public function getClass () {
+      return $this->Class;
     }
     // }}}
     
