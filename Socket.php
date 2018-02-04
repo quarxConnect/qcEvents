@@ -212,6 +212,15 @@
       if ($C < 2)
         return false;
       
+      // Check for ugly mapped IPv4
+      if (($C == 4) && (strlen ($N [0]) == 0) && (strlen ($N [1]) == 0) && ($N [2] == 'ffff') && self::isIPv4 ($N [3])) {
+        $IPv4 = explode ('.', array_pop ($N));
+        
+        $N [] = dechex (((int)$IPv4 [0] << 8) | ((int)$IPv4 [1]));
+        $N [] = dechex (((int)$IPv4 [2] << 8) | ((int)$IPv4 [3]));
+      }
+      
+      // Make sure the IPv6 is fully qualified
       if ($C != 8)
         for ($i = 1; $i < $C; $i++) {
           if (strlen ($N [$i]) != 0)
