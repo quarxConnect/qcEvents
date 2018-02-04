@@ -397,6 +397,9 @@
           # TODO: What to do here?
           return false;
         
+        if (substr ($Remote, 0, 7) == '::ffff:')
+          $Remote = '[' . substr ($Remote, 0, strrpos ($Remote, ':')) . ']' . substr ($Remote, strrpos ($Remote, ':'));
+        
         // Create a client-handle if there is none yet
         if (!isset ($this->Clients [$Remote])) {
           // Fire callback first
