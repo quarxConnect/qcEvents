@@ -182,11 +182,8 @@
       
       // Check wheter to apply a header
       if ($this->csvHeader !== false) {
-        if (count ($this->csvHeader) != $Length) {
+        if (count ($this->csvHeader) != $Length)
           return;
-          var_dump ($this->csvHeader);
-          var_dump ($Record);
-        }
         
         $Record = array_combine ($this->csvHeader, $Record);
       }
