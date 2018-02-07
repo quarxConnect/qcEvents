@@ -41,6 +41,28 @@
     /* Finish-Callbacks */
     private $finishCallbacks = array ();
     
+    /* Lock finishQueue()-Call after result-callbacks */
+    private $lockFinish = false;
+    
+    // {{{ __debugInfo
+    /**
+     * Preprocess output for var_dump()
+     * 
+     * @access friendly
+     * @return array
+     **/
+    function __debugInfo () {
+      return array (
+        'Mode' => ($this->Mode == self::MODE_PARALLEL ? 'parallel' : 'serial'),
+        'Queued' => count ($this->Queue),
+        'Invoked' => count ($this->Invoked),
+        'Finished' => count ($this->Results),
+        'onResultCallbacks' => count ($this->resultCallbacks),
+        'onFinishCallbacks' => count ($this->finishCallbacks),
+      );
+    }
+    // }}}
+    
     // {{{ setMode
     /**
      * Set mode of invocation
@@ -186,9 +208,12 @@
       
       // Push already pending results there
       $Results = $this->Results;
+      $this->lockFinish = true;
       
       foreach ($Results as $Result)
         call_user_func ($Callback, $this, $Result, $Private);
+      
+      $this->lockFinish = false;
     }
     // }}}
     
@@ -270,7 +295,8 @@
         call_user_func ($resultCallback [0], $this, $Result, $resultCallback [1]);
       
       // Try to finish the queue
-      return $this->finishQueue ();
+      if (!$this->lockFinish)
+        return $this->finishQueue ();
     }
     // }}}
     
