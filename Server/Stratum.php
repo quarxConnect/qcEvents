@@ -42,9 +42,25 @@
     // Mininig-Difficulty
     private $Difficulty = 1;
     
+    // Extra-Nonce for this client
+    private $ExtraNonce1 = "\x00\x00\x00\x00";
+    
+    // Length of Extra-Nonce-2 for this client
+    private $ExtraNonce2Length = 4;
+    
+    // Active mining-jobs
+    private $Jobs = array ();
+    
+    // Work done for unknown jobs
     private $workUnknown = 0;
+    
+    // Malformed work done
     private $workMalformed = 0;
+    
+    // Invalid work done
     private $workInvalid = 0;
+    
+    // Work done
     private $workDone = 0;
     
     // {{{ getVersion
@@ -121,6 +137,94 @@
         function (qcEvents_Server_Stratum $Self, $Result) use ($Callback, $Private) {
           $this->___raiseCallback ($Callback, $Result === true, $Private);
         }
+      );
+    }
+    // }}}
+    
+    // {{{ addJob
+    /**
+     * Register a mining-job
+     * 
+     * @param array $Job
+     * 
+     * @access public
+     * @return void
+     **/
+    public function addJob ($Job, callable $Callback = null, $Private = null) {
+      // Check wheter to reset
+      if ($Job [8])
+        $this->Jobs = array ();
+      
+      // Register the job
+      $this->Jobs [$Job [0]] = $Job;
+      
+      // Raise a callback
+      $this->___callback ('stratumWorkNew', $Job);
+      
+      // Forward the job
+      return $this->sendRequest (
+        'mining.notify',
+        $Job,
+        function (qcEvents_Server_Stratum $Self, $Result) use ($Callback, $Private) {
+          $this->___raiseCallback ($Callback, $Result === true, $Private);
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ getExtraNonce1
+    /**
+     * Retrive the extra-nonce-1 for this client as binary string
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getExtraNonce1 () {
+      return $this->ExtraNonce1;
+    }
+    // }}}
+    
+    // {{{ getExtraNonce2Length
+    /**
+     * Retrive the length of the client's extra-nonce-2
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getExtraNonce2Length () {
+      return $this->ExtraNonce2Length;
+    }
+    // }}}
+    
+    // {{{ setExtraNonce
+    /**
+     * Change extra-nonces for this client
+     * 
+     * @param string $ExtraNonce1 (optional)
+     * @param int $ExtraNonce2Length (optional)
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setExtraNonce ($ExtraNonce1 = null, $ExtraNonce2Length = null) {
+      // Make sure any change is desired
+      if (($ExtraNonce1 === null) && ($ExtraNonce2Length === null))
+        return;
+      
+      // Change the values
+      if ($ExtraNonce1 !== null)
+        $this->ExtraNonce1 = $ExtraNonce1;
+      
+      if ($ExtraNonce2Length !== null)
+        $this->ExtraNonce2Length = (int)$ExtraNonce2Length;
+      
+      // Raise a callback
+      $this->___callback ('stratumExtraNonceChanged', $this->ExtraNonce1, $this->ExtraNonce2Length);
+      
+      // Notify the client
+      $this->sendNotify (
+        'mining.set_extranonce',
+        array (bin2hex ($this->ExtraNonce1), $this->ExtraNonce2Length)
       );
     }
     // }}}
@@ -297,7 +401,7 @@
       $Coinbase = hex2bin (sprintf (
         '%s%s%0' . ($this->ExtraNonce2Length * 2) . 's%s',
         $Job [2],
-        $this->ExtraNonce1,
+        bin2hex ($this->ExtraNonce1),
         $Message->params [2],
         $Job [3]
       ));
@@ -431,6 +535,19 @@
     protected function stratumAuthorize ($ID, $Username, $Password) { }
     // }}}
     
+    // {{{ stratumExtraNonceChanged
+    /**
+     * Callback: Extra-Nonces of the client were changed
+     * 
+     * @param string $ExtraNonce1
+     * @param int $ExtraNonce2Length
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function stratumExtraNonceChanged ($ExtraNonce1, $ExtraNonce2Length) { }
+    // }}}
+    
     // {{{ stratumWork
     /**
      * Callback: Mining-Result was received
@@ -470,6 +587,18 @@
      * @return void
      **/
     protected function stratumWorkMalformedJob ($Job, $Work) { }
+    // }}}
+    
+    // {{{ stratumWorkNew
+    /**
+     * Callback: A new job was added
+     * 
+     * @param array $Job
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function stratumWorkNew ($Job) { }
     // }}}
   }
 
