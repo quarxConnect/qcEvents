@@ -28,6 +28,10 @@
     /* Local buffer for JSON-Messages */
     private $Buffer = '';
     
+    /* Queue for pending requests */
+    private $Requests = array ();
+    private $nextRequest = 1;
+    
     /* Queue of messages to send once a stream is connected */
     private $Queue = array ();
     
@@ -43,20 +47,68 @@
     }
     // }}}
     
-    // {{{ sendMessage
+    // {{{ sendRequest
     /**
-     * Write out a Stratum-Message to the stream
+     * Write out a strarum-request to the wire and wait for an answer
      * 
-     * @param array $Message
+     * @param string $Request
+     * @param array $Parameters
+     * @param callable $Callback (optional)
+     * @param mixed $Private (optional)
      * 
      * @access public
      * @return void
      **/
-    public function sendMessage (array $Message) {
+    public function sendRequest ($Request, array $Parameters = null, callable $Callback = null, $Private = null) {
+      // Make sure parameters are an array
+      if ($Parameters === null)
+        $Parameters = array ();
+      
+      // Get a message-id
+      $MessageID = $this->nextRequest++;
+      
+      // Store the request-callback
+      if ($Callback)
+        $this->Requests [$MessageID] = array ($Callback, $Private);
+      
+      // Write out the request
+      $this->sendMessage (array (
+        'id' => $MessageID,
+        'method' => $Request,
+        'params' => $Parameters,
+      ));
+    }
+    // }}}
+    
+    public function sendNotify ($Notify, array $Parameters = null) {
+      // Make sure parameters are an array
+      if ($Parameters === null)
+        $Parameters = array ();
+      
+      // Write out the request
+      $this->sendMessage (array (
+        'id' => null,
+        'method' => $Notify,
+        'params' => $Parameters,
+      ));
+    }
+    
+    // {{{ sendMessage
+    /**
+     * Write out a Stratum-Message to the stream (use with caution!)
+     * 
+     * @param mixed $Message
+     * 
+     * @access public
+     * @return void
+     **/
+    public function sendMessage ($Message) {
       if (!$this->Stream || !$this->Stream->isConnected ())
         $this->Queue [] = $Message;
-      else
+      else {
+        # echo '<< ', json_encode ($Message) . "\n";
         $this->Stream->write (json_encode ($Message) . "\n");
+      }
     }
     // }}}
     
@@ -85,6 +137,8 @@
           
           return $this->close ();
         }
+        
+        # echo '>> ', substr ($this->Buffer, $s, $p - $s), "\n";
         
         // Sanatize the message
         if (!property_exists ($call, 'id') || !(
@@ -156,6 +210,17 @@
      * @return void
      **/
     protected function processResponse ($Message) {
+      // Check if there is a request pending
+      if (isset ($this->Requests [$Message->id])) {
+        // Get the callback
+        $CallbackSpec = $this->Requests [$Message->id];
+        unset ($this->Requests [$Message->id]);
+        
+        // Run the callback
+        $this->___raiseCallback ($CallbackSpec [0], $Message->result, $Message->error, $CallbackSpec [1]);
+      }
+      
+      // Raise generic callback for this
       $this->___callback ('stratumResponse', $Message);
     }
     // }}}
@@ -185,6 +250,12 @@
      * @return void
      **/
     public function close (callable $Callback = null, $Private = null) {
+      // Cancel pending requests
+      foreach ($this->Requests as $CallbackSpec)
+        $this->___raiseCallback ($CallbackSpec [0], null, null, $CallbackSpec [1]);
+      
+      $this->Requests = array ();
+      
       // Make sure we have a stream assigned ...
       if (!$this->Stream || !$this->Stream->isConnected ()) {
         $this->___raiseCallback ($Callback, true, $Private);
@@ -263,6 +334,12 @@
       // Remove the stream
       $this->Stream = null;
       $this->Buffer = '';
+      
+      // Cancel pending requests
+      foreach ($this->Requests as $CallbackSpec)
+        $this->___raiseCallback ($CallbackSpec [0], null, null, $CallbackSpec [1]);
+      
+      $this->Requests = array ();
       
       // Indicate success
       $this->___raiseCallback ($Callback, true, $Private);
