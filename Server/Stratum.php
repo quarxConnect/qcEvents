@@ -29,6 +29,10 @@
   require_once ('Scrypt/Scrypt.php');
   
   class qcEvents_Server_Stratum extends qcEvents_Stream_Stratum {
+    // Used nonces
+    private static $Nonces = array ();
+    private static $nextNonce = 0;
+    
     // Version-Identifier of our client
     private $Version = null;
     
@@ -37,13 +41,13 @@
     const ALGORITHM_SCRYPT = 'scrypt';
     const ALGORITHM_X11 = 'x11';
     
-    private $Algorithm = qcEvents_Server_Stratum::ALGORITHM_SHA256;
+    private $Algorithm = null;
     
     // Mininig-Difficulty
     private $Difficulty = 1;
     
     // Extra-Nonce for this client
-    private $ExtraNonce1 = "\x00\x00\x00\x00";
+    private $ExtraNonce1 = 0x00000000;
     
     // Length of Extra-Nonce-2 for this client
     private $ExtraNonce2Length = 4;
@@ -62,6 +66,60 @@
     
     // Work done
     private $workDone = 0;
+    
+    // {{{ __construct
+    /**
+     * Create new stratum-server and assign unused Extra-Nonce
+     * 
+     * @access friendly
+     * @return void
+     **/
+    function __construct () {
+      // Set the nonce
+      if (defined ('QCEVENTS_STRAUM_NONCE_RANDOM') && QCEVENTS_STRAUM_NONCE_RANDOM) {
+        $max = (PHP_INT_SIZE > 4 ? 0xffffffff : 0x7fffffff);
+        
+        do {
+          $this->ExtraNonce1 = rand (0, $max);
+        } while (isset (self::$Nonces [$this->ExtraNonce1]));
+          
+        return;
+      }
+      
+      $this->ExtraNonce1 = self::$nextNonce;
+      self::$Nonces [$this->ExtraNonce1] = true;
+      
+      // Find next free nonce
+      for ($i = self::$nextNonce + 1; $i <= 0xFFFFFFFF; $i++)
+        if (!isset (self::$Nonces [$i])) {
+          self::$nextNonce = $i;
+          
+          return;
+        }
+      
+      for ($i = 0; $i < $this->ExtraNonce1; $i++)
+        if (!isset (self::$Nonces [$i])) {
+          self::$nextNonce = $i;
+          
+          return;
+        }
+    }
+    // }}}
+    
+    // {{{ __destruct
+    /**
+     * Cleanup nonce-registry
+     * 
+     * @access friendly
+     * @return void
+     **/
+    function __destruct () {
+      unset (self::$Nonces [$this->ExtraNonce1]);
+      
+      if (self::$nextNonce > $this->ExtraNonce1)
+        self::$nextNonce = $this->ExtraNonce1;
+    }
+    // }}}
     
     // {{{ getVersion
     /**
@@ -113,17 +171,11 @@
      * Set a new mining difficulty
      * 
      * @param int $Difficulty
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Server_Stratum $Self, bool $Acknowledged, mixed $Private = null) { }
      * 
      * @access public
      * @return void
      **/
-    public function setDifficulty ($Difficulty, callable $Callback = null, $Private = null) {
+    public function setDifficulty ($Difficulty) {
       // Store the new difficulty
       $this->Difficulty = (int)$Difficulty;
       
@@ -131,12 +183,9 @@
       $this->bailOut ('<< New difficulty %d', $Difficulty);
       
       // Forward the message
-      return $this->sendRequest (
+      return $this->sendNotify (
         'mining.set_difficulty',
-        array ($this->Difficulty),
-        function (qcEvents_Server_Stratum $Self, $Result) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Result === true, $Private);
-        }
+        array ($this->Difficulty)
       );
     }
     // }}}
@@ -150,7 +199,7 @@
      * @access public
      * @return void
      **/
-    public function addJob ($Job, callable $Callback = null, $Private = null) {
+    public function addJob ($Job) {
       // Check wheter to reset
       if ($Job [8])
         $this->Jobs = array ();
@@ -162,12 +211,9 @@
       $this->___callback ('stratumWorkNew', $Job);
       
       // Forward the job
-      return $this->sendRequest (
+      return $this->sendNotify (
         'mining.notify',
-        $Job,
-        function (qcEvents_Server_Stratum $Self, $Result) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Result === true, $Private);
-        }
+        $Job
       );
     }
     // }}}
@@ -177,7 +223,7 @@
      * Retrive the extra-nonce-1 for this client as binary string
      * 
      * @access public
-     * @return string
+     * @return int
      **/
     public function getExtraNonce1 () {
       return $this->ExtraNonce1;
@@ -200,7 +246,7 @@
     /**
      * Change extra-nonces for this client
      * 
-     * @param string $ExtraNonce1 (optional)
+     * @param int $ExtraNonce1 (optional)
      * @param int $ExtraNonce2Length (optional)
      * 
      * @access public
@@ -213,7 +259,7 @@
       
       // Change the values
       if ($ExtraNonce1 !== null)
-        $this->ExtraNonce1 = $ExtraNonce1;
+        $this->ExtraNonce1 = (int)$ExtraNonce1;
       
       if ($ExtraNonce2Length !== null)
         $this->ExtraNonce2Length = (int)$ExtraNonce2Length;
@@ -224,7 +270,7 @@
       // Notify the client
       $this->sendNotify (
         'mining.set_extranonce',
-        array (bin2hex ($this->ExtraNonce1), $this->ExtraNonce2Length)
+        array (sprintf ('%08x', $this->ExtraNonce1), $this->ExtraNonce2Length)
       );
     }
     // }}}
@@ -337,12 +383,12 @@
         if (extension_loaded ('gmp'))
           switch ($this->Algorithm) {
             case $this::ALGORITHM_SHA256:
-              $Valid = $this->validateSHA256 ($this->Jobs [$JobID], $Message); break;
+              $Valid = $this->validateSHA256 ($this->Jobs [$JobID], $Message, $Block); break;
             case $this::ALGORITHM_SCRYPT:
-              $Valid = $this->validateScrypt ($this->Jobs [$JobID], $Message); break;
+              $Valid = $this->validateScrypt ($this->Jobs [$JobID], $Message, $Block); break;
             case $this::ALGORITHM_X11: # TODO
             default:
-              $Valid = null;
+              $Valid = $Block = null;
           }
         else
           $Valid = null;
@@ -354,7 +400,7 @@
           $this->workInvalid++;
         
         // Raise a callback
-        return $this->___callback ('stratumWork', $Message->id, $Valid, $this->Jobs [$JobID], $Message->params);
+        return $this->___callback ('stratumWork', $Message->id, $Valid, $Block, $this->Jobs [$JobID], $Message->params);
       } elseif (($Message->method == 'mining.extranonce.subscribe') || ($Message->method == 'mining.multi_version')) {
         # TODO
         $this->sendMessage (array (
@@ -399,9 +445,9 @@
     private function rebuildBlockHeader ($Job, $Message) {
       // Reassemle the coinbase
       $Coinbase = hex2bin (sprintf (
-        '%s%s%0' . ($this->ExtraNonce2Length * 2) . 's%s',
+        '%s%08x%0' . ($this->ExtraNonce2Length * 2) . 's%s',
         $Job [2],
-        bin2hex ($this->ExtraNonce1),
+        $this->ExtraNonce1,
         $Message->params [2],
         $Job [3]
       ));
@@ -449,11 +495,12 @@
      * 
      * @param array $Job
      * @param object $Message
+     * @param bool $Block (optional)
      * 
      * @access private
      * @return bool
      **/
-    private function validateSHA256 ($Job, $Message) {
+    private function validateSHA256 ($Job, $Message, &$Block = false) {
       // Rebuild the block-header
       $Header = $this->rebuildBlockHeader ($Job, $Message);
       
@@ -466,6 +513,11 @@
       $Hash = gmp_import (strrev (hash ('sha256', hash ('sha256', $Header, true), true)));
       $Diff = gmp_div ($diffBase, gmp_init ($this->Difficulty));
       $Valid = (gmp_cmp ($Hash, $Diff) <= 0);
+      
+      // Check if a block was found
+      $Max = hexdec ($Job [6]);
+      
+      $Block = (gmp_cmp ($Hash, gmp_mul (gmp_init ($Max & 0xFFFFFF), gmp_pow (gmp_init (256), ((($Max >> 24) & 0xFF) - 3)))) <= 0);
       
       // Return the result
       return $Valid;
@@ -481,7 +533,7 @@
      * @access private
      * @return bool
      **/
-    private function validateScrypt ($Job, $Message) {
+    private function validateScrypt ($Job, $Message, &$Block = false) {
       // Make sure we have Scrypt available
       static $Scrypt  = null;
       
@@ -500,6 +552,10 @@
       $Hash = gmp_import (strrev ($Scrypt->nosalt ($Header, 80)));
       $Diff = gmp_div ($diffBase, gmp_init ($this->Difficulty));
       $Valid = (gmp_cmp ($Hash, $Diff) <= 0);
+      
+      // Check if a block was found
+      $Max = hexdec ($Job [6]);
+      $Block = (gmp_cmp ($Hash, gmp_mul (gmp_init ($Max & 0xFFFFFF), gmp_pow (gmp_init (256), ((($Max >> 24) & 0xFF) - 3)))) <= 0);
       
       // Return the result
       return $Valid;
@@ -539,7 +595,7 @@
     /**
      * Callback: Extra-Nonces of the client were changed
      * 
-     * @param string $ExtraNonce1
+     * @param int $ExtraNonce1
      * @param int $ExtraNonce2Length
      * 
      * @access protected
@@ -554,13 +610,14 @@
      * 
      * @param int $ID Message-ID of the request
      * @param bool $Valid Validation-Result (NULL if unsure)
+     * @param bool $Block A block was found (NULL if unsure)
      * @param array $Job
      * @param array $Work
      * 
      * @access protected
      * @return void
      **/
-    protected function stratumWork ($ID, $Valid, $Job, $Work) { }
+    protected function stratumWork ($ID, $Valid, $Block, $Job, $Work) { }
     // }}}
     
     // {{{ stratumWorkUnknownJob
