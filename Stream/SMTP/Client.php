@@ -1101,11 +1101,11 @@
             if ($Code >= 500) {
               $this->Buffer = '';
               
-              return $this->close (function () {
+              return $this->close (function () use ($Source) {
                 $this->___callback ('smtpConnectionFailed');
                 
                 if ($this->initCallback) {
-                  $this->___raiseCallback ($this->initCallback [0], false, $this->initCallback [1]);
+                  $this->___raiseCallback ($this->initCallback [0], $Source, false, $this->initCallback [1]);
                   $this->initCallback = null;
                 }
               });
@@ -1125,11 +1125,11 @@
             if ($this->connectingState > self::SMTP_HANDSHAKE_EHLO) {
               $this->Buffer = '';
               
-              return $this->close (function () {
+              return $this->close (function () use ($Source) {
                 $this->___callback ('smtpConnectionFailed');
                 
                 if ($this->initCallback) {
-                  $this->___raiseCallback ($this->initCallback [0], false, $this->initCallback [1]);
+                  $this->___raiseCallback ($this->initCallback [0], $Source, false, $this->initCallback [1]);
                   $this->initCallback = null;
                 }
               });
@@ -1173,7 +1173,7 @@
             $this->___callback ('smtpConnected');
             
             if ($this->initCallback) {
-              $this->___raiseCallback ($this->initCallback [0], true, $this->initCallback [1]);
+              $this->___raiseCallback ($this->initCallback [0], $Source, true, $this->initCallback [1]);
               $this->initCallback = null;
             }
           }
