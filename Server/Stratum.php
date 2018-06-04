@@ -166,6 +166,18 @@
     }
     // }}}
     
+    // {{{ getDifficulty
+    /**
+     * Retrive the assigned mininig-difficulty
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getDifficulty () {
+      return $this->Difficulty;
+    }
+    // }}}
+    
     // {{{ setDifficulty
     /**
      * Set a new mining difficulty
