@@ -113,7 +113,7 @@
     /* Our desired TLS-Status */
     private $tlsStatus = null;
     
-    /* Callback fired when tls-status was changed */
+    /* Callbacks fired when tls-status was changed */
     private $tlsCallbacks = array ();
     
     /* Size for Read-Requests */
@@ -1282,40 +1282,51 @@
      * Check/Set TLS on this connection
      * 
      * @param bool $Toggle (optional) Set the TLS-Status
-     * @param callback $Callback (optional) Fire this callback after negotiation
+     * @param callable $Callback (optional) Fire this callback after negotiation
      * @param mixed $Private (optional) Private data passed to the callback
      * 
      * @access public
      * @return bool  
      **/
-    public function tlsEnable ($Toggle = null, $Callback = null, $Private = null) {
+    public function tlsEnable ($Toggle = null, callable $Callback = null, $Private = null) {
       // Check wheter only to return the status
       if ($Toggle === null)
         return ($this->tlsEnabled == true);
       
+      // Clean up the flag
+      $Toggle = ($Toggle ? true : false);
+      
       // Check if we are in an unclean status at the moment
-      if ($this->tlsEnabled === null)
-        return false;
+      if ($this->tlsEnabled === null) {
+        if ($Callback)
+          $this->tlsCallbacks [] = array ($Callback, $Private);
+        
+        # TODO: What to do if desired status does not match the requested one?
+        
+        return ($this->tlsStatus == $Toggle);
+      }
       
       # TODO: No clue at the moment how to do this on UDP-Server
       # TODO: Check if this simply works - we are doing this in non-blocking mode,
       #       so it might be possible to distinguish by normal peer-multiplexing
-      if ($this->Type == self::TYPE_UDP_SERVER)
+      if ($this->Type == self::TYPE_UDP_SERVER) {
+        $this->___raiseCallback ($Callback, false, $Private);
+        
         return false;
-      
-      // Clean up the flag
-      $Toggle = ($Toggle ? true : false);
+      }
       
       // Check wheter to do anything
-      if ($Toggle === $this->tlsEnabled)
+      if ($Toggle === $this->tlsEnabled) {
+        $this->___raiseCallback ($Callback, $this->tlsEnabled, $Private);
+        
         return true;
+      }
       
       // Set internal status
-      if (($Callback !== null) && !is_callable ($Callback))
-        $Callback = null;
-      
       $this->tlsEnabled = null;
-      $this->tlsCallbacks [] = array ($Callback, $Private);
+      
+      if ($Callback)
+        $this->tlsCallbacks [] = array ($Callback, $Private);
       
       # TODO: Add external API for this!
       if ($this->tlsStatus = $Toggle)
