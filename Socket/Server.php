@@ -74,6 +74,9 @@
     // Do we have an Timer set to timeout UDP-Children
     private $haveUDPTimer = false;
     
+    /* Preset of TLS-Options */
+    private $tlsOptions = array ();
+    
     // {{{ __construct
     /**
      * Create a new server-process
@@ -289,6 +292,80 @@
     }
     // }}}
     
+    // {{{ tlsCiphers
+    /**
+     * Set a list of supported TLS-Ciphers
+     * 
+     * @param array $Ciphers
+     * 
+     * @access public
+     * @return void
+     **/
+    public function tlsCiphers (array $Ciphers) {
+      $this->tlsOptions ['ciphers'] = $Ciphers;
+    }
+    // }}}
+    
+    // {{{ tlsCertificate
+    /**
+     * Setup TLS-Certificates for this end
+     * 
+     * The Certificate-File has contain both key and certificate in PEM-Format,
+     * an optional CA-Chain may be included as well.
+     * 
+     * @param string $certFile
+     * @param array $sniCerts (optional)
+     * 
+     * @access public
+     * @return void
+     **/
+    public function tlsCertificate ($certFile, array $sniCerts = null) {
+      $this->tlsOptions ['local_cert'] = $certFile;
+      
+      if ($sniCerts !== null)
+        $this->tlsOptions ['SNI_server_certs'] = $sniCerts;
+    }
+    // }}}
+    
+    // {{{ tlsVerify
+    /**
+     * Set verification-options for TLS-secured connections
+     * 
+     * @param bool $Verify (optional) Verify the peer (default)
+     * @param bool $VerifyName (optional) Verify peers name (default)
+     * @param bool $SelfSigned (optional) Allow self signed certificates
+     * @param string $caFile (optional) File or Directory containing CA-Certificates
+     * @param int $Depth (optional) Verify-Depth
+     * @param string $Fingerprint (optional) Expected fingerprint of peers certificate
+     * 
+     * @access public
+     * @return void
+     **/
+    public function tlsVerify ($Verify = true, $VerifyName = true, $SelfSigned = false, $caFile = null, $Depth = null, $Fingerprint = null) {
+      if ($Verify !== null)
+        $this->tlsOptions ['verify_peer'] = !!$Verify;
+      
+      if ($VerifyName !== null)
+        $this->tlsOptions ['verify_peer_name'] = !!$VerifyName;
+      
+      if ($SelfSigned !== null)
+        $this->tlsOptions ['allow_self_signed'] = !!$SelfSigned;
+      
+      if ($caFile !== null) {
+        if (is_dir ($caFile))
+          $this->tlsOptions ['capath'] = $caFile;
+        else
+          $this->tlsOptions ['cafile'] = $caFile;
+      }
+
+      if ($Depth !== null)
+        $this->tlsOptions ['verify_depth'] = $Depth;
+      
+      if ($Fingerprint !== null)
+        $this->tlsOptions ['peer_fingerprint'] = $Fingerprint;
+    }
+    // }}}
+    
     // {{{ listen
     /**
      * Create a the server-process
@@ -403,7 +480,7 @@
         // Create a client-handle if there is none yet
         if (!isset ($this->Clients [$Remote])) {
           // Fire callback first
-          if ($this->___callback ('serverClientAccept', $Remote) === false)
+          if ($this->___callback ('serverClientAccept', $Remote, null) === false)
             return;
           
           // Create the client
@@ -428,8 +505,10 @@
         if (!is_resource ($Connection = stream_socket_accept ($this->Socket, 0, $Remote)))
           return false;
         
+        stream_context_set_option ($Connection, array ('ssl' => $this->tlsOptions));
+        
         // Fire callback first
-        if ($this->___callback ('serverClientAccept', $Remote) === false)
+        if ($this->___callback ('serverClientAccept', $Remote, $Connection) === false)
           return;
         
         // Create new Client if neccessary
@@ -492,8 +571,12 @@
             @$Socket->addHook ($Hook, $Info [0], $Info [1]);
         }
       
+      // Check wheter to enable TLS
+      $Options = stream_context_get_options ($Connection);
+      $enableTLS = (isset ($Options ['ssl']) && (isset ($Options ['ssl']['local_cert']) || isset ($Options ['ssl']['SNI_server_certs'])));
+      
       // Register ourself at the child
-      $Socket->connectServer ($this, $Remote, $Connection);
+      $Socket->connectServer ($this, $Remote, $Connection, $enableTLS);
       
       // Pipe if client and socket are not the same
       if ($Socket !== $Client) {
@@ -580,11 +663,12 @@
      * Callback: Accept a new incoming connection
      * 
      * @param string $Remote
+     * @param resource $Socket (optional) Stream-Resource for TCP-Connections
      * 
      * @access protected
      * @return bool If FALSE the connection is discared
      **/
-    protected function serverClientAccept ($Remote) { }
+    protected function serverClientAccept ($Remote, $Socket = null) { }
     // }}}
     
     // {{{ serverClientNew

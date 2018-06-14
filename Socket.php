@@ -664,6 +664,7 @@
         
         // Store the connection
         $this->setStreamFD ($Connection);
+        $this->tlsStatus = !!$enableTLS;
       }
       
       // Store our parent server-handle
@@ -1304,7 +1305,7 @@
      * @access public
      * @return bool
      **/
-    public function tlsCertificate ($certFile, array $sniCerts = null) {
+    public function tlsCertificate ($certFile, array $sniCerts = array ()) {
       # TODO: local_pk passphrase
       return stream_context_set_option ($this->getReadFD (), array ('ssl' => array (
         'local_cert' => $certFile,
@@ -1444,9 +1445,14 @@
         return false;
       
       // Issue the request to enter or leave TLS-Mode
-      if ($this->tlsStatus)
-        $tlsRequest = stream_socket_enable_crypto ($fd, $this->tlsStatus, STREAM_CRYPTO_METHOD_TLS_CLIENT);
-      else
+      if ($this->tlsStatus) {
+        if ($this->serverParent)
+          $Method = STREAM_CRYPTO_METHOD_TLSv1_0_SERVER | STREAM_CRYPTO_METHOD_TLSv1_1_SERVER | STREAM_CRYPTO_METHOD_TLSv1_2_SERVER;
+        else
+          $Method = STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;
+        
+        $tlsRequest = stream_socket_enable_crypto ($fd, $this->tlsStatus, $Method);
+      } else
         $tlsRequest = stream_socket_enable_crypto ($fd, $this->tlsStatus);
       
       // Check if the request succeeded
