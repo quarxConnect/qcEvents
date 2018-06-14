@@ -114,10 +114,7 @@
     private $tlsStatus = null;
     
     /* Callback fired when tls-status was changed */
-    private $tlsCallback = null;
-    
-    /* Private Data for TLS-Callback */
-    private $tlsPrivate = null;
+    private $tlsCallbacks = array ();
     
     /* Size for Read-Requests */
     private $bufferSize = 0;
@@ -1318,8 +1315,7 @@
         $Callback = null;
       
       $this->tlsEnabled = null;
-      $this->tlsCallback = $Callback;
-      $this->tlsPrivate = $Private;
+      $this->tlsCallbacks [] = array ($Callback, $Private);
       
       # TODO: Add external API for this!
       if ($this->tlsStatus = $Toggle)
@@ -1382,32 +1378,28 @@
       if ($tlsRequest === true) {
         $this->tlsEnabled = $this->tlsStatus;
         
-        $tlsCallback = $this->tlsCallback;
-        $tlsPrivate = $this->tlsPrivate;
-        $this->tlsCallback = null;
-        $this->tlsPrivate = null;
+        $tlsCallbacks = $this->tlsCallbacks;
+        $this->tlsCallbacks = array ();
         
         if ($this->tlsEnabled)
           $this->___callback ('tlsEnabled');
         else
           $this->___callback ('tlsDisabled');
         
-        if ($tlsCallback !== null)
-          $this->___raiseCallback ($tlsCallback, $this->tlsStatus, $tlsPrivate);
+        foreach ($tlsCallbacks as $tlsCallback)
+          $this->___raiseCallback ($tlsCallback [0], $this->tlsStatus, $tlsCallback [1]);
       
       // Check if the request failed
       } elseif ($tlsRequest === false) {
         $this->tlsEnabled = false;
         
-        $tlsCallback = $this->tlsCallback;
-        $tlsPrivate = $this->tlsPrivate;
-        $this->tlsCallback = null;
-        $this->tlsPrivate = null;
+        $tlsCallbacks = $this->tlsCallbacks;
+        $this->tlsCallbacks = array ();
         
         $this->___callback ('tlsFailed');
         
-        if ($tlsCallback !== null)
-          $this->___raiseCallback ($tlsCallback, null, $tlsPrivate);
+        foreach ($tlsCallbacks as $tlsCallback)
+          $this->___raiseCallback ($tlsCallback [0], null, $tlsCallback [1]);
       }
     }
     // }}}
