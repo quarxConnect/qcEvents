@@ -1277,6 +1277,87 @@
     }
     // }}}
     
+    // {{{ tlsCiphers
+    /**
+     * Set a list of supported TLS-Ciphers
+     * 
+     * @param array $Ciphers
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function tlsCiphers (array $Ciphers) {
+      return stream_context_set_option ($this->getReadFD (), 'ssl', 'ciphers', $Ciphers);
+    }
+    // }}}
+    
+    // {{{ tlsCertificate
+    /**
+     * Setup TLS-Certificates for this end of the stream
+     * 
+     * The Certificate-File has contain both key and certificate in PEM-Format,
+     * an optional CA-Chain may be included as well.
+     * 
+     * @param string $certFile
+     * @param array $sniCerts (optional)
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function tlsCertificate ($certFile, array $sniCerts = null) {
+      # TODO: local_pk passphrase
+      return stream_context_set_option ($this->getReadFD (), array ('ssl' => array (
+        'local_cert' => $certFile,
+        'SNI_server_certs' => $sniCerts,
+      )));
+    }
+    // }}}
+    
+    // {{{ tlsVerify
+    /**
+     * Set verification-options for TLS-secured connections
+     * 
+     * @param bool $Verify (optional) Verify the peer (default)
+     * @param bool $VerifyName (optional) Verify peers name (default)
+     * @param bool $SelfSigned (optional) Allow self signed certificates
+     * @param string $caFile (optional) File or Directory containing CA-Certificates
+     * @param int $Depth (optional) Verify-Depth
+     * @param string $Fingerprint (optional) Expected fingerprint of peers certificate
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function tlsVerify ($Verify = true, $VerifyName = true, $SelfSigned = false, $caFile = null, $Depth = null, $Fingerprint = null) {
+      // Prepare the options
+      $Options = array ();
+      
+      if ($Verify !== null)
+        $Options ['verify_peer'] = !!$Verify;
+      
+      if ($VerifyName !== null)
+        $Options ['verify_peer_name'] = !!$VerifyName;
+      
+      if ($SelfSigned !== null)
+        $Options ['allow_self_signed'] = !!$SelfSigned;
+      
+      if ($caFile !== null) {
+        if (is_dir ($caFile))
+          $Options ['capath'] = $caFile;
+        else
+          $Options ['cafile'] = $caFile;
+      }
+      
+      if ($Depth !== null)
+        $Options ['verify_depth'] = $Depth;
+      
+      if ($Fingerprint !== null)
+        $Options ['peer_fingerprint'] = $Fingerprint;
+      
+      // Forward the options to the stream
+      return stream_context_set_option ($this->getReadFD (), array ('ssl' => $Options));
+    }
+    // }}}
+    
     // {{{ tlsEnable
     /**
      * Check/Set TLS on this connection
@@ -1328,7 +1409,6 @@
       if ($Callback)
         $this->tlsCallbacks [] = array ($Callback, $Private);
       
-      # TODO: Add external API for this!
       if ($this->tlsStatus = $Toggle)
         stream_context_set_option ($this->getReadFD (), array (
           'ssl' => array (
@@ -1338,25 +1418,9 @@
             'SNI_server_name' => $this->remoteHost, # Deprecated as of PHP 5.6 (replaced by peer_name)
             
             // General settings
-            # 'ciphers' => '',
             'capture_peer_cert' => false,           # Unused
             'capture_peer_cert_chain' => false,     # Unused
             'disable_compression' => true,          // Always disable compression because of CRIME
-            
-            // Parameters for verification
-            'verify_peer' => true,
-            'verify_peer_name' => true,
-            # 'verify_depth' => 1, // How many levels to check
-            'allow_self_signed' => false,
-            # 'cafile' => null, // CAfile for verify_peer
-            # 'capath' => null, // See cafile
-            # 'CN_match' => null, // Expected commonname
-            # 'peer_fingerprint' => '',
-            
-            // Remote authentication
-            # 'local_cert' => null, // PEM of local certificate
-            # 'local_pk' => null, // Undocumented: Path to private key
-            # 'passphrase' => null, // Passphrase for local_cert
           )
         ));
       
