@@ -86,7 +86,7 @@
     function __construct (callable $Callback) {
       // Make sure we have a NoOp-Indicator
       if ($this::$noop === null)
-        $this::$noop = function () { };
+        $this::$noop = function () { return func_get_args (); };
       
       // Check wheter to invoke the callback
       if ($Callback === $this::$noop)
@@ -150,7 +150,7 @@
     private function invoke (callable $callback, qcEvents_Promise $childPromise = null) {
       // Run the callback
       try {
-        $ResultType = $this->done;
+        $ResultType = $childPromise::DONE_FULLFILL;
         $Result = call_user_func_array ($callback, $this->result);
       } catch (Exception $E) {
         $ResultType = $childPromise::DONE_REJECT;
