@@ -19,11 +19,13 @@
    **/
   
   class qcEvents_Promise {
+    /* NoOp-Indicator to create an empty promise */
+    private static $noop = null;
+    
     /* Has this promise been done already */
     const DONE_NONE = 0;
     const DONE_FULLFILL = 1;
     const DONE_REJECT = 2;
-    const DONE_EXCEPTION = 3;
     
     private $done = qcEvents_Promise::DONE_NONE;
     
@@ -32,10 +34,8 @@
     
     /* Registered callbacks */
     private $callbacks = array (
-      qcEvents_Promise::DONE_NONE      => array (),
       qcEvents_Promise::DONE_FULLFILL  => array (),
       qcEvents_Promise::DONE_REJECT    => array (),
-      qcEvents_Promise::DONE_EXCEPTION => array (),
     );
     
     // {{{ resolve
@@ -84,6 +84,15 @@
      * @return void
      **/
     function __construct (callable $Callback) {
+      // Make sure we have a NoOp-Indicator
+      if ($this::$noop === null)
+        $this::$noop = function () { };
+      
+      // Check wheter to invoke the callback
+      if ($Callback === $this::$noop)
+        return;
+      
+      // Invoke the callback
       try {
         call_user_func (
           $Callback,
@@ -91,7 +100,7 @@
           function () { $this->finish ($this::DONE_REJECT, func_get_args ()); }
         );
       } catch (Exception $E) {
-        $this->finish ($this::DONE_EXCEPTION, array ($E));
+        $this->finish ($this::DONE_REJECT, array ($E));
       }
     }
     // }}}
@@ -118,18 +127,52 @@
       // Invoke handlers
       if (count ($this->callbacks [$done]) > 0)
         foreach ($this->callbacks [$done] as $callback)
-          call_user_func_array ($callback, $result);
-      
-      foreach ($this->callbacks [$this::DONE_NONE] as $callback)
-          call_user_func ($callback);
+          $this->invoke ($callback [0], $callback [1]);
       
       // Reset callbacks
       $this->callbacks = array (
-        qcEvents_Promise::DONE_NONE      => array (),
         qcEvents_Promise::DONE_FULLFILL  => array (),
         qcEvents_Promise::DONE_REJECT    => array (),
-        qcEvents_Promise::DONE_EXCEPTION => array (),
       );
+    }
+    // }}}
+    
+    // {{{ invoke
+    /**
+     * Invoke a callback for this promise
+     * 
+     * @param callable $callback
+     * @param qcEvents_Promise $childPromise (optional)
+     * 
+     * @access private
+     * @return void
+     **/
+    private function invoke (callable $callback, qcEvents_Promise $childPromise = null) {
+      // Run the callback
+      try {
+        $ResultType = $this->done;
+        $Result = call_user_func_array ($callback, $this->result);
+      } catch (Exception $E) {
+        $ResultType = $childPromise::DONE_REJECT;
+        $Result = $E;
+      }
+      
+      // Quit if there is no child-promise to fullfill
+      if (!$childPromise)
+        return;
+      
+      // Check for an intermediate promise
+      if ($Result instanceof qcEvents_Promise)
+        return $Result->then (
+          function () use ($childPromise) { $childPromise->finish ($childPromise::DONE_FULLFILL, func_get_args ());  },
+          function () use ($childPromise) { $childPromise->finish ($childPromise::DONE_REJECT, func_get_args ()); }
+        );
+      
+      // Finish the child-promise
+      if (!is_array ($Result))
+        $Result = array ($Result);
+      
+      $childPromise->finish ($ResultType, $Result);
     }
     // }}}
     
@@ -144,25 +187,34 @@
      * @return qcEvents_Promise
      **/
     public function then (callable $resolve = null, callable $reject = null) {
+      // Create an empty promise
+      $Promise = new $this ($this::$noop);
+      
+      // Polyfill callbacks
+      if ($resolve === null)
+        $resolve = $this::$noop;
+      
+      if ($reject === null)
+        $reject = $this::$noop;
+      
       // Check if we are not already done
       if ($this->done == $this::DONE_NONE) {
         if ($resolve)
-          $this->callbacks [$this::DONE_FULLFILL][] = $resolve;
+          $this->callbacks [$this::DONE_FULLFILL][] = array ($resolve, $Promise);
         
         if ($reject)
-          $this->callbacks [$this::DONE_REJECT][] = $reject;
+          $this->callbacks [$this::DONE_REJECT][] = array ($reject, $Promise);
       
       // Check if we were fullfilled
-      } elseif (($this->done == $this::DONE_FULLFILL) && $resolve)
-        call_user_func_array ($resolve, $this->result);
+      } elseif ($this->done == $this::DONE_FULLFILL)
+        $this->invoke ($resolve, $Promise);
       
       // Check if we were rejected
-      elseif (($this->done == $this::DONE_REJECT) && $reject)
-        call_user_func_array ($reject, $this->result);
+      elseif ($this->done == $this::DONE_REJECT)
+        $this->invoke ($reject, $Promise);
       
       // Return a promise
-      # TODO: This is not an equivalent to the spec!
-      return $this;
+      return $Promise;
     }
     // }}}
     
@@ -176,17 +228,7 @@
      * @return qcEvents_Promise
      **/
     public function catch (callable $callback) {
-      // Check if we are not already done
-      if ($this->done == $this::DONE_NONE)
-        $this->callbacks [$this::DONE_EXCEPTION][] = $callback;
-      
-      // Check if we are done in the right state
-      elseif ($this->done == $this::DONE_EXCEPTION)
-        call_user_func_array ($callback, $this->result);
-      
-      // Return a promise
-      # TODO: This is not an equivalent to the spec!
-      return $this;
+      return $this->then (null, $callback);
     }
     // }}}
     
@@ -200,17 +242,15 @@
      * @return qcEvents_Promise
      **/
     public function finally (callable $callback) {
-      // Check if we are not already done
-      if ($this->done == $this::DONE_NONE)
-        $this->callbacks [$this::DONE_NONE][] = $callback;
-      
-      // Check if we are done in the right state
-      else
+      $forward = function () use ($callback) {
+        // Invoke the callback
         call_user_func ($callback);
+        
+        // Forward all parameters
+        return func_get_args ();
+      };
       
-      // Return a promise
-      # TODO: This is not an equivalent to the spec!
-      return $this;
+      return $this->then ($forward, $forward);
     }
     // }}}
   }
