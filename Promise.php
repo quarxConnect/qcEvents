@@ -74,6 +74,135 @@
     }
     // }}}
     
+    // {{{ all
+    /**
+     * Create a promise that settles when a whole set of promises have settled
+     * 
+     * @param array $Values
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public static function all (array $Values) {
+      // Pre-Filter the promises
+      $Promises = $Values;
+      
+      foreach ($Promises as $ID=>$Promise)
+        if (!($Promise instanceof qcEvents_Promise))
+          unset ($Promises [$ID]);
+      
+      // Check if there is any promise to wait for
+      if (count ($Promises) == 0)
+        return static::resolve ($Values);
+      
+      return new static (function ($resolve, $reject) use ($Values, $Promises) {
+        // Track if the promise is settled
+        $Done = false;
+        $Pending = count ($Promises);
+        
+        // Register handlers
+        foreach ($Promises as $ID=>$Promise)
+          $Promise->then (
+            function () use (&$Done, &$Values, &$Pending, $ID, $resolve) {
+              // Check if the promise is already settled
+              if ($Done)
+                return;
+              
+              // Remember the result
+              if (func_num_args () == 1)
+                $Values [$ID] = func_get_arg (0);
+              else
+                $Values [$ID] = func_get_args ();
+              
+              // Check if we are done
+              if ($Pending-- > 1)
+                return;
+              
+              // Mark the promise as settled
+              $Done = true;
+              
+              // Forward the result
+              call_user_func_array ($resolve, array ($Values));
+              
+              return array ($Values);
+            },
+            function () use (&$Done, $reject) {
+              // Check if the promise is settled
+              if ($Done)
+                return;
+              
+              // Mark the promise as settled
+              $Done = true;
+              
+              // Forward the result
+              call_user_func_array ($reject, func_get_args ());
+              
+              return func_get_args ();
+            }
+          );
+      });
+    }
+    // }}}
+    
+    // {{{ race
+    /**
+     * Create a promise that settles whenever another promise of a given set settles as well
+     * 
+     * @param array $Promises
+     * @param bool $forceSpec (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public static function race (array $Promises, $forceSpec = false) {
+      // Check for non-promises first
+      foreach ($Promises as $Promise)
+        if (!($Promise instanceof qcEvents_Promise))
+          return static::resolve ($Promise);
+      
+      // Check if there is any promise to wait for
+      # TODO: This is a violation of the Spec, but a promise that is forever pending is not suitable for long-running applications
+      if (!$forceSpec && (count ($Promises) == 0))
+        return static::reject ();
+      
+      return new static (function ($resolve, $reject) use ($Promises) {
+        // Track if the promise is settled
+        $Done = false;
+        
+        // Register handlers
+        foreach ($Promises as $Promise)
+          $Promise->then (
+            function () use (&$Done, $resolve) {
+              // Check if the promise is already settled
+              if ($Done)
+                return;
+              
+              // Mark the promise as settled
+              $Done = true;
+              
+              // Forward the result
+              call_user_func_array ($resolve, func_get_args ());
+         
+              return func_get_args ();
+            },
+            function () use (&$Done, $reject) {
+              // Check if the promise is settled
+              if ($Done)
+                return;
+              
+              // Mark the promise as settled
+              $Done = true;
+              
+              // Forward the result
+              call_user_func_array ($reject, func_get_args ());
+        
+              return func_get_args ();
+            }
+          );
+      });
+    }
+    // }}}
+    
     // {{{ __construct
     /**
      * Create a new promise
