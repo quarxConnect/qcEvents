@@ -1288,7 +1288,7 @@
      * @return bool
      **/
     public function tlsCiphers (array $Ciphers) {
-      return stream_context_set_option ($this->getReadFD (), 'ssl', 'ciphers', $Ciphers);
+      return stream_context_set_option ($this->getReadFD (), 'ssl', 'ciphers', implode (':', $Ciphers));
     }
     // }}}
     
@@ -1449,11 +1449,11 @@
         if ($this->serverParent)
           $Method = STREAM_CRYPTO_METHOD_TLSv1_0_SERVER | STREAM_CRYPTO_METHOD_TLSv1_1_SERVER | STREAM_CRYPTO_METHOD_TLSv1_2_SERVER;
         else
-          $Method = STREAM_CRYPTO_METHOD_TLSv1_0_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;
+          $Method = STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;
         
-        $tlsRequest = stream_socket_enable_crypto ($fd, $this->tlsStatus, $Method);
+        $tlsRequest = @stream_socket_enable_crypto ($fd, $this->tlsStatus, $Method);
       } else
-        $tlsRequest = stream_socket_enable_crypto ($fd, $this->tlsStatus);
+        $tlsRequest = @stream_socket_enable_crypto ($fd, $this->tlsStatus);
       
       // Check if the request succeeded
       if ($tlsRequest === true) {

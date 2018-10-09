@@ -302,7 +302,7 @@
      * @return void
      **/
     public function tlsCiphers (array $Ciphers) {
-      $this->tlsOptions ['ciphers'] = $Ciphers;
+      $this->tlsOptions ['ciphers'] = implode (':', $Ciphers);
     }
     // }}}
     
