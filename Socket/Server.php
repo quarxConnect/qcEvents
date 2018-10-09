@@ -75,7 +75,11 @@
     private $haveUDPTimer = false;
     
     /* Preset of TLS-Options */
-    private $tlsOptions = array ();
+    private $tlsOptions = array (
+      'ciphers' => 'ECDHE:!aNULL:!WEAK',
+      'verify_peer' => false,
+      'verify_peer_name' => false,
+    );
     
     // {{{ __construct
     /**
@@ -341,7 +345,7 @@
      * @access public
      * @return void
      **/
-    public function tlsVerify ($Verify = true, $VerifyName = true, $SelfSigned = false, $caFile = null, $Depth = null, $Fingerprint = null) {
+    public function tlsVerify ($Verify = false, $VerifyName = false, $SelfSigned = false, $caFile = null, $Depth = null, $Fingerprint = null) {
       if ($Verify !== null)
         $this->tlsOptions ['verify_peer'] = !!$Verify;
       
