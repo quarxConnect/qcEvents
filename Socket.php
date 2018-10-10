@@ -1108,6 +1108,18 @@
     }
     // }}}
     
+    // {{{ isServer
+    /**
+     * Check if this is a Server-Socket
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isServer () {
+      return ($this->serverParent !== null);
+    }
+    // }}}
+    
     // {{{ getLocalName
     /**
      * Retrive the local name of our socket
