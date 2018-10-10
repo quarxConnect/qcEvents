@@ -220,6 +220,20 @@
     }
     // }}}
     
+    // {{{ forceCallback
+    /**
+     * Force a given callback to be invoked on the next loop-round
+     * 
+     * @param callable $Callback
+     * 
+     * @access public
+     * @return void
+     **/
+    public function forceCallback (callable $Callback) {
+      $this->forcedEvents [] = $Callback;
+    }
+    // }}}
+    
     // {{{ addTimer
     /**
      * Setup a new timer

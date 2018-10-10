@@ -15,12 +15,15 @@
    * GNU General Public License for more details.
    * 
    * You should have received a copy of the GNU General Public License
-   * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   * along with this program. If not, see <http://www.gnu.org/licenses/>.
    **/
   
   class qcEvents_Promise {
     /* NoOp-Indicator to create an empty promise */
     private static $noop = null;
+    
+    /* Assigned event-base */
+    private $Base = null;
     
     /* Has this promise been done already */
     const DONE_NONE = 0;
@@ -43,16 +46,18 @@
      * Create a resolved promise
      * 
      * @param ...
+     * @param qcEvents_Base $Base (optional)
      * 
      * @access public
      * @return qcEvents_Promise
      **/
     public static function resolve () {
       $args = func_get_args ();
+      $base = ((count ($args) > 0) && ($args [count ($args) - 1] instanceof qcEvents_Base) ? array_pop ($argv) : null);
       
       return new static (function ($resolve) use ($args) {
         call_user_func_array ($resolve, $args);
-      });
+      }, $base);
     }
     // }}}
     
@@ -61,16 +66,18 @@
      * Create a rejected promise
      * 
      * @param ...
+     * @param qcEvents_Base $Base (optional)
      * 
      * @access public
      * @return qcEvents_Promise
      **/
     public static function reject () {
       $args = func_get_args ();
+      $base = ((count ($args) > 0) && ($args [count ($args) - 1] instanceof qcEvents_Base) ? array_pop ($argv) : null);
       
       return new static (function ($resolve, $reject) use ($args) {
         call_user_func_array ($reject, $args);
-      });
+      }, $base);
     }
     // }}}
     
@@ -79,21 +86,27 @@
      * Create a promise that settles when a whole set of promises have settled
      * 
      * @param array $Values
+     * @param qcEvents_Base $Base (optional)
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function all (array $Values) {
+    public static function all (array $Values, qcEvents_Base $Base = null) {
       // Pre-Filter the promises
       $Promises = $Values;
       
       foreach ($Promises as $ID=>$Promise)
         if (!($Promise instanceof qcEvents_Promise))
           unset ($Promises [$ID]);
+        # TODO: Get Base here if undefined?
       
       // Check if there is any promise to wait for
-      if (count ($Promises) == 0)
+      if (count ($Promises) == 0) {
+        if ($Base)
+          return static::resolve ($Values, $Base);
+        
         return static::resolve ($Values);
+      }
       
       return new static (function ($resolve, $reject) use ($Values, $Promises) {
         // Track if the promise is settled
@@ -140,7 +153,7 @@
               return func_get_args ();
             }
           );
-      });
+      }, $Base);
     }
     // }}}
     
@@ -149,21 +162,30 @@
      * Create a promise that settles whenever another promise of a given set settles as well
      * 
      * @param array $Promises
+     * @param qcEvents_Base $Base (optional)
      * @param bool $forceSpec (optional)
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function race (array $Promises, $forceSpec = false) {
+    public static function race (array $Promises, qcEvents_Base $Base = null, $forceSpec = false) {
       // Check for non-promises first
       foreach ($Promises as $Promise)
-        if (!($Promise instanceof qcEvents_Promise))
+        if (!($Promise instanceof qcEvents_Promise)) {
+          if ($Base)
+            return static::resolve ($Promise, $Base);
+          
           return static::resolve ($Promise);
+        }
       
       // Check if there is any promise to wait for
       # TODO: This is a violation of the Spec, but a promise that is forever pending is not suitable for long-running applications
-      if (!$forceSpec && (count ($Promises) == 0))
+      if (!$forceSpec && (count ($Promises) == 0)) {
+        if ($Base)
+          return static::reject ($Base);
+        
         return static::reject ();
+      }
       
       return new static (function ($resolve, $reject) use ($Promises) {
         // Track if the promise is settled
@@ -199,7 +221,7 @@
               return func_get_args ();
             }
           );
-      });
+      }, $Base);
     }
     // }}}
     
@@ -208,29 +230,40 @@
      * Create a new promise
      * 
      * @param callable $Callback
+     * @param qcEvents_Base $Base (optional)
      + 
      * @access friendly
      * @return void
      **/
-    function __construct (callable $Callback) {
+    function __construct (callable $Callback, qcEvents_Base $Base = null) {
       // Make sure we have a NoOp-Indicator
       if ($this::$noop === null)
         $this::$noop = function () { return func_get_args (); };
+      
+      // Store the assigned base
+      $this->Base = $Base;
       
       // Check wheter to invoke the callback
       if ($Callback === $this::$noop)
         return;
       
-      // Invoke the callback
-      try {
-        call_user_func (
-          $Callback,
-          function () { $this->finish ($this::DONE_FULLFILL, func_get_args ()); },
-          function () { $this->finish ($this::DONE_REJECT, func_get_args ()); }
-        );
-      } catch (Exception $E) {
-        $this->finish ($this::DONE_REJECT, array ($E));
-      }
+      // Invoke/Enqueue the callback
+      $Invoke = function () use ($Callback) {
+        try {
+          call_user_func (
+            $Callback,
+            function () { $this->finish ($this::DONE_FULLFILL, func_get_args ()); },
+            function () { $this->finish ($this::DONE_REJECT, func_get_args ()); }
+          );
+        } catch (Exception $E) {
+          $this->finish ($this::DONE_REJECT, array ($E));
+        }
+      };
+      
+      if ($Base)
+        return $Base->forceCallback ($Invoke);
+      
+      $Invoke ();
     }
     // }}}
     
@@ -279,10 +312,10 @@
     private function invoke (callable $callback, qcEvents_Promise $childPromise = null) {
       // Run the callback
       try {
-        $ResultType = $childPromise::DONE_FULLFILL;
+        $ResultType = $this::DONE_FULLFILL;
         $Result = call_user_func_array ($callback, $this->result);
       } catch (Exception $E) {
-        $ResultType = $childPromise::DONE_REJECT;
+        $ResultType = $this::DONE_REJECT;
         $Result = $E;
       }
       
@@ -317,7 +350,7 @@
      **/
     public function then (callable $resolve = null, callable $reject = null) {
       // Create an empty promise
-      $Promise = new $this ($this::$noop);
+      $Promise = new $this ($this::$noop, $this->Base);
       
       // Polyfill callbacks
       if ($resolve === null)
