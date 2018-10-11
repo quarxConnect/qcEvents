@@ -20,7 +20,8 @@
   
   class qcEvents_Promise {
     /* NoOp-Indicator to create an empty promise */
-    private static $noop = null;
+    private static $noopResolve = null;
+    private static $noopReject = null;
     
     /* Assigned event-base */
     private $Base = null;
@@ -135,9 +136,9 @@
               $Done = true;
               
               // Forward the result
-              call_user_func_array ($resolve, array ($Values));
+              call_user_func ($resolve, $Values);
               
-              return array ($Values);
+              return $Values;
             },
             function () use (&$Done, $reject) {
               // Check if the promise is settled
@@ -150,7 +151,7 @@
               // Forward the result
               call_user_func_array ($reject, func_get_args ());
               
-              return func_get_args ();
+              throw new qcEvents_Promise_Solution (func_get_args ());
             }
           );
       }, $Base);
@@ -205,7 +206,7 @@
               // Forward the result
               call_user_func_array ($resolve, func_get_args ());
          
-              return func_get_args ();
+              return new qcEvents_Promise_Solution (func_get_args ());
             },
             function () use (&$Done, $reject) {
               // Check if the promise is settled
@@ -217,8 +218,8 @@
               
               // Forward the result
               call_user_func_array ($reject, func_get_args ());
-        
-              return func_get_args ();
+              
+              throw new qcEvents_Promise_Solution (func_get_args ());
             }
           );
       }, $Base);
@@ -254,14 +255,16 @@
      **/
     function __construct (callable $Callback, qcEvents_Base $Base = null) {
       // Make sure we have a NoOp-Indicator
-      if ($this::$noop === null)
-        $this::$noop = function () { return func_get_args (); };
+      if ($this::$noopResolve === null) {
+        $this::$noopResolve = function () { return new qcEvents_Promise_Solution (func_get_args ()); };
+        $this::$noopReject  = function () { throw  new qcEvents_Promise_Solution (func_get_args ()); };
+      }
       
       // Store the assigned base
       $this->Base = $Base;
       
       // Check wheter to invoke the callback
-      if ($Callback === $this::$noop)
+      if ($Callback === $this::$noopResolve)
         return;
       
       // Invoke/Enqueue the callback
@@ -270,10 +273,10 @@
           call_user_func (
             $Callback,
             function () { $this->finish ($this::DONE_FULLFILL, func_get_args ()); },
-            function () { $this->finish ($this::DONE_REJECT, func_get_args ()); }
+            function () { $this->finish ($this::DONE_REJECT,   func_get_args ()); }
           );
         } catch (Exception $E) {
-          $this->finish ($this::DONE_REJECT, array ($E));
+          $this->finish ($this::DONE_REJECT, ($E instanceof qcEvents_Promise_Solution ? $E->getArgs () : array ($E)));
         }
       };
       
@@ -294,7 +297,7 @@
      * @access private
      * @return void
      **/
-    private function finish ($done, $result) {
+    private function finish ($done, array $result) {
       // Check if we are already done
       if ($this->done > $this::DONE_NONE)
         return;
@@ -339,9 +342,10 @@
       try {
         $ResultType = $this::DONE_FULLFILL;
         $Result = call_user_func_array ($callback, $this->result);
+        $Result = ($Result instanceof qcEvents_Promise_Solution ? $Result->getArgs () : array ($Result));
       } catch (Exception $E) {
         $ResultType = $this::DONE_REJECT;
-        $Result = $E;
+        $Result = ($E instanceof qcEvents_Promise_Solution ? $E->getArgs () : array ($E));
       }
       
       // Quit if there is no child-promise to fullfill
@@ -351,14 +355,11 @@
       // Check for an intermediate promise
       if ($Result instanceof qcEvents_Promise)
         return $Result->then (
-          function () use ($childPromise) { $childPromise->finish ($childPromise::DONE_FULLFILL, func_get_args ());  },
-          function () use ($childPromise) { $childPromise->finish ($childPromise::DONE_REJECT, func_get_args ()); }
+          function () use ($childPromise) { $childPromise->finish ($childPromise::DONE_FULLFILL, func_get_args ()); },
+          function () use ($childPromise) { $childPromise->finish ($childPromise::DONE_REJECT,   func_get_args ()); }
         );
       
       // Finish the child-promise
-      if (!is_array ($Result))
-        $Result = array ($Result);
-      
       $childPromise->finish ($ResultType, $Result);
     }
     // }}}
@@ -375,14 +376,14 @@
      **/
     public function then (callable $resolve = null, callable $reject = null) {
       // Create an empty promise
-      $Promise = new $this ($this::$noop, $this->Base);
+      $Promise = new $this ($this::$noopResolve, $this->Base);
       
       // Polyfill callbacks
       if ($resolve === null)
-        $resolve = $this::$noop;
+        $resolve = $this::$noopResolve;
       
       if ($reject === null)
-        $reject = $this::$noop;
+        $reject = $this::$noopReject;
       
       // Check if we are not already done
       if ($this->done == $this::DONE_NONE) {
@@ -435,21 +436,30 @@
           call_user_func ($callback);
           
           // Forward all parameters
-          return func_get_args ();
+          return new qcEvents_Promise_Solution (func_get_args ());
         },
-        function ($e = null) use ($callback) {
+        function () use ($callback) {
           // Invoke the callback
           call_user_func ($callback);
           
           // Forward all parameters
-          if ($e && ($e instanceof exception))
-            throw $e;
-          
-          return func_get_args ();
+          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
     // }}}
+  }
+  
+  class qcEvents_Promise_Solution extends Exception {
+    private $args = array ();
+    
+    function __construct (array $Args) {
+      $this->args = $Args;
+    }
+    
+    public function getArgs () {
+      return $this->args;
+    }
   }
 
 ?>
