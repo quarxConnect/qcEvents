@@ -429,15 +429,25 @@
      * @return qcEvents_Promise
      **/
     public function finally (callable $callback) {
-      $forward = function () use ($callback) {
-        // Invoke the callback
-        call_user_func ($callback);
-        
-        // Forward all parameters
-        return func_get_args ();
-      };
-      
-      return $this->then ($forward, $forward);
+      return $this->then (
+        function () use ($callback) {
+          // Invoke the callback
+          call_user_func ($callback);
+          
+          // Forward all parameters
+          return func_get_args ();
+        },
+        function ($e = null) use ($callback) {
+          // Invoke the callback
+          call_user_func ($callback);
+          
+          // Forward all parameters
+          if ($e && ($e instanceof exception))
+            throw $e;
+          
+          return func_get_args ();
+        }
+      );
     }
     // }}}
   }
