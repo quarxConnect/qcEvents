@@ -225,6 +225,23 @@
     }
     // }}}
     
+    // {{{ ensure
+    /**
+     * Make sure the input is a promise or return a rejected one
+     * 
+     * @param mixed $Input
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public static function ensure ($Input) {
+      if ($Input instanceof qcEvents_Promise)
+        return $Input;
+      
+      return static::reject ($Input);
+    }
+    // }}}
+    
     // {{{ __construct
     /**
      * Create a new promise
@@ -281,6 +298,14 @@
       // Check if we are already done
       if ($this->done > $this::DONE_NONE)
         return;
+      
+      // Check if there is another promise
+      foreach ($result as $p)
+        if ($p instanceof qcEvents_Promise)
+          return $this::all ($result)->then (
+            function ($results) { $this->finish ($this::DONE_FULLFILL, $results); },
+            function () { $this->finish ($this::DONE_REJECT, func_get_args ()); }
+          );
       
       // Store the result
       $this->done = $done;
