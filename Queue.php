@@ -159,36 +159,49 @@
         $Function = new ReflectionFunction ($Callable);
       
       // Analyze parameters of the call
-      $CallbackIndex = null;
-      
-      foreach ($Function->getParameters () as $Index=>$Parameter)
-        if ($Parameter->isCallable ()) {
-          $CallbackIndex = $Index;
+      if (!($isPromise = ($Function->getReturnType () == 'qcEvents_Promise'))) {
+        $CallbackIndex = null;
+        
+        foreach ($Function->getParameters () as $Index=>$Parameter)
+          if ($Parameter->isCallable ()) {
+            $CallbackIndex = $Index;
+            
+            break;
+          }
+        
+        // Store the callback on parameters
+        if ($CallbackIndex !== null) {
+          // Make sure parameters is big enough
+          if (count ($Parameters) < $CallbackIndex)
+            for ($i = 0; $i < $CallbackIndex; $i++)
+              if (!isset ($Parameters [$i]))
+                $Parameters [$i] = null;
           
-          break;
+          // Set the callback
+          $Parameters [$CallbackIndex] = $Callback;
+        } else {
+          trigger_error ('No position for callback detected, just giving it a try', E_USER_NOTICE);
+          
+          $Parameters [] = $Callback;
         }
-      
-      // Store the callback on parameters
-      if ($CallbackIndex !== null) {
-        // Make sure parameters is big enough
-        if (count ($Parameters) < $CallbackIndex)
-          for ($i = 0; $i < $CallbackIndex; $i++)
-            if (!isset ($Parameters [$i]))
-              $Parameters [$i] = null;
-        
-        // Set the callback
-        $Parameters [$CallbackIndex] = $Callback;
-      } else {
-        trigger_error ('No position for callback detected, just giving it a try', E_USER_NOTICE);
-        
-        $Parameters [] = $Callback;
       }
       
       // Do the call
       if (is_array ($Callable))
-        return $Function->invokeArgs ($Callable [0], $Parameters);
+        $rc = $Function->invokeArgs ($Callable [0], $Parameters);
+      else
+        $rc = $Function->invokeArgs ($Parameters);
       
-      return $Function->invokeArgs ($Parameters);
+      if (!$isPromise)
+        return $rc;
+      
+      if (!($rc instanceof qcEvents_Promise)) {
+        trigger_error ('Expected promise as result, but did not get one');
+        
+        return;
+      }
+      
+      return $rc->then ($Callback);
     }
     // }}}
     
@@ -291,8 +304,12 @@
         $this->Results [$Call] = $Result;
       
       // Run callbacks
-      foreach ($this->resultCallbacks as $resultCallback)
+      foreach ($this->resultCallbacks as $resultCallback) {
+        if ($resultCallback [1] === null)
+          $resultCallback [1] = (is_array ($Callable) ? $Callable [0] : null);
+        
         call_user_func ($resultCallback [0], $this, $Result, $resultCallback [1]);
+      }
       
       // Try to finish the queue
       if (!$this->lockFinish)
