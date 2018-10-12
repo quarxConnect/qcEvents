@@ -201,7 +201,12 @@
         return;
       }
       
-      return $rc->then ($Callback);
+      return $rc->then (
+        $Callback,
+        function () use ($Callable, $Parameters) {
+          $this->processResult ($Callable, $Parameters, array (false));
+        }
+      );
     }
     // }}}
     

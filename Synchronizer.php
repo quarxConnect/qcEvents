@@ -104,33 +104,61 @@
       
       // Analyze parameters of the call
       $Method = new ReflectionMethod ($Handler, $Function);
-      $CallbackIndex = null;
       
-      foreach ($Method->getParameters () as $Index=>$Parameter) 
-        if ($Parameter->isCallable ()) {
-          $CallbackIndex = $Index;
+      if (!($isPromise = ($Method->getReturnType () == 'qcEvents_Promise'))) {
+        $CallbackIndex = null;
+        
+        foreach ($Method->getParameters () as $Index=>$Parameter) 
+          if ($Parameter->isCallable ()) {
+            $CallbackIndex = $Index;
+            
+            break;
+          }
+        
+        // Store the callback on parameters
+        if ($CallbackIndex !== null) {
+          // Make sure parameters is big enough
+          if (count ($Parameters) < $CallbackIndex)
+            for ($i = 0; $i < $CallbackIndex; $i++)
+              if (!isset ($Parameters [$i]))
+                $Parameters [$i] = null;
           
-          break;
+          // Set the callback
+          $Parameters [$CallbackIndex] = $Callback;
+        } else {
+          trigger_error ('No position for callback detected, just giving it a try', E_USER_NOTICE);
+          
+          $Parameters [] = $Callback;
         }
-      
-      // Store the callback on parameters
-      if ($CallbackIndex !== null) {
-        // Make sure parameters is big enough
-        if (count ($Parameters) < $CallbackIndex)
-          for ($i = 0; $i < $CallbackIndex; $i++)
-            if (!isset ($Parameters [$i]))
-              $Parameters [$i] = null;
-        
-        // Set the callback
-        $Parameters [$CallbackIndex] = $Callback;
-      } else {
-        trigger_error ('No position for callback detected, just giving it a try', E_USER_NOTICE);
-        
-        $Parameters [] = $Callback;
       }
       
       // Do the call
-      $Method->invokeArgs ((is_object ($Handler) ? $Handler : null), $Parameters);
+      $rc = $Method->invokeArgs ((is_object ($Handler) ? $Handler : null), $Parameters);
+      
+      // Check for a returned promise
+      if ($rc instanceof qcEvents_Promise) {
+        // Check if this was expected
+        if (!$isPromise)
+          trigger_error ('Got an unexpected Promise in return');
+        
+        
+        $rc->then (
+          $Callback,
+          function () use (&$Loop, &$Ready, &$Result, $Base) {
+            // Store the result
+            $Ready = true;
+            $Result = array (false);
+            
+            // Leave the loop
+            if ($Loop)
+              $Base->loopBreak ();
+          }
+        );
+      } elseif ($isPromise) {
+        trigger_error ('Expected Promise as return, but did not get one. Things will be weired!');
+        
+        return false;
+      }
       
       // Run the loop until ready
       $Loop = true;
