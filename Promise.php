@@ -114,6 +114,9 @@
         $Done = false;
         $Pending = count ($Promises);
         
+        foreach ($Values as $ID=>$Value)
+          $Values [$ID] = array ($Values);
+        
         // Register handlers
         foreach ($Promises as $ID=>$Promise)
           $Promise->then (
@@ -123,10 +126,7 @@
                 return;
               
               // Remember the result
-              if (func_num_args () == 1)
-                $Values [$ID] = func_get_arg (0);
-              else
-                $Values [$ID] = func_get_args ();
+              $Values [$ID] = func_get_args ();
               
               // Check if we are done
               if ($Pending-- > 1)
@@ -136,9 +136,14 @@
               $Done = true;
               
               // Forward the result
-              call_user_func ($resolve, $Values);
+              $Result = array ();
               
-              return $Values;
+              foreach ($Values as $V)
+                $Result = array_merge ($Result, $V);
+              
+              call_user_func ($resolve, $Result);
+              
+              return $Result;
             },
             function () use (&$Done, $reject) {
               // Check if the promise is settled
@@ -351,13 +356,6 @@
       // Quit if there is no child-promise to fullfill
       if (!$childPromise)
         return;
-      
-      // Check for an intermediate promise
-      if ($Result instanceof qcEvents_Promise)
-        return $Result->then (
-          function () use ($childPromise) { $childPromise->finish ($childPromise::DONE_FULLFILL, func_get_args ()); },
-          function () use ($childPromise) { $childPromise->finish ($childPromise::DONE_REJECT,   func_get_args ()); }
-        );
       
       // Finish the child-promise
       $childPromise->finish ($ResultType, $Result);
