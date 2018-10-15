@@ -22,6 +22,22 @@
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   
   class qcEvents_Stream_Stratum extends qcEvents_Hookable implements qcEvents_Interface_Stream_Consumer {
+    // Mining-Algorithm of our client
+    const ALGORITHM_SHA256 = 'sha256';
+    const ALGORITHM_SCRYPT = 'scrypt';
+    const ALGORITHM_X11 = 'x11';
+    const ALGORITHM_ETH = 'eth';
+    
+    private $Algorithm = null;
+    
+    // Protocol-Version
+    const PROTOCOL_STRATUM = 0x00;
+    const PROTOCOL_ETH_STRATUM = 0x01;
+    const PROTOCOL_ETH_STRATUM_NICEHASH = 0x02;
+    const PROTOCOL_ETH_GETWORK = 0x03;
+
+    private $ProtocolVersion = qcEvents_Stream_Stratum::PROTOCOL_STRATUM;
+    
     /* Stream to our peer */
     private $Stream = null;
     
@@ -47,6 +63,62 @@
     }
     // }}}
     
+    // {{{ getAlgorithm
+    /**
+     * Retrive the mining-algorithm of our client
+     * 
+     * @access public
+     * @return enum
+     **/
+    public function getAlgorithm () {
+      return $this->Algorithm;
+    }
+    // }}}
+    
+    // {{{ setAlgorithm
+    /**
+     * Set mining-algorithm of our client
+     * 
+     * @param enum $Algorithm
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setAlgorithm ($Algorithm) {
+      // Set the algorithm
+      $this->Algorithm = $Algorithm;
+      
+      // Indicate success
+      return true;
+    }
+    // }}}
+    
+    // {{{ getProtocolVersion
+    /**
+     * Retrive the actually negotiated protocol-version
+     * 
+     * @access public
+     * @return enum
+     **/
+    public function getProtocolVersion () {
+      return $this->ProtocolVersion;
+    }
+    // }}}
+    
+    // {{{ setProtocolVersion
+    /**
+     * Set the negotiated protocol-version
+     * 
+     * @param enum $Version
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setProtocolVersion ($Version) {
+      $this->ProtocolVersion = $Version;
+    }
+    // }}}
+    
     // {{{ sendRequest
     /**
      * Write out a strarum-request to the wire and wait for an answer
@@ -59,7 +131,7 @@
      * @access public
      * @return void
      **/
-    public function sendRequest ($Request, array $Parameters = null, callable $Callback = null, $Private = null) {
+    public function sendRequest ($Request, array $Parameters = null, callable $Callback = null, $Private = null, array $Extra = null) {
       // Make sure parameters are an array
       if ($Parameters === null)
         $Parameters = array ();
@@ -72,43 +144,71 @@
         $this->Requests [$MessageID] = array ($Callback, $Private);
       
       // Write out the request
-      $this->sendMessage (array (
-        'id' => $MessageID,
-        'method' => $Request,
-        'params' => $Parameters,
-      ));
+      $this->sendMessage (
+        array (
+          'id' => $MessageID,
+          'method' => $Request,
+          'params' => $Parameters,
+        ),
+        $Extra
+      );
     }
     // }}}
     
-    public function sendNotify ($Notify, array $Parameters = null) {
+    // {{{ sendNotify
+    /**
+     * Push a notify to our peer
+     * 
+     * @param string $Notify
+     * @param array $Parameters (optional)
+     * @param array $Extra (optional)
+     * 
+     * @access public
+     * @return void
+     **/
+    public function sendNotify ($Notify, array $Parameters = null, array $Extra = null) {
       // Make sure parameters are an array
       if ($Parameters === null)
         $Parameters = array ();
       
       // Write out the request
-      $this->sendMessage (array (
-        'id' => null,
-        'method' => $Notify,
-        'params' => $Parameters,
-      ));
+      $this->sendMessage (
+        array (
+          'id' => ($this->Algorithm == $this::ALGORITHM_ETH ? 0 : null),
+          'method' => $Notify,
+          'params' => $Parameters,
+        ),
+        $Extra
+      );
     }
+    // }}}
     
     // {{{ sendMessage
     /**
      * Write out a Stratum-Message to the stream (use with caution!)
      * 
      * @param mixed $Message
+     * @param array $Extra (optional)
      * 
      * @access public
      * @return void
      **/
-    public function sendMessage ($Message) {
+    public function sendMessage ($Message, array $Extra = null) {
+      // Make sure the message is an array
+      $Message = (array)$Message;
+      
+      if ($Extra)
+        $Message = array_merge ($Extra, $Message);
+      
+      // Patch in jsonrpc-version for ethereum
+      if ($this->Algorithm == $this::ALGORITHM_ETH)
+        $Message ['jsonrpc'] = '2.0';
+      
+      // Push message to the wire
       if (!$this->Stream || !$this->Stream->isConnected ())
         $this->Queue [] = $Message;
-      else {
-        # echo '<< ', json_encode ($Message) . "\n";
+      else
         $this->Stream->write (json_encode ($Message) . "\n");
-      }
     }
     // }}}
     
@@ -138,7 +238,16 @@
           return $this->close ();
         }
         
-        # echo '>> ', substr ($this->Buffer, $s, $p - $s), "\n";
+        // Do some eth-magic
+        if ($this->getAlgorithm () == $this::ALGORITHM_ETH) {
+          if (property_exists ($call, 'result') && !property_exists ($call, 'error'))
+            $call->error = null;
+          elseif (!property_exists ($call, 'result') && property_exists ($call, 'error'))
+            $call->result = null;
+          
+          if (property_exists ($call, 'id') && ($call->id === 0))
+            $call->id = null;
+        }
         
         // Sanatize the message
         if (!property_exists ($call, 'id') || !(
@@ -217,7 +326,7 @@
         unset ($this->Requests [$Message->id]);
         
         // Run the callback
-        $this->___raiseCallback ($CallbackSpec [0], $Message->result, $Message->error, $CallbackSpec [1]);
+        return $this->___raiseCallback ($CallbackSpec [0], $Message->result, $Message->error, $CallbackSpec [1]);
       }
       
       // Raise generic callback for this

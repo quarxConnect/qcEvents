@@ -26,9 +26,12 @@
   }
   
   require_once ('qcEvents/Stream/Stratum.php');
-  require_once ('Scrypt/Scrypt.php');
+  require_once ('qcEvents/Interface/Timer.php');
+  require_once ('qcEvents/Trait/Timer.php');
   
-  class qcEvents_Server_Stratum extends qcEvents_Stream_Stratum {
+  class qcEvents_Server_Stratum extends qcEvents_Stream_Stratum implements qcEvents_Interface_Timer {
+    use qcEvents_Trait_Timer;
+    
     // Used nonces
     private static $Nonces = array ();
     private static $nextNonce = 0;
@@ -36,24 +39,20 @@
     // Version-Identifier of our client
     private $Version = null;
     
-    // Mining-Algorithm of our client
-    const ALGORITHM_SHA256 = 'sha256';
-    const ALGORITHM_SCRYPT = 'scrypt';
-    const ALGORITHM_X11 = 'x11';
-    
-    private $Algorithm = null;
-    
     // Mininig-Difficulty
     private $Difficulty = 1;
     
     // Extra-Nonce for this client
-    private $ExtraNonce1 = 0x00000000;
+    private $ExtraNonce1 = null;
     
     // Length of Extra-Nonce-2 for this client
     private $ExtraNonce2Length = 4;
     
     // Active mining-jobs
     private $Jobs = array ();
+    
+    // Latest mining-job
+    private $jobLatest = null;
     
     // Work done for unknown jobs
     private $workUnknown = 0;
@@ -67,45 +66,6 @@
     // Work done
     private $workDone = 0;
     
-    // {{{ __construct
-    /**
-     * Create new stratum-server and assign unused Extra-Nonce
-     * 
-     * @access friendly
-     * @return void
-     **/
-    function __construct () {
-      // Set the nonce
-      if (defined ('QCEVENTS_STRAUM_NONCE_RANDOM') && QCEVENTS_STRAUM_NONCE_RANDOM) {
-        $max = (PHP_INT_SIZE > 4 ? 0xffffffff : 0x7fffffff);
-        
-        do {
-          $this->ExtraNonce1 = rand (0, $max);
-        } while (isset (self::$Nonces [$this->ExtraNonce1]));
-          
-        return;
-      }
-      
-      $this->ExtraNonce1 = self::$nextNonce;
-      self::$Nonces [$this->ExtraNonce1] = true;
-      
-      // Find next free nonce
-      for ($i = self::$nextNonce + 1; $i <= 0xFFFFFFFF; $i++)
-        if (!isset (self::$Nonces [$i])) {
-          self::$nextNonce = $i;
-          
-          return;
-        }
-      
-      for ($i = 0; $i < $this->ExtraNonce1; $i++)
-        if (!isset (self::$Nonces [$i])) {
-          self::$nextNonce = $i;
-          
-          return;
-        }
-    }
-    // }}}
-    
     // {{{ __destruct
     /**
      * Cleanup nonce-registry
@@ -114,6 +74,9 @@
      * @return void
      **/
     function __destruct () {
+      if ($this->ExtraNonce1 === null)
+        return;
+      
       unset (self::$Nonces [$this->ExtraNonce1]);
       
       if (self::$nextNonce > $this->ExtraNonce1)
@@ -133,18 +96,6 @@
     }
     // }}}
     
-    // {{{ getAlgorithm
-    /**
-     * Retrive the mining-algorithm of our client
-     * 
-     * @access public
-     * @return enum
-     **/
-    public function getAlgorithm () {
-      return $this->Algorithm;
-    }
-    // }}}
-    
     // {{{ setAlgorithm
     /**
      * Set mining-algorithm of our client
@@ -156,10 +107,8 @@
      **/
     public function setAlgorithm ($Algorithm) {
       // Set the algorithm
-      $this->Algorithm = $Algorithm;
-      
-      // Bail out
-      $this->bailOut (':: Mining using %s', $this->Algorithm);
+      if (!parent::setAlgorithm ($Algorithm))
+        return false;
       
       // Indicate success
       return true;
@@ -171,7 +120,7 @@
      * Retrive the assigned mininig-difficulty
      * 
      * @access public
-     * @return int
+     * @return float
      **/
     public function getDifficulty () {
       return $this->Difficulty;
@@ -182,23 +131,22 @@
     /**
      * Set a new mining difficulty
      * 
-     * @param int $Difficulty
+     * @param float $Difficulty
      * 
      * @access public
      * @return void
      **/
     public function setDifficulty ($Difficulty) {
       // Store the new difficulty
-      $this->Difficulty = (int)$Difficulty;
-      
-      // Bail out
-      $this->bailOut ('<< New difficulty %d', $Difficulty);
+      $this->Difficulty = (float)$Difficulty;
       
       // Forward the message
-      return $this->sendNotify (
-        'mining.set_difficulty',
-        array ($this->Difficulty)
-      );
+      if (($this->getProtocolVersion () != $this::PROTOCOL_ETH_GETWORK) &&
+          ($this->getProtocolVersion () != $this::PROTOCOL_ETH_STRATUM)) // TODO: Check if eth-stratum really don't support this
+        return $this->sendNotify (
+          'mining.set_difficulty',
+          array ($this->Difficulty)
+        );
     }
     // }}}
     
@@ -212,17 +160,95 @@
      * @return void
      **/
     public function addJob ($Job) {
+      // Preprocess ethereum-stuff
+      if ($this->getAlgorithm () == $this::ALGORITHM_ETH) {
+        /**
+         * Ethereum-GetWork has 3 Elements (Headerhash, Seedhash, Target)
+         * Ethereum-Stratum has 5 Elements (Job-ID, Headerhash, Seedhash, Target, Reset)
+         * Ethereum-Stratum-Nicehash has 4 Elements (Job-ID, Seedhash, Headerhash, Reset)
+         **/
+        static $jobTypes = array (
+          3 => self::PROTOCOL_ETH_GETWORK,
+          4 => self::PROTOCOL_ETH_STRATUM_NICEHASH,
+          5 => self::PROTOCOL_ETH_STRATUM,
+        );
+        
+        if (!isset ($jobTypes [count ($Job)])) {
+          trigger_error ('Invlaid Job-Format');
+          
+          return false;
+        }
+        
+        $inFormat = $jobTypes [count ($Job)];
+        
+        // Check wheter to convert the job
+        if ($inFormat != $this->getProtocolVersion ()) {
+          // Convert Job to eth-stratum
+          if ($inFormat == $this::PROTOCOL_ETH_STRATUM_NICEHASH)
+            $Job = array (
+              $Job [0],
+              $Job [2],
+              $Job [1],
+              gmp_strval (gmp_div (gmp_init ('00000000ffff0000000000000000000000000000000000000000000000000000', 16), gmp_init ($this->Difficulty)), 16),
+              $Job [3],
+            );
+          elseif ($inFormat == $this::PROTOCOL_ETH_GETWORK)
+            $Job = array (
+              substr ($Job [0], 2),
+              substr ($Job [0], 2),
+              substr ($Job [1], 2),
+              substr ($Job [2], 2),
+              true, // TODO: How to detect if we have to reset?!
+            );
+          
+          // Convert back to desired format
+          if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM_NICEHASH)
+            $Job = array (
+              $Job [0],
+              $Job [2],
+              $Job [1],
+              $Job [4],
+            );
+            // TODO: Retarget difficulty here
+          elseif ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK)
+            $Job = array (
+              '0x' . $Job [1],
+              '0x' . $Job [2],
+              '0x' . $Job [3],
+            );
+        }
+      }
+      
       // Check wheter to reset
-      if ($Job [8])
+      if ($isEthereumGetWork = ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK))
+        $Reset = true;
+      elseif ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM)
+        $Reset = (isset ($Job [4]) && $Job [4]);
+      elseif ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM_NICEHASH)
+        $Reset = (isset ($Job [3]) && $Job [3]);
+      elseif (isset ($Job [8]))
+        $Reset = $Job [8];
+      else
+        $Reset = false;
+      
+      // Reset jobs if needed
+      if ($Reset)
         $this->Jobs = array ();
       
       // Register the job
       $this->Jobs [$Job [0]] = $Job;
+      $this->jobLatest = $Job [0];
       
       // Raise a callback
-      $this->___callback ('stratumWorkNew', $Job);
+      $this->___callback ('stratumWorkNew', $Job, $Reset);
       
       // Forward the job
+      if ($isEthereumGetWork)
+        return $this->sendMessage (array (
+          'id' => 0,
+          'result' => $Job,
+        ));
+      
       return $this->sendNotify (
         'mining.notify',
         $Job
@@ -238,6 +264,42 @@
      * @return int
      **/
     public function getExtraNonce1 () {
+      // Assign an extra-nonce if we don't have one
+      if ($this->ExtraNonce1 === null) {
+        $maxNonce = ($this->getAlgorithm () == $this::ALGORITHM_ETH ? 0xffffff : (PHP_INT_SIZE > 4 ? 0xffffffff : 0x7fffffff));
+        
+        // Set the nonce
+        if (defined ('QCEVENTS_STRAUM_NONCE_RANDOM') && QCEVENTS_STRAUM_NONCE_RANDOM) {
+          do {
+            $this->ExtraNonce1 = rand (0, $maxNonce);
+          } while (isset (self::$Nonces [$this->ExtraNonce1]));
+        } else {
+          $this->ExtraNonce1 = self::$nextNonce;
+          
+          // Find next free nonce
+          for ($i = self::$nextNonce + 1; $i <= $maxNonce; $i++)
+            if (!isset (self::$Nonces [$i])) {
+              self::$nextNonce = $i;
+              break;
+            }
+          
+          if (self::$nextNonce == $this->ExtraNonce1)
+            for ($i = 0; $i < $this->ExtraNonce1; $i++)
+              if (!isset (self::$Nonces [$i])) {
+                self::$nextNonce = $i;
+                
+                break;
+              }
+        }
+        
+        // Claim the nonce
+        self::$Nonces [$this->ExtraNonce1] = true;
+      }
+      
+      // May only be 3 bytes in etherum/nicehash
+      if ($this->getAlgorithm () == $this::ALGORITHM_ETH)
+        return ($this->ExtraNonce1 & 0xffffff);
+      
       return $this->ExtraNonce1;
     }
     // }}}
@@ -270,20 +332,34 @@
         return;
       
       // Change the values
-      if ($ExtraNonce1 !== null)
-        $this->ExtraNonce1 = (int)$ExtraNonce1;
+      if ($ExtraNonce1 !== null) {
+        unset (self::$Nonces [$this->ExtraNonce1]);
+        
+        $this->ExtraNonce1 = ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM_NICEHASH ? (int)$ExtraNonce1 & 0xffffff : (int)$ExtraNonce1);
+        
+        self::$Nonces [$this->ExtraNonce1] = true;
+      }
       
-      if ($ExtraNonce2Length !== null)
+      if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM_NICEHASH)
+        $this->ExtraNonce2Length = 5;
+      elseif ($ExtraNonce2Length !== null)
         $this->ExtraNonce2Length = (int)$ExtraNonce2Length;
       
       // Raise a callback
       $this->___callback ('stratumExtraNonceChanged', $this->ExtraNonce1, $this->ExtraNonce2Length);
       
       // Notify the client
-      $this->sendNotify (
-        'mining.set_extranonce',
-        array (sprintf ('%08x', $this->ExtraNonce1), $this->ExtraNonce2Length)
-      );
+      if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM_NICEHASH)
+        $this->sendNotify (
+          'mining.set_extranonce',
+          array (sprintf ('%06x', $this->ExtraNonce1))
+        );
+      elseif (($this->getProtocolVersion () != $this::PROTOCOL_ETH_GETWORK) &&
+              ($this->getProtocolVersion () != $this::PROTOCOL_ETH_STRATUM))
+        $this->sendNotify (
+          'mining.set_extranonce',
+          array (sprintf ('%08x', $this->ExtraNonce1), $this->ExtraNonce2Length)
+        );
     }
     // }}}
     
@@ -305,12 +381,16 @@
       // Patch in our information
       $Args = func_get_args ();
       $Args [0] = $Stream->getRemoteName ();
-      array_unshift ($Args, '[%-6s] %-28s ' . $Msg . "\n", $this->Algorithm);
+      array_unshift ($Args, '[%-6s] %-28s ' . $Msg . "\n", $this->getAlgorithm ());
       
       // Bail out
       call_user_func_array ('printf', $Args);
     }
     // }}}
+    
+    public function sendMessage ($Message, array $Extra = null) {
+      return parent::sendMessage ($Message, $Extra);
+    }
     
     // {{{ processRequest
     /**
@@ -322,6 +402,151 @@
      * @return void
      **/
     protected function processRequest ($Message) {
+      // Ethereum works sometimes differently
+      if ($isEthereum = ($this->getAlgorithm () == $this::ALGORITHM_ETH)) {
+        // Try to process a login
+        if (($Message->method == 'eth_submitLogin') ||
+            ($Message->method == 'eth_login')) {
+          // Signal getwork-based implementation
+          $this->setProtocolVersion ($this::PROTOCOL_ETH_GETWORK);
+          
+          // Check number of parameters
+          if ((count ($Message->params) < 1) || (count ($Message->params) > 2))
+            // Push back an error
+            return $this->sendMessage (array (
+              'id' => $Message->id,
+              'error' => array (
+                24,
+                'Not authorized / message malformed'
+              ),
+              'result' => null,
+            ));
+          
+          // Raise a callback for this
+          return $this->___callback ('stratumAuthorize', $Message->id, $Message->params [0], (isset ($Message->params [1]) ? $Message->params [1] : null));
+        } elseif ($Message->method == 'eth_getWork') {
+          // Signal getwork-based implementation
+          $this->setProtocolVersion ($this::PROTOCOL_ETH_GETWORK);
+          
+          // Check if we have a job ready
+          if (($this->jobLatest === null) || !isset ($this->Jobs [$this->jobLatest]))
+            return $this->addTimer (3, false, function () use ($Message) {
+              if (($this->jobLatest === null) || !isset ($this->Jobs [$this->jobLatest]))
+                return $this->sendMessage (array (
+                  'id' => $Message->id,
+                  'error' => array (
+                    0,
+                    'Work not ready',
+                  ),
+                  'result' => null,
+                ));
+              
+              return $this->sendMessage (array (
+                'id' => $Message->id,
+                'error' => null,
+                'result' => array (
+                  $this->Jobs [$this->jobLatest][0],
+                  $this->Jobs [$this->jobLatest][1],
+                  $this->Jobs [$this->jobLatest][2],
+                ),
+              ));
+            });
+          
+          // Push back the latest job
+          return $this->sendMessage (array (
+            'id' => $Message->id,
+            'error' => null,
+            'result' => array (
+              $this->Jobs [$this->jobLatest][0],
+              $this->Jobs [$this->jobLatest][1],
+              $this->Jobs [$this->jobLatest][2],
+            ),
+          ));
+        } elseif ($Message->method == 'eth_submitWork') {
+          // Signal getwork-based implementation
+          $this->setProtocolVersion ($this::PROTOCOL_ETH_GETWORK);
+          
+          // Check if the job is known
+          $JobID = $this->jobLatest;
+          
+          if (!isset ($this->Jobs [$JobID])) {
+            // Increase a counter
+            $this->workUnknown++;
+            
+            // Raise a callback for this
+            $this->___callback ('stratumWorkUnknownJob', $JobID, $Message->params);
+            
+            // Push back a non-sense-message
+            return $this->sendMessage (array (
+              'id' => $Message->id,
+              'error' => null,
+              'result' => true,
+            ));
+          }
+          
+          // Check the input
+          if ((count ($Message->params) != 3) ||
+              (strlen ($Message->params [0]) != 18) ||
+              (strlen ($Message->params [1]) != 66) ||
+              (strlen ($Message->params [2]) != 66)) {
+            // Increase a counter
+            $this->workMalformed++;
+            
+            // Raise a callback for this
+            $this->___callback ('stratumWorkMalformedJob', $this->Jobs [$JobID], $Message->params);
+            
+            // Push back a non-sense-message
+            return $this->sendMessage (array (
+              'id' => $Message->id,
+              'error' => null,
+              'result' => true,
+            ));
+          }
+          
+          # TODO: Validate the result here
+          
+          // Increase work-done-counter
+          $this->workDone++;
+          
+          // Raise a callback
+          return $this->___callback ('stratumWork', $Message->id, null, null, $this->Jobs [$JobID], $Message->params);
+        } elseif ($Message->method == 'eth_submitHashrate') {
+          // Signal getwork-based implementation
+          $this->setProtocolVersion ($this::PROTOCOL_ETH_GETWORK);
+          
+          // Check the input
+          if ((count ($Message->params) != 2) ||
+              (strlen ($Message->params [0]) > 66) ||
+              (strlen ($Message->params [1]) > 66))
+            return $this->sendMessage (array (
+              'id' => $Message->id,
+              'error' => array (
+                24,
+                'Message malformed'
+              ),
+              'result' => null,
+            ));
+          
+          // Raise callback for this
+          $this->___callback ('stratumHashrate', $Message->params [0], $Message->params [1]);
+          
+          // Just ACK this
+          return $this->sendMessage (array (
+            'id' => $Message->id,
+            'error' => null,
+            'result' => true,
+          ));
+        }
+        
+        // Check if we were nailed to get-work-based protocol
+        if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK) {
+          $this->bailOut ('>> Unknown method %s', $Message->method);
+          var_dump ($Message);
+          
+          return parent::processRequest ($Message);
+        }
+      }
+      
       // Try to run the method
       if ($Message->method == 'mining.subscribe') {
         // Check if this was done before
@@ -334,6 +559,19 @@
             ),
             'result' => null,
           ));
+        
+        // Treat ethereum special
+        if ($isEthereum) {
+          // Ethereum/NiceHash Stratum requires exactly 2 parameters (miner-version and protocol-version)
+          if (count ($Message->params) == 2) {
+            // Normal stratum treats the second parameter as session-resumption, we skip this
+            $this->setProtocolVersion ($this::PROTOCOL_ETH_STRATUM_NICEHASH);
+            $this->ExtraNonce2Length = 5;
+            
+            unset ($Message->params [1]);
+          } else
+            $this->setProtocolVersion ($this::PROTOCOL_ETH_STRATUM);
+        }
         
         // Store client-UA if available
         if (count ($Message->params) > 0)
@@ -367,38 +605,68 @@
           // Raise a callback for this
           $this->___callback ('stratumWorkUnknownJob', $JobID, $Message->params);
           
-          // Push back a non-sense-message
+          // Push back an error
           return $this->sendMessage (array (
             'id' => $Message->id,
-            'error' => null,
-            'result' => true,
+            'error' => array (
+              21,
+              'Job not found',
+            ),
+            'result' => null,
           ));
         }
         
+        // Treat ethereum special
+        if ($isEthereum) {
+          // Convert work to  Eth-Submit-Work-Format
+          if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM_NICEHASH) {
+            if ($Wellformed = (count ($Message->params) == 3))
+              $Message->params = array (
+                '0x' . $Message->params [2],
+                '0x' . $this->Jobs [$JobID][2],
+                '0x' // TODO!!!
+              );
+          } elseif ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM) {
+            if ($Wellformed = (count ($Message->params) == 5))
+              $Message->params = array (
+                '0x' . $Message->params [2],
+                '0x' . $Message->params [3],
+                '0x' . $Message->params [4],
+              );
+          } else
+            $Wellformed = (count ($Message->params) == 3);
+          
         // Check the input
-        if (strlen ($Message->params [2]) != $this->ExtraNonce2Length * 2) {
+        } else
+          $Wellformed = (strlen ($Message->params [2]) == $this->ExtraNonce2Length * 2);
+        
+        if (!$Wellformed) {
           // Increase a counter
           $this->workMalformed++;
           
           // Raise a callback for this
           $this->___callback ('stratumWorkMalformedJob', $this->Jobs [$JobID], $Message->params);
           
-          // Push back a non-sense-message
+          // Push back an error
           return $this->sendMessage (array (
             'id' => $Message->id,
-            'error' => null,
-            'result' => true,
+            'error' => array (
+              20,
+              'Message malformed',
+            ),
+            'result' => null,
           ));
         }
         
         // Validate the work
         if (extension_loaded ('gmp'))
-          switch ($this->Algorithm) {
+          switch ($this->getAlgorithm ()) {
             case $this::ALGORITHM_SHA256:
               $Valid = $this->validateSHA256 ($this->Jobs [$JobID], $Message, $Block); break;
             case $this::ALGORITHM_SCRYPT:
               $Valid = $this->validateScrypt ($this->Jobs [$JobID], $Message, $Block); break;
             case $this::ALGORITHM_X11: # TODO
+            case $this::ALGORITHM_ETH: # TODO
             default:
               $Valid = $Block = null;
           }
@@ -432,12 +700,6 @@
       } else {
         $this->bailOut ('>> Unknown method %s', $Message->method);
         var_dump ($Message);
-        
-        $this->sendMessage (array (
-          'id' => $Message->id,
-          'error' => null,
-          'result' => true,
-        ));
       }
 
       parent::processRequest ($Message);
@@ -523,13 +785,16 @@
         $diffBase = gmp_init ('0x00000000ffff0000000000000000000000000000000000000000000000000000');
       
       $Hash = gmp_import (strrev (hash ('sha256', hash ('sha256', $Header, true), true)));
-      $Diff = gmp_div ($diffBase, gmp_init ($this->Difficulty));
+      $Diff = gmp_div ($diffBase, gmp_init ((int)ceil ($this->Difficulty)));
       $Valid = (gmp_cmp ($Hash, $Diff) <= 0);
       
       // Check if a block was found
       $Max = hexdec ($Job [6]);
       
       $Block = (gmp_cmp ($Hash, gmp_mul (gmp_init ($Max & 0xFFFFFF), gmp_pow (gmp_init (256), ((($Max >> 24) & 0xFF) - 3)))) <= 0);
+      
+      if ($Block)
+        printf ("%s\n%064s\n%064s\n", $Job [6], gmp_strval ($Hash, 16), gmp_strval (gmp_mul (gmp_init ($Max & 0xFFFFFF), gmp_pow (gmp_init (256), ((($Max >> 24) & 0xFF) - 3))), 16));
       
       // Return the result
       return $Valid;
@@ -547,6 +812,8 @@
      **/
     private function validateScrypt ($Job, $Message, &$Block = false) {
       // Make sure we have Scrypt available
+      require_once ('Scrypt/Scrypt.php');
+      
       static $Scrypt  = null;
       
       if ($Scrypt === null)
@@ -562,7 +829,7 @@
         $diffBase = gmp_init ('0x0000ffff00000000000000000000000000000000000000000000000000000000'); // NOTE: This is for LTC, others may differ
       
       $Hash = gmp_import (strrev ($Scrypt->nosalt ($Header, 80)));
-      $Diff = gmp_div ($diffBase, gmp_init ($this->Difficulty));
+      $Diff = gmp_div ($diffBase, gmp_init ((int)ceil ($this->Difficulty)));
       $Valid = (gmp_cmp ($Hash, $Diff) <= 0);
       
       // Check if a block was found
@@ -629,7 +896,7 @@
      * @access protected
      * @return void
      **/
-    protected function stratumWork ($ID, $Valid, $Block, $Job, $Work) { }
+    protected function stratumWork ($ID, $Valid, $Block, array $Job, array $Work) { }
     // }}}
     
     // {{{ stratumWorkUnknownJob
@@ -663,11 +930,25 @@
      * Callback: A new job was added
      * 
      * @param array $Job
+     * @param bool $Reset (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected function stratumWorkNew ($Job) { }
+    protected function stratumWorkNew ($Job, $Reset = false) { }
+    // }}}
+    
+    // {{{ stratumHashrate
+    /**
+     * Callback: Client notifies us about his hashrate
+     * 
+     * @param string $Hashrate
+     * @param string $ClientID
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function stratumHashrate ($Hashrate, $ClientID) { }
     // }}}
   }
 
