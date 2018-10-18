@@ -138,8 +138,12 @@
               // Forward the result
               $Result = array ();
               
-              foreach ($Values as $V)
-                $Result = array_merge ($Result, $V);
+              foreach ($Values as $ID=>$Results)
+                if ((count ($Results) == 1) && !isset ($Result [$ID]))
+                  $Result [$ID] = array_shift ($Results);
+                else
+                  foreach ($Results as $V)
+                    $Result [] = $V;
               
               call_user_func ($resolve, $Result);
               
