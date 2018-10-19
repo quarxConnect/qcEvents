@@ -343,7 +343,7 @@
         $this->forcedEvents = array ();
         
         foreach ($evForced as $ev) {
-          call_user_func ($ev);
+          $this->invoke ($ev);
           
           if ($this->loopState > 1)
             break (2);
@@ -400,7 +400,7 @@
         
         foreach ($readFDs as $readFD) {
           if (isset ($this->fdOwner [(int)$readFD]))
-            $this->fdOwner [(int)$readFD]->raiseRead ();
+            $this->invoke (array ($this->fdOwner [(int)$readFD], 'raiseRead'));
           
           if ($this->loopState > 1)
             break (2);
@@ -408,7 +408,7 @@
         
         foreach ($writeFDs as $writeFD) {
           if (isset ($this->fdOwner [(int)$writeFD]))
-            $this->fdOwner [(int)$writeFD]->raiseWrite ();  
+            $this->invoke (array ($this->fdOwner [(int)$writeFD], 'raiseWrite'));
           
           if ($this->loopState > 1)
             break (2);
@@ -416,7 +416,7 @@
         
         foreach ($errorFDs as $errorFD) {
           if (isset ($this->fdOwner [(int)$errorFD]))
-            $this->fdOwner [(int)$errorFD]->raiseError ($errorFD);  
+            $this->invoke (array ($this->fdOwner [(int)$errorFD], 'raiseError'), $errorFD);
           
           if ($this->loopState > 1)
             break (2);
@@ -528,13 +528,13 @@
             // Run the callback
             if ($Event [3] !== null) {
               if (!is_array ($Event [3]) || ($Event [3][0] !== $Event [0]))
-                call_user_func ($Event [3], $Event [0], $Event [4]);
+                $this->invoke ($Event [3], $Event [0], $Event [4]);
               else
-                call_user_func ($Event [3], $Event [4]);
+                $this->invoke ($Event [3], $Event [4]);
             
             // ... or raise the event
             } else
-              $Event [0]->raiseTimer ();
+              $this->invoke (array ($Event [0], 'raiseTimer'));
             
             // Check wheter to repeat
             if ($Event [2])
@@ -562,6 +562,39 @@
           key (current ($this->Timers))
         );
       }
+    }
+    // }}}
+    
+    // {{{ invoke
+    /**
+     * Safely run a given callback
+     * 
+     * @param callable $Callback
+     * @param ...
+     * 
+     * @access private
+     * @return mixed
+     **/
+    private function invoke (callable $Callback) {
+      // Prepare parameters
+      $Parameters = func_get_args ();
+      $Callback = array_shift ($Parameters);
+      
+      // Try to run
+      try {
+        $Result = call_user_func_array ($Callback, $Parameters);
+      } catch (Exception $Exception) {
+        echo
+          'Uncought exception:', "\n",
+          ($Result = $Exception), "\n";
+      } catch (Error $Error) {
+        echo
+          'Uncought error:', "\n",
+          ($Result = $Error), "\n";
+      }
+      
+      // Forward the result
+      return $Result;
     }
     // }}}
   }
