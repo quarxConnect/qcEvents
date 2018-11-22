@@ -488,7 +488,7 @@
       $this->Connected = null;
       
       // Check if we have addresses to connect to
-      if (count ($this->socketAddresses) > 0)
+      if ($this->socketAddresses && (count ($this->socketAddresses) > 0))
         $this->socketConnectMulti ();
       
       // Sanity-Check if to use internal resolver
