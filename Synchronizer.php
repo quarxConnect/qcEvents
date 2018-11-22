@@ -97,6 +97,9 @@
         $Ready = true;
         $Result = func_get_args ();
         
+        if (count ($Result) == 0)
+          $Result [] = true;
+        
         // Leave the loop
         if ($Loop)
           $Base->loopBreak ();
