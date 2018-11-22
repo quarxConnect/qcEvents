@@ -54,7 +54,7 @@
      **/
     public static function resolve () {
       $args = func_get_args ();
-      $base = ((count ($args) > 0) && ($args [count ($args) - 1] instanceof qcEvents_Base) ? array_pop ($argv) : null);
+      $base = ((count ($args) > 0) && ($args [count ($args) - 1] instanceof qcEvents_Base) ? array_pop ($args) : null);
       
       return new static (function ($resolve) use ($args) {
         call_user_func_array ($resolve, $args);
@@ -74,7 +74,7 @@
      **/
     public static function reject () {
       $args = func_get_args ();
-      $base = ((count ($args) > 0) && ($args [count ($args) - 1] instanceof qcEvents_Base) ? array_pop ($argv) : null);
+      $base = ((count ($args) > 0) && ($args [count ($args) - 1] instanceof qcEvents_Base) ? array_pop ($args) : null);
       
       return new static (function ($resolve, $reject) use ($args) {
         call_user_func_array ($reject, $args);
