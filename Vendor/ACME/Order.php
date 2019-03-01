@@ -144,6 +144,18 @@
     }
     // }}}
     
+    // {{{ getIdentifiers
+    /**
+     * Retrive all identifiers of this order
+     * 
+     * @access public
+     * @return array
+     **/
+    public function getIdentifiers () {
+      return $this->Identifiers;
+    }
+    // }}}
+    
     // {{{ getAuthorizations
     /**
      * Retrive all authorizations for this order
@@ -193,7 +205,7 @@
         $CSR = base64_decode (substr ($CSR, strpos ($CSR, "\n") + 1, strpos ($CSR, "\n--") - strpos ($CSR, "\n")));
       
       // Run the request
-      return $this->ACME->request ($this->finalizeURI, true, array ('csr' => self::base64u ($CSR))->then (
+      return $this->ACME->request ($this->finalizeURI, true, array ('csr' => self::base64u ($CSR)))->then (
         function ($JSON) {
           // Push the lastest JSON to our self
           $this->updateFromJSON ($JSON);
