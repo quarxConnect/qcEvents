@@ -370,6 +370,18 @@
     }
     // }}}
     
+    // {{{ tlsOptions
+    /**
+     * Retrive TLS-Options for this server
+     * 
+     * @access public
+     * @return array
+     **/
+    public function tlsOptions () {
+      return $this->tlsOptions;
+    }
+    // }}}
+    
     // {{{ listen
     /**
      * Create a the server-process
