@@ -19,9 +19,10 @@
    **/
   
   require_once ('qcEvents/Promise.php');
+  require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Vendor/ACME/Order.php');
   
-  class qcEvents_Vendor_ACME {
+  class qcEvents_Vendor_ACME extends qcEvents_Hookable {
     /* Instance of HTTP-pool to use */
     private $httpPool = null;
     
@@ -39,6 +40,9 @@
     
     /* Next usable replay-nonce */
     private $replayNonce = null;
+    
+    /* Registration-Status */
+    private $registrationStatus = null;
     
     // {{{ base64u
     /**
@@ -252,6 +256,12 @@
      * @return qcEvents_Promise
      **/
     public function checkRegistration () : qcEvents_Promise {
+      // Check for cached registration-status
+      if ($this->registrationStatus === true)
+        return qcEvents_Promise::resolve (true);
+      elseif ($this->registrationStatus === false)
+        return qcEvents_Promise::reject ('Not registered');
+      
       return $this->getDirectory ()->then (
         function ($Directory) {
           // Make sure there is a newAccount-URL on directory
@@ -274,6 +284,8 @@
               }
               
               // Forward a positive state
+              $this->registrationStatus = true;
+              
               return true;
             }
           );
