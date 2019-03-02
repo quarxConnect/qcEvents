@@ -532,15 +532,16 @@
             if ($Header->hasField ('Replay-Nonce'))
               $this->replayNonce = $Header->getField ('Replay-Nonce');
             
-            // Check for an error-response
-            if ($rejectError && $Header->isError ())
-              return $reject ('Errornous response received', $Header, $Body);
-            
-            // Forward the result
+            // Try to parse JSON on the result
             if (($Header->getField ('Content-Type') == 'application/json') ||
                 ($Header->getField ('Content-Type') == 'application/problem+json'))
-              return $resolve (json_decode ($Body), $Header);
+              $Body = json_decode ($Body);
             
+            // Check for an error-response
+            if ($rejectError && $Header->isError ())
+              return $reject ('Errornous response received' . (is_object ($Body) && isset ($Body->detail) ? ': ' . $Body->detail : ''), $Header, $Body);
+            
+            // Forward the result
             return $resolve ($Body, $Header);
           }
         );
