@@ -262,6 +262,7 @@
       elseif ($this->registrationStatus === false)
         return qcEvents_Promise::reject ('Not registered');
       
+      // Retrive directory first
       return $this->getDirectory ()->then (
         function ($Directory) {
           // Make sure there is a newAccount-URL on directory
@@ -401,7 +402,11 @@
      * @return qcEvents_Promise
      **/
     public function createOrder (array $dnsNames, $validFrom = null, $validUntil = null) : qcEvents_Promise {
-      return $this->getDirectory ()->then (
+      return $this->checkRegistration ()->then (
+        function () {
+          return $this->getDirectory ();
+        }
+      )->then (
         function ($Directory) use ($dnsNames, $validFrom, $validUntil) {
           // Make sure there is a newOrder-URL on directory
           if (!isset ($Directory->newOrder))
@@ -451,7 +456,11 @@
      * @return qcEvents_Promise
      **/
     public function getOrder ($URI) : qcEvents_Promise {
-      return $this->request ($URI, false)->then (
+      return $this->checkRegistration ()->then (
+        function () use ($URI) {
+          return $this->request ($URI, false);
+        }
+      )->then (
         function ($Response) use ($URI) {
           // Create an order from the response
           return qcEvents_Vendor_ACME_Order::fromJSON ($this, $URI, $Response);
