@@ -155,9 +155,9 @@
       
       // Check timers
       foreach ($this->Timers as $s=>$Timers) {
-        foreach ($Timers as $m=>$Events) {
-          foreach ($Events as $i=>$ev)
-            if ($ev [0] === $Event)
+        foreach ($Timers as $m=>$Callbacks) {
+          foreach ($Callbacks as $i=>$Callback)
+            if (is_array ($Callback) && ($Callback [0] === $Event))
               unset ($this->Timers [$s][$m][$i]);
           
           if (count ($this->Timers [$s][$m]) == 0)
