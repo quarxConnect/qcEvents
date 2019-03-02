@@ -154,6 +154,18 @@
     }
     // }}}
     
+    // {{{ getEventBase
+    /**
+     * Retrive the handle of the current event-loop-handler
+     * 
+     * @access public
+     * @return qcEvents_Base May be NULL if none is assigned
+     **/
+    public function getEventBase () {
+      return $this->httpPool->getEventBase ();
+    }
+    // }}}
+    
     // {{{ getThumbprint
     /**
      * Retrive the thumbprint of this ACME-Client

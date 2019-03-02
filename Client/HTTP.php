@@ -53,6 +53,18 @@
     }
     // }}}
     
+    // {{{ getEventBase
+    /**
+     * Retrive the handle of the current event-loop-handler
+     * 
+     * @access public
+     * @return qcEvents_Base May be NULL if none is assigned
+     **/
+    public function getEventBase () {
+      return $this->eventBase;
+    }
+    // }}}
+    
     // {{{ addNewRequest
     /**
      * Enqueue an HTTP-Request
