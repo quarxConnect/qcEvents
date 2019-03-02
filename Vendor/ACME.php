@@ -341,6 +341,8 @@
               }
               
               // Just forward a positive value
+              $this->registrationStatus = true;
+              
               return true;
             }
           );
@@ -359,7 +361,13 @@
     public function unregister () : qcEvents_Promise {
       // Check if we already know our account-url
       if (isset ($this->joseHeader ['kid']))
-        return $this->request ($this->joseHeader ['kid'], true, array ('status' => 'deactivated'))->then (function () { return true; });
+        return $this->request ($this->joseHeader ['kid'], true, array ('status' => 'deactivated'))->then (
+          function () {
+            $this->registrationStatus = false;
+            
+            return true;
+          }
+        );
       
       // Try to detect our accont-url
       return $this->checkRegistration ()->then (
@@ -369,7 +377,13 @@
             throw new exception ('Failed to detect account-url');
           
           // Try to deactivate account
-          return $this->request ($this->joseHeader ['kid'], true, array ('status' => 'deactivated'))->then (function () { return true; });
+          return $this->request ($this->joseHeader ['kid'], true, array ('status' => 'deactivated'))->then (
+            function () {
+              $this->registrationStatus = false;
+              
+              return true;
+            }
+          );
         }
       );
     }
