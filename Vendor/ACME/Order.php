@@ -156,6 +156,18 @@
     }
     // }}}
     
+    // {{{ isInvalid
+    /**
+     * Check if the order is invalid
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isInvalid () {
+      return ($this->Status == $this::STATUS_INVALID);
+    }
+    // }}}
+    
     // {{{ getIdentifiers
     /**
      * Retrive all identifiers of this order
