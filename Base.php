@@ -18,6 +18,8 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
+  require_once ('qcEvents/Promise.php');
+  
   class qcEvents_Base {
     /* Event-Types */
     const EVENT_READ = 0;
@@ -234,6 +236,25 @@
     }
     // }}}
     
+    // {{{ addTimeout
+    /**
+     * Enqueue a timeout
+     * 
+     * @param mixed $Timeout The timeout to wait (may be in seconds or array (seconds, microseconds))
+     * 
+     * @access public
+     * @return qcEvents_Promise Promise is fullfilled once the timeout was reached and never rejected
+     **/
+    public function addTimeout ($Timeout) : qcEvents_Promise {
+      return new qcEvents_Promise (
+        function ($resolve) use ($Timeout) {
+          $this->setupTimeout ($Timeout, $resolve);
+        },
+        $this
+      );
+    }
+    // }}}
+    
     // {{{ addTimer
     /**
      * Setup a new timer
@@ -249,9 +270,52 @@
      **/
     public function addTimer (qcEvents_Interface_Timer $Event, $Timeout, $Repeat = false, callable $Callback = null, $Private = null) {
       // Make sure we don't wast space if no callback is given
-      if ($Callback === null)
+      if ($Callback === null) {
         $Private = null;
+        $Callback = array ($Event, 'raiseTimer');
+      }
       
+      // Check wheter to repeat
+      if ($Repeat) {
+        $orgCallback = $Callback;
+        
+        $Callback = function () use (&$Callback, $orgCallback, $Private, $Timeout) {
+          // Invoke the original callback
+          $this->invoke ($orgCallback, $Private);
+          
+          // Enqueue again
+          $this->setupTimeout ($Timeout, $Callback);
+        };
+        
+        unset ($orgCallback);
+      
+      // Apply fix for private parameter
+      } elseif ($Private !== null) {
+        $orgCallback = $Callback;
+        
+        $Callback = function () use (&$Callback, $orgCallback, $Private) {
+          $this->invoke ($orgCallback, $Private);
+        };
+        
+        unset ($orgCallback);
+      }
+      
+      // Setup the timeout
+      return $this->setupTimeout ($Timeout, $Callback);
+    }
+    // }}}
+    
+    // {{{ setupTimeout
+    /**
+     * Setup a new timeout
+     * 
+     * @param mixed $Timeout The time to wait (may be in seconds or array (seconds, microseconds))
+     * @param callable $Callback Callback to run upon timeout
+     * 
+     * @access private
+     * @return void
+     **/
+    private function setupTimeout ($Timeout, callable $Callback) {
       // Get the current time
       $Now = $this->getTimer ();
       
@@ -267,15 +331,15 @@
       
       // Enqueue the event
       if (!isset ($this->Timers [$Then [0]])) {
-        $this->Timers [$Then [0]] = array ($Then [1] => array (array ($Event, $Timeout, $Repeat, $Callback, $Private)));
+        $this->Timers [$Then [0]] = array ($Then [1] => array ($Callback));
         
         ksort ($this->Timers, SORT_NUMERIC);
       } elseif (!isset ($this->Timers [$Then [0]][$Then [1]])) {
-        $this->Timers [$Then [0]][$Then [1]] = array (array ($Event, $Timeout, $Repeat, $Callback, $Private));
+        $this->Timers [$Then [0]][$Then [1]] = array ($Callback);
         
         ksort ($this->Timers [$Then [0]], SORT_NUMERIC);
       } else
-        $this->Timers [$Then [0]][$Then [1]][] = array ($Event, $Timeout, $Repeat, $Callback, $Private);
+        $this->Timers [$Then [0]][$Then [1]][] = $Callback;
       
       // Set the next timer
       if (($this->TimerNext === null) ||
@@ -299,10 +363,23 @@
      * @return void
      **/
     public function clearTimer (qcEvents_Interface_Timer $Event, $Timeout, $Repeat = false, callable $Callback = null, $Private = null) {
+      // Override callback if not given
+      if ($Callback === null) {
+        $Private = null;
+        $Callback = array ($Event, 'raiseTimer');
+      }
+      
+      // Bail out a warning for unsupported stuff
+      if ($Repeat || $Private) {
+        trigger_error ('clearTimer() for repeating timers and/or callbacks with private parameter is BROKEN', E_USER_WARNING);
+        
+        return;
+      }
+      
       foreach ($this->Timers as $Sec=>$Timers) {
         foreach ($Timers as $Usec=>$Events) {
           foreach ($Events as $ID=>$Spec)
-            if (($Spec [0] === $Event) && ($Spec [1] === $Timeout) && ($Spec [2] === $Repeat) && ($Spec [3] === $Callback) && ($Spec [4] === $Private))
+            if ($Spec === $Callback)
               unset ($this->Timers [$Sec][$Usec][$ID]);
           
           if (count ($this->Timers [$Sec][$Usec]) == 0)
@@ -509,7 +586,7 @@
           break;
         }
         
-        foreach ($Timers as $USec=>$Events) {
+        foreach ($Timers as $USec=>$Callbacks) {
           // Check if we are dealing with realy present events
           if ($Sec == $Now [0]) {
             // Check if we have moved too far
@@ -524,22 +601,9 @@
           }
           
           // Run all events
-          foreach ($Events as $Event) {
+          foreach ($Callbacks as $Callback)
             // Run the callback
-            if ($Event [3] !== null) {
-              if (!is_array ($Event [3]) || ($Event [3][0] !== $Event [0]))
-                $this->invoke ($Event [3], $Event [0], $Event [4]);
-              else
-                $this->invoke ($Event [3], $Event [4]);
-            
-            // ... or raise the event
-            } else
-              $this->invoke (array ($Event [0], 'raiseTimer'));
-            
-            // Check wheter to repeat
-            if ($Event [2])
-              $this->addTimer ($Event [0], $Event [1], $Event [2], $Event [3], $Event [4]);
-          }
+            $this->invoke ($Callback);
           
           // Get the current time
           $Now = $this->getTimer ();
