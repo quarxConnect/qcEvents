@@ -500,7 +500,7 @@
           );
           
           // Create Payload
-          $payload ['payload'] = self::base64u (json_encode ($Payload === null ? new stdClass : $Payload));
+          $payload ['payload'] = ($Payload === false ? '' : self::base64u (json_encode ($Payload === null ? new stdClass : $Payload)));
           
           // Create signature
           if (openssl_sign ($payload ['protected'] . '.' . $payload ['payload'], $signature, $this->Key, OPENSSL_ALGO_SHA256) === false)
