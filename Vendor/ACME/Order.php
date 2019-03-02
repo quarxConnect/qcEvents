@@ -144,6 +144,18 @@
     }
     // }}}
     
+    // {{{ isProcessing
+    /**
+     * Check if the order is in processing state
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isProcessing () {
+      return ($this->Status == $this::STATUS_PROCESSING);
+    }
+    // }}}
+    
     // {{{ isValid
     /**
      * Check if the order is valid and was processed
