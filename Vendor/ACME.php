@@ -476,7 +476,10 @@
               return $reject ('Errornous response received');
             
             // Forward the result
-            $resolve (json_decode ($Body), $Header);
+            if ($Header->getField ('Content-Type') == 'application/json')
+              return $resolve (json_decode ($Body), $Header);
+            
+            return $resolve ($Body, $Header);
           }
         );
       };
