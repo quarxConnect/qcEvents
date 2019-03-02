@@ -251,7 +251,7 @@
           
           // Check wheter to remove our own certificate from chain
           if (!$Full)
-            array_shift ($Full);
+            array_shift ($Chain);
           
           // Forward the result
           return $Chain;
