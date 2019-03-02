@@ -272,8 +272,20 @@
           return $this->request ($Directory->newAccount, true, array ('onlyReturnExisting' => true), null, false)->then (
             function ($Response, qcEvents_Stream_HTTP_Header $Header) {
               // Check if the registration is valid
-              if (!isset ($Response->status) || ($Response->status != 'valid'))
+              if (!isset ($Response->status)) {
+                $this->registrationStatus = null;
+                
+                throw new exception ('Registration-Status not found');
+              }
+              
+              if ($Response->status != 'valid') {
+                if (isset ($Response->type) && ($Response->type == 'urn:ietf:params:acme:error:accountDoesNotExist'))
+                  $this->registrationStatus = false;
+                else
+                  $this->registrationStatus = null;
+                
                 throw new exception ('Registration not valid');
+              }
               
               // Check for an account-url
               if ($Header->hasField ('Location') && ($URL = $Header->getField ('Location'))) {
@@ -318,7 +330,7 @@
           if ($Contacts !== null)
             $Params ['contact'] = $Contacts;
           
-          if (isset ($Directory ['meta']['termsOfService'])) {
+          if (isset ($Directory->meta->termsOfService)) {
             $Params ['termsOfServiceAgreed'] = ($acceptTOS === true);
             
             if ($acceptTOS !== true)
@@ -508,10 +520,11 @@
             
             // Check for an error-response
             if ($rejectError && $Header->isError ())
-              return $reject ('Errornous response received');
+              return $reject ('Errornous response received', $Header, $Body);
             
             // Forward the result
-            if ($Header->getField ('Content-Type') == 'application/json')
+            if (($Header->getField ('Content-Type') == 'application/json') ||
+                ($Header->getField ('Content-Type') == 'application/problem+json'))
               return $resolve (json_decode ($Body), $Header);
             
             return $resolve ($Body, $Header);
