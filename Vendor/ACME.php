@@ -484,12 +484,9 @@
     public function getOrder ($URI) : qcEvents_Promise {
       return $this->checkRegistration ()->then (
         function () use ($URI) {
-          return $this->request ($URI, false);
-        }
-      )->then (
-        function ($Response) use ($URI) {
-          // Create an order from the response
-          return qcEvents_Vendor_ACME_Order::fromJSON ($this, $URI, $Response);
+          $Order = new qcEvents_Vendor_ACME_Order ($this, $URI);
+          
+          return $Order->fetch ();
         }
       );
     }

@@ -339,6 +339,26 @@
     }
     // }}}
     
+    // {{{ fetch
+    /**
+     * Fetch this order from server
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function fetch () : qcEvents_Promise {
+      return $this->ACME->request ($this->URI, false)->then (
+        function ($Response) {
+          // Push response to our attributes
+          $this->updateFromJSON ($Response);
+          
+          // Return ourself
+          return $this;
+        }
+      );
+    }
+    // }}}
+    
     // {{{ finalize
     /**
      * Try to finalize this order
