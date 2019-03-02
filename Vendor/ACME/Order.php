@@ -144,6 +144,18 @@
     }
     // }}}
     
+    // {{{ isValid
+    /**
+     * Check if the order is valid and was processed
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isValid () {
+      return ($this->Status == $this::STATUS_VALID);
+    }
+    // }}}
+    
     // {{{ getIdentifiers
     /**
      * Retrive all identifiers of this order
@@ -177,6 +189,62 @@
           $Result [] = $Value;
       
       return qcEvents_Promise::all ($Result);
+    }
+    // }}}
+    
+    // {{{ getCertificate
+    /**
+     * Retrive the issued certificate
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function getCertificate () : qcEvents_Promise {
+      // Retrive the full chain
+      return $this->getCertificateChain (true)->then (
+        function (array $Chain) {
+          return array_shift ($Chain);
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ getCertificateChain
+    /**
+     * Retrive the chain of the issued certfiicate
+     * 
+     * @param bool $Full (optional) Include the end-entity-certificate itself as well
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function getCertificateChain ($Full = false) : qcEvents_Promise {
+      // Check our state first
+      if (!$this->isValid ())
+        return qcEvents_Promise::reject ('Order is not in valid state');
+      
+      // Make sure we have a certificate-URI
+      if ($this->certificateURI === null)
+        return qcEvents_Promise::reject ('Missing certificate-URI');
+      
+      // Issue the request
+      return $this->ACME->request ($this->certificateURI, true, false)->then (
+        function ($Response, qcEvents_Stream_HTTP_Header $Header) use ($Full) {
+          // Check content-type of response
+          if ($Header->getField ('Content-Type') != 'application/pem-certificate-chain')
+            throw new exception ('Invalid content-type on response');
+          
+          // Explode the chain
+          $Chain = explode ("\n\n", trim ($Response));
+          
+          // Check wheter to remove our own certificate from chain
+          if (!$Full)
+            array_shift ($Full);
+          
+          // Forward the result
+          return $Chain;
+        }
+      );
     }
     // }}}
     
