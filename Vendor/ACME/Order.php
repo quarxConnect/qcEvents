@@ -180,6 +180,97 @@
     }
     // }}}
     
+    // {{{ createKey
+    /**
+     * Create a private key for a certificate
+     * 
+     * @param int $Size (optional)
+     * 
+     * @access public
+     * @return stirng
+     **/
+    public function createKey ($Size = 2048) {
+      // Check size of the key
+      if ($Size % 1024 != 0) {
+        trigger_error ('Size must be a multiple of 1024');
+        
+        return false;
+      }
+      
+      if ($Size < 2048) {
+        trigger_error ('Size is too small (must be at least 2048)');
+        
+        return false;
+      }
+      
+      // Create the key
+      $Key = openssl_pkey_new (array (
+        'private_key_bits' => $Size,
+        'private_key_type' => OPENSSL_KEYTYPE_RSA,
+      ));
+      
+      // Export key to string
+      if (!openssl_pkey_export ($Key, $pemKey))
+        return false;
+      
+      return $pemKey;
+    }
+    // }}}
+    
+    // {{{ createCSR
+    /**
+     * Create a Certificate-Signing-Request for this order
+     * 
+     * @param mixed $Key
+     * @param array $Subject (optional)
+     * 
+     * @access public
+     * @return string
+     **/
+    public function createCSR ($Key, array $Subject = array ()) {
+      // Make sure there is a commonName on the subject
+      if (!isset ($Subject ['commonName']))
+        foreach ($this->Identifiers as $ID) {
+          $Subject ['commonName'] = $ID->value;
+          
+          break;
+        }
+      
+      // Create temporary configuration for OpenSSL
+      $tmpConfig = tempnam (sys_get_temp_dir (), 'openssl');
+      
+      file_put_contents (
+        $tmpConfig,
+        '[req]' . "\n" .
+        'distinguished_name=v3_req' . "\n" .
+        '[v3_req]' . "\n" .
+        '[v3_ca]' . "\n" .
+        '[san]' . "\n" .
+        'subjectAltName=' . implode (',', array_map (function ($e) { return strtoupper ($e->type) . ':' . $e->value; }, $this->Identifiers)) . "\n"
+      );
+      
+      // Generate the CSR
+      $Request = openssl_csr_new (
+        $Subject,
+        $Key,
+        array (
+          'digest_alg' => 'sha256',
+          'config' => $tmpConfig,
+          'req_extensions' => 'san',
+        )
+      );
+      
+      // Remove temporary configuration again
+      unlink ($tmpConfig);
+      
+      // Convert CSR to string
+      if (!openssl_csr_export ($Request, $pemRequest))
+        return false;
+      
+      return $pemRequest;
+    }
+    // }}}
+    
     // {{{ finalize
     /**
      * Try to finalize this order
@@ -205,7 +296,7 @@
         $CSR = base64_decode (substr ($CSR, strpos ($CSR, "\n") + 1, strpos ($CSR, "\n--") - strpos ($CSR, "\n")));
       
       // Run the request
-      return $this->ACME->request ($this->finalizeURI, true, array ('csr' => self::base64u ($CSR)))->then (
+      return $this->ACME->request ($this->finalizeURI, true, array ('csr' => $this->ACME::base64u ($CSR)))->then (
         function ($JSON) {
           // Push the lastest JSON to our self
           $this->updateFromJSON ($JSON);
