@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Promise.php');
   require_once ('qcEvents/Hookable.php');
+  require_once ('qcEvents/Client/HTTP.php');
   require_once ('qcEvents/Vendor/ACME/Order.php');
   
   class qcEvents_Vendor_ACME extends qcEvents_Hookable {
@@ -84,14 +85,14 @@
     /**
      * Create new ACME-Client
      * 
-     * @param qcEvents_Client_HTTP $httpPool
+     * @param qcEvents_Base $Base
      * @param string $directoryURL
      * @param mixed $Key
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Client_HTTP $httpPool, $directoryURL, $Key = null) {
+    function __construct (qcEvents_Base $Base, $directoryURL, $Key = null) {
       // Prepare the key
       if ($Key === null) {
         // Construct path to our key
@@ -129,7 +130,9 @@
       $this->Key = $Key;
       
       // Assign variables
-      $this->httpPool = $httpPool;
+      $this->httpPool = new qcEvents_Client_HTTP ($Base);
+      $this->httpPool->setMaxRequests (1);
+      
       $this->Key = $Key;
       
       // Prepare headers
