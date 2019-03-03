@@ -508,17 +508,23 @@
      * @param qcEvents_Server_HTTP $Server HTTP-Server-Instance that received this request
      * @param string $Directory Document-Root-Directory to serve the file from
      * @param bool $allowSymlinks (optional) Allow symlinks to files outside the document-root
+     * @param qcEvents_Stream_HTTP_Header $Response (optional)
      * 
      * @access public
      * @return void
      **/
-    public function serveFromFilesystem (qcEvents_Server_HTTP $Server, $Directory, $allowSymlinks = false) {
+    public function serveFromFilesystem (qcEvents_Server_HTTP $Server, $Directory, $allowSymlinks = false, qcEvents_Stream_HTTP_Header $Response = null) {
+      // Make sure we have a response-header
+      if (!$Response)
+        $Response = new qcEvents_Stream_HTTP_Header (array ('HTTP/1.1 500 Internal server error'));
+      
+      $Response->setVersion ($this->getVersion (true));
+      
       // Sanatize the Document-Root
       if (($Directory = realpath ($Directory)) === false) {
-        $Response = new qcEvents_Stream_HTTP_Header (array (
-          'HTTP/' . $this->getVersion (true) . ' 500 Internal server error',
-          'Content-Type: text/plain',
-        ));
+        $Response->setStatus (500);
+        $Response->setMessage ('Internal server error');
+        $Response->setField ('Content-Type', 'text/plain');
         
         return $Server->httpdSetResponse ($this, $Response, 'Invalid document-root.' . "\n");
       }
@@ -552,10 +558,9 @@
       
       // Check if the path exists and is valid
       if (($Path === false) || !file_exists ($Path) || (!$allowSymlinks && (substr ($Path, 0, strlen ($Directory)) != $Directory))) {
-        $Response = new qcEvents_Stream_HTTP_Header (array (
-          'HTTP/' . $this->getVersion (true) . ' 404 Not found',
-          'Content-Type: text/plain',
-        ));
+        $Response->setStatus (404);
+        $Response->setMessage ('Not found');
+        $Response->setField ('Content-Type', 'text/plain');
         
         return $Server->httpdSetResponse ($this, $Response, 'Not found ' . $Path . "\r\n");
       }
@@ -564,16 +569,16 @@
       if (is_dir ($Path)) {
         // Check if it was requested as directory
         if ((strlen ($URI) > 0) && (substr ($URI, -1, 1) != '/')) {
-          $Response = new qcEvents_Stream_HTTP_Header (array (
-            'HTTP/' . $this->getVersion (true) . ' 302 This is a directory',
-            'Location: /' . $URI . '/',
-          ));
+          $Response->setStatus (302);
+          $Response->setMessage ('This is a directory');
+          $Response->setField ('Content-Type', 'text/plain');
+          $Response->setField ('Location', '/' . $URI . '/');
           
           return $Server->httpdSetResponse ($this, $Response, 'This is a directory');
         } elseif (!is_file ($Path . 'index.html')) {
-          $Response = new qcEvents_Stream_HTTP_Header (array (
-            'HTTP/' . $this->getVersion (true) . ' 403 Forbidden',
-          ));
+          $Response->setStatus (403);
+          $Response->setMessage ('Forbidden');
+          $Response->setField ('Content-Type', 'text/plain');
              
           return $Server->httpdSetResponse ($this, $Response, 'Directory-Listing not supported');
         } else
@@ -584,9 +589,13 @@
       require_once ('qcEvents/File.php');
       
       qcEvents_File::readFileContents (qcEvents_Base::singleton (), $Path, function ($Content) use ($Server) {
-        $Response = new qcEvents_Stream_HTTP_Header (array (
-          'HTTP/' . $this->getVersion (true) . ($Content !== null ? ' 200 Ok' : ' 403 Forbidden'),
-        ));
+        if ($Content !== null) {
+          $Response->setStatus (200);
+          $Response->setMessage ('Ok');
+        } else {
+          $Response->setStatus (403);
+          $Response->setMessage ('Forbidden');
+        }
         
         return $Server->httpdSetResponse ($this, $Response, $Content);
       });

@@ -257,6 +257,20 @@
     }
     // }}}
     
+    // {{{ setVersion
+    /**
+     * Set the version of this header
+     * 
+     * @param mixed $Version
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setVersion ($Version) {
+      $this->Version = substr ($this->Version, 0, strlen ($this::$protoName) + 1) . $Version;
+    }
+    // }}}
+    
     // {{{ isRequest
     /**
      * Check if this header is a http-request
