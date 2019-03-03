@@ -144,6 +144,18 @@
     }
     // }}}
     
+    // {{{ isProcessing
+    /**
+     * Check if the order is in processing state
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isProcessing () {
+      return ($this->Status == $this::STATUS_PROCESSING);
+    }
+    // }}}
+    
     // {{{ isValid
     /**
      * Check if the order is valid and was processed
@@ -153,6 +165,18 @@
      **/
     public function isValid () {
       return ($this->Status == $this::STATUS_VALID);
+    }
+    // }}}
+    
+    // {{{ isInvalid
+    /**
+     * Check if the order is invalid
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isInvalid () {
+      return ($this->Status == $this::STATUS_INVALID);
     }
     // }}}
     
@@ -239,7 +263,7 @@
           
           // Check wheter to remove our own certificate from chain
           if (!$Full)
-            array_shift ($Full);
+            array_shift ($Chain);
           
           // Forward the result
           return $Chain;
@@ -336,6 +360,26 @@
         return false;
       
       return $pemRequest;
+    }
+    // }}}
+    
+    // {{{ fetch
+    /**
+     * Fetch this order from server
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function fetch () : qcEvents_Promise {
+      return $this->ACME->request ($this->URI, false)->then (
+        function ($Response) {
+          // Push response to our attributes
+          $this->updateFromJSON ($Response);
+          
+          // Return ourself
+          return $this;
+        }
+      );
     }
     // }}}
     

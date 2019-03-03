@@ -188,18 +188,17 @@
     /**
      * Timeout a localy queued query
      * 
-     * @param qcEvents_Socket $Socket
      * @param qcEvents_Stream_DNS_Message $Message
      * 
      * @access public
      * @return void
      **/
-    public function dnsStreamTimeout (qcEvents_Socket $Socket, qcEvents_Stream_DNS_Message $Message) {
+    public function dnsStreamTimeout (qcEvents_Stream_DNS_Message $Message) {
       // Retrive the ID of the message
       $ID = $Message->getID ();
       
       // Sanatize the call
-      if (($Socket !== $this->Source) || !isset ($this->dnsQueries [$ID]) || ($this->dnsQueries [$ID] !== $Message))
+      if (!isset ($this->dnsQueries [$ID]) || ($this->dnsQueries [$ID] !== $Message))
         return;
       
       // Remove from the queue

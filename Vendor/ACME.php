@@ -19,9 +19,11 @@
    **/
   
   require_once ('qcEvents/Promise.php');
+  require_once ('qcEvents/Hookable.php');
+  require_once ('qcEvents/Client/HTTP.php');
   require_once ('qcEvents/Vendor/ACME/Order.php');
   
-  class qcEvents_Vendor_ACME {
+  class qcEvents_Vendor_ACME extends qcEvents_Hookable {
     /* Instance of HTTP-pool to use */
     private $httpPool = null;
     
@@ -40,6 +42,9 @@
     /* Next usable replay-nonce */
     private $replayNonce = null;
     
+    /* Registration-Status */
+    private $registrationStatus = null;
+    
     // {{{ base64u
     /**
      * Apply base64-url encoding to a string
@@ -54,37 +59,51 @@
     }
     // }}}
     
+    // {{{ getDataPath
+    /**
+     * Retrive path to our data-directory
+     * 
+     * @access public
+     * @return string
+     **/
+    public static function getDataPath () {
+      // Check if we can get user-settings
+      if (!function_exists ('posix_getpwuid'))
+        return null;
+      
+      // Retrive info about current user
+      $pw = posix_getpwuid (posix_geteuid ());
+      $Path = $pw ['dir'] . '/.qcEvents';
+      
+      // Make sure our path exists
+      if (is_dir ($Path) || mkdir ($Path, 0700))
+        return $Path;
+    }
+    // }}}
+    
     // {{{ __construct
     /**
      * Create new ACME-Client
      * 
-     * @param qcEvents_Client_HTTP $httpPool
+     * @param qcEvents_Base $Base
      * @param string $directoryURL
      * @param mixed $Key
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Client_HTTP $httpPool, $directoryURL, $Key = null) {
+    function __construct (qcEvents_Base $Base, $directoryURL, $Key = null) {
       // Prepare the key
       if ($Key === null) {
-        if (function_exists ('posix_getpwuid')) {
-          // Retrive info about current user
-          $pw = posix_getpwuid (posix_geteuid ());
-          $path = $pw ['dir'] . '/.qcEvents';
+        // Construct path to our key
+        if ($path = $this::getDataPath ()) {
+          $Key = $path . '/acme-' . md5 ($directoryURL) . '.key';
           
-          // Make sure our path exists
-          if (is_dir ($path) || mkdir ($path, 0700)) {
-            $Key = $path . '/acme-' . md5 ($directoryURL) . '.key';
-            
-            if (is_file ($Key))
-              $Key = 'file://' . $Key;
-            else
-              $Key = null;
-          } else
-            $path = null;
-        } else
-          $path = null;
+          if (is_file ($Key))
+            $Key = 'file://' . $Key;
+          else
+            $Key = null;
+        }
         
         // Check wheter to create a new privatekey
         if ($Key === null) {
@@ -111,7 +130,9 @@
       $this->Key = $Key;
       
       // Assign variables
-      $this->httpPool = $httpPool;
+      $this->httpPool = new qcEvents_Client_HTTP ($Base);
+      $this->httpPool->setMaxRequests (1);
+      
       $this->Key = $Key;
       
       // Prepare headers
@@ -130,6 +151,18 @@
       $this->Directory = $directoryURL;
       
       $this->getDirectory ();
+    }
+    // }}}
+    
+    // {{{ getEventBase
+    /**
+     * Retrive the handle of the current event-loop-handler
+     * 
+     * @access public
+     * @return qcEvents_Base May be NULL if none is assigned
+     **/
+    public function getEventBase () {
+      return $this->httpPool->getEventBase ();
     }
     // }}}
     
@@ -252,6 +285,13 @@
      * @return qcEvents_Promise
      **/
     public function checkRegistration () : qcEvents_Promise {
+      // Check for cached registration-status
+      if ($this->registrationStatus === true)
+        return qcEvents_Promise::resolve (true);
+      elseif ($this->registrationStatus === false)
+        return qcEvents_Promise::reject ('Not registered');
+      
+      // Retrive directory first
       return $this->getDirectory ()->then (
         function ($Directory) {
           // Make sure there is a newAccount-URL on directory
@@ -261,8 +301,20 @@
           return $this->request ($Directory->newAccount, true, array ('onlyReturnExisting' => true), null, false)->then (
             function ($Response, qcEvents_Stream_HTTP_Header $Header) {
               // Check if the registration is valid
-              if (!isset ($Response->status) || ($Response->status != 'valid'))
+              if (!isset ($Response->status)) {
+                $this->registrationStatus = null;
+                
+                throw new exception ('Registration-Status not found');
+              }
+              
+              if ($Response->status != 'valid') {
+                if (isset ($Response->type) && ($Response->type == 'urn:ietf:params:acme:error:accountDoesNotExist'))
+                  $this->registrationStatus = false;
+                else
+                  $this->registrationStatus = null;
+                
                 throw new exception ('Registration not valid');
+              }
               
               // Check for an account-url
               if ($Header->hasField ('Location') && ($URL = $Header->getField ('Location'))) {
@@ -274,6 +326,8 @@
               }
               
               // Forward a positive state
+              $this->registrationStatus = true;
+              
               return true;
             }
           );
@@ -305,7 +359,7 @@
           if ($Contacts !== null)
             $Params ['contact'] = $Contacts;
           
-          if (isset ($Directory ['meta']['termsOfService'])) {
+          if (isset ($Directory->meta->termsOfService)) {
             $Params ['termsOfServiceAgreed'] = ($acceptTOS === true);
             
             if ($acceptTOS !== true)
@@ -329,6 +383,8 @@
               }
               
               // Just forward a positive value
+              $this->registrationStatus = true;
+              
               return true;
             }
           );
@@ -347,7 +403,13 @@
     public function unregister () : qcEvents_Promise {
       // Check if we already know our account-url
       if (isset ($this->joseHeader ['kid']))
-        return $this->request ($this->joseHeader ['kid'], true, array ('status' => 'deactivated'))->then (function () { return true; });
+        return $this->request ($this->joseHeader ['kid'], true, array ('status' => 'deactivated'))->then (
+          function () {
+            $this->registrationStatus = false;
+            
+            return true;
+          }
+        );
       
       // Try to detect our accont-url
       return $this->checkRegistration ()->then (
@@ -357,7 +419,13 @@
             throw new exception ('Failed to detect account-url');
           
           // Try to deactivate account
-          return $this->request ($this->joseHeader ['kid'], true, array ('status' => 'deactivated'))->then (function () { return true; });
+          return $this->request ($this->joseHeader ['kid'], true, array ('status' => 'deactivated'))->then (
+            function () {
+              $this->registrationStatus = false;
+              
+              return true;
+            }
+          );
         }
       );
     }
@@ -375,7 +443,11 @@
      * @return qcEvents_Promise
      **/
     public function createOrder (array $dnsNames, $validFrom = null, $validUntil = null) : qcEvents_Promise {
-      return $this->getDirectory ()->then (
+      return $this->checkRegistration ()->then (
+        function () {
+          return $this->getDirectory ();
+        }
+      )->then (
         function ($Directory) use ($dnsNames, $validFrom, $validUntil) {
           // Make sure there is a newOrder-URL on directory
           if (!isset ($Directory->newOrder))
@@ -425,10 +497,11 @@
      * @return qcEvents_Promise
      **/
     public function getOrder ($URI) : qcEvents_Promise {
-      return $this->request ($URI, false)->then (
-        function ($Response) use ($URI) {
-          // Create an order from the response
-          return qcEvents_Vendor_ACME_Order::fromJSON ($this, $URI, $Response);
+      return $this->checkRegistration ()->then (
+        function () use ($URI) {
+          $Order = new qcEvents_Vendor_ACME_Order ($this, $URI);
+          
+          return $Order->fetch ();
         }
       );
     }
@@ -471,14 +544,16 @@
             if ($Header->hasField ('Replay-Nonce'))
               $this->replayNonce = $Header->getField ('Replay-Nonce');
             
+            // Try to parse JSON on the result
+            if (($Header->getField ('Content-Type') == 'application/json') ||
+                ($Header->getField ('Content-Type') == 'application/problem+json'))
+              $Body = json_decode ($Body);
+            
             // Check for an error-response
             if ($rejectError && $Header->isError ())
-              return $reject ('Errornous response received');
+              return $reject ('Errornous response received' . (is_object ($Body) && isset ($Body->detail) ? ': ' . $Body->detail : ''), $Header, $Body);
             
             // Forward the result
-            if ($Header->getField ('Content-Type') == 'application/json')
-              return $resolve (json_decode ($Body), $Header);
-            
             return $resolve ($Body, $Header);
           }
         );
