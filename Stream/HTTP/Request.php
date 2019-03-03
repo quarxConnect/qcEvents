@@ -588,7 +588,7 @@
       // Try to read the file
       require_once ('qcEvents/File.php');
       
-      qcEvents_File::readFileContents (qcEvents_Base::singleton (), $Path, function ($Content) use ($Server) {
+      qcEvents_File::readFileContents (qcEvents_Base::singleton (), $Path, function ($Content) use ($Server, $Response) {
         if ($Content !== null) {
           $Response->setStatus (200);
           $Response->setMessage ('Ok');
