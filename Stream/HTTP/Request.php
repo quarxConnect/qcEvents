@@ -588,15 +588,40 @@
       // Try to read the file
       require_once ('qcEvents/File.php');
       
-      qcEvents_File::readFileContents (qcEvents_Base::singleton (), $Path, function ($Content) use ($Server, $Response) {
+      qcEvents_File::readFileContents (qcEvents_Base::singleton (), $Path, function ($Content) use ($Path, $Server, $Response) {
+        // Check if the file could be read
         if ($Content !== null) {
+          // Set a proper 
           $Response->setStatus (200);
           $Response->setMessage ('Ok');
+          
+          // Try to guess content-type
+          if (function_exists ('mime_content_type')) {
+            // Try mime-magic on the file
+            $ContentType = mime_content_type ($Path);
+            
+            // Catch text/plain to cover some edge-cases
+            if ($ContentType == 'text/plain')
+              switch (strtolower (substr ($Path, strrpos ($Path,'.')))) {
+                case '.css':
+                  $ContentType = 'text/css'; break;
+                case '.js':
+                  $ContentType = 'text/javascript'; break;
+              }
+            
+            // Push to response
+            $Response->setField ('Content-Type', $ContentType);
+          }
+        
+        // Push an error to the response
         } else {
           $Response->setStatus (403);
           $Response->setMessage ('Forbidden');
+          
+          $Content = 'File could not be read';
         }
         
+        // Forward the result
         return $Server->httpdSetResponse ($this, $Response, $Content);
       });
     }
