@@ -168,7 +168,7 @@
             )->then (
               // Refresh the order after timeout
               function () use ($Order) {
-                return $Order->refresh ();
+                return $Order->fetch ();
               }
             )->then (
               // Try to process again
@@ -276,7 +276,7 @@
       if ($Order->isProcessing ())
         $this->getEventBase ()->addTimeout ($this::ORDER_PROCESSING_TIMEOUT)->then (
           function () use ($Order) {
-            return $Order->refresh ();
+            return $Order->fetch ();
           }
         )->then (
           function ($Order) {
