@@ -21,6 +21,7 @@
   require_once ('qcEvents/IOStream.php');
   require_once ('qcEvents/Interface/Timer.php');
   require_once ('qcEvents/Trait/Timer.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * Event Socket
@@ -89,11 +90,11 @@
     /* The current address we are trying to connect to */
     private $socketAddress = null;
     
-    /* Callback to fire once we are connected */
-    private $socketCallback = null;
+    /* Resolve-Function of connect-promise */
+    private $socketConnectResolve = null;
     
-    /* Private data to pass to the callback */
-    private $socketCallbackPrivate = null;
+    /* Reject-Function of connect-promise */
+    private $socketConnectReject = null;
     
     /* Our current remote hostname */
     private $remoteHost = '';
@@ -415,9 +416,9 @@
      * @remark This function is asyncronous! If it returns true this does not securly mean that a connection was established!
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function connect ($Hosts, $Port = null, $Type = null, $enableTLS = false, callable $Callback = null, $Private = null) {
+    public function connect ($Hosts, $Port = null, $Type = null, $enableTLS = false, callable $Callback = null, $Private = null) : qcEvents_Promise {
       // Check wheter to use the default socket-type
       if ($Type === null)
         $Type = $this::DEFAULT_TYPE;
@@ -426,77 +427,99 @@
         $Type = $this::FORCE_TYPE;
       
       // Validate the type-parameter
-      if (($Type != self::TYPE_TCP) && ($Type != self::TYPE_UDP)) {
-        trigger_error ('Unsupported socket-type');
-        
-        return false;
-      }
+      if (($Type != self::TYPE_TCP) && ($Type != self::TYPE_UDP))
+        return qcEvents_Promise::reject ('Unsupported socket-type');
       
       // Check wheter to use a default port
       if ($Port === null) {
         $Port = $this::DEFAULT_PORT;
         
-        if ($Port === null) {
-          trigger_error ('No port specified');
-          
-          return false;
-        }
+        if ($Port === null)
+          return qcEvents_Promise::reject ('No port specified');
       }
       
       if ($this::FORCE_PORT !== null)
         $Port = $this::FORCE_PORT;
       
       // Make sure we have an event-base assigned
-      if (!$this->getEventBase ()) {
-        trigger_error ('No Event-Base assigned or could not assign Event-Base');
-        
-        return false;
-      }
+      if (!$this->getEventBase ())
+        return qcEvents_Promise::reject ('No Event-Base assigned or could not assign Event-Base');
       
       // Try to close any open connection before creating a new one
       # TODO: Make disconnect async
       if (!$this->isDisconnected () && !$this->close ())
-        return false;
+        return qcEvents_Promise::reject ('Disconnect before connect failed');
       
       // Reset internal addresses
       $this->socketAddresses = null;
       $this->socketAddress = null;
-      $this->socketCallback = $Callback;
-      $this->socketCallbackPrivate = $Private;
-      
+      $this->socketConnectResolve = null;
+      $this->socketConnectReject = null;
       $this->tlsStatus = ($enableTLS ? true : null);
       
-      // Make sure hosts is an array
-      if (!is_array ($Hosts))
-        $Hosts = array ($Hosts);
-      
-      $Resolve = array ();
-      
-      foreach ($Hosts as $Host) {
-        // Check for IPv6
-        if (($IPv6 = $this::isIPv6 ($Host)) && ($Host [0] != '['))
-          $Host = '[' . $Host . ']';
+      // Create a new promise
+      $Promise = new qcEvents_Promise (function ($resolve, $reject) use ($Hosts, $Port, $Type) {
+        // Remember promises
+        $this->socketConnectResolve = $resolve;
+        $this->socketConnectReject = $reject;
         
-        // Check for IPv4/v6 or wheter to skip the resolver
-        if (!$this->internalResolver || $this::isIPv4 ($Host) || $IPv6)
-          $this->socketAddresses [] = array ($Host, $Host, $Port, $Type);
-        else
-          $Resolve [] = $Host;
+        // Make sure hosts is an array
+        if (!is_array ($Hosts))
+          $Hosts = array ($Hosts);
+        
+        $Resolve = array ();
+        
+        foreach ($Hosts as $Host) {
+          // Check for IPv6
+          if (($IPv6 = $this::isIPv6 ($Host)) && ($Host [0] != '['))
+            $Host = '[' . $Host . ']';
+          
+          // Check for IPv4/v6 or wheter to skip the resolver
+          if (!$this->internalResolver || $this::isIPv4 ($Host) || $IPv6)
+            $this->socketAddresses [] = array ($Host, $Host, $Port, $Type);
+          else
+            $Resolve [] = $Host;
+        }
+        
+        // Put ourself into connected-state
+        $this->Connected = null;
+        
+        // Check if we have addresses to connect to
+        if ($this->socketAddresses && (count ($this->socketAddresses) > 0))
+          $this->socketConnectMulti ();
+        
+        // Sanity-Check if to use internal resolver
+        if (!$this->internalResolver || (count ($Resolve) == 0))
+          return;
+        
+        // Perform asyncronous resolve
+        return $this->socketResolveDo ($Host, $Port, $Type);
+      });
+      
+      // Patch promise with callback
+      if ($Callback) {
+        trigger_error ('Callback on qcEvents_Socket::connect() is deprecated');
+        
+        $Promise = $Promise->then (
+          function () use ($Callback, $Private) {
+            // Run the callback
+            call_user_func ($Callback, $this, true, $Private);
+            
+            // Forward all results
+            return new qcEvents_Promise_Solution (func_get_args ());
+          },
+          function () use ($Callback, $Private) {
+            // Run the callback
+            call_user_func ($Callback, $this, false, $Private);
+            
+            // Forward the exception
+            throw new qcEvents_Promise_Solution (func_get_args ());
+          }
+        );
       }
       
-      // Put ourself into connected-state
-      $this->Connected = null;
-      
-      // Check if we have addresses to connect to
-      if ($this->socketAddresses && (count ($this->socketAddresses) > 0))
-        $this->socketConnectMulti ();
-      
-      // Sanity-Check if to use internal resolver
-      if (!$this->internalResolver || (count ($Resolve) == 0))
-        return true;
-      
-      // Perform asyncronous resolve
-      return $this->socketResolveDo ($Host, $Port, $Type);
+      // Return the promise
+      return $Promise;
     }
     // }}}
     
@@ -511,9 +534,9 @@
      * @param bool $enableTLS (optional)
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function connectService ($Domain, $Service, $Type = null, $enableTLS = false) {
+    public function connectService ($Domain, $Service, $Type = null, $enableTLS = false) : qcEvents_Promise {
       // Check wheter to use the default socket-type
       if ($Type === null)
         $Type = $this::DEFAULT_TYPE;
@@ -522,25 +545,22 @@
         $Type = $this::FORCE_TYPE;
       
       // Validate the type-parameter
-      if (($Type != self::TYPE_TCP) && ($Type != self::TYPE_UDP)) {
-        trigger_error ('Unsupported socket-type');
-        
-        return false;
-      }
+      if (($Type != self::TYPE_TCP) && ($Type != self::TYPE_UDP))
+        return qcEvents_Promise::reject ('Unsupported socket-type');
       
       // Make sure we have an event-base assigned
       if (!$this->getEventBase ())
-        return false;
+        return qcEvents_Promise::reject ('Failed to get event-base');
       
       // Try to close any open connection before creating a new one
       if (!$this->isDisconnected () && !$this->close ())
-        return false;
+        return qcEvents_Promise::reject ('Failed to disconnect socket before connect');
       
       // Reset internal addresses
       $this->socketAddresses = null;
       $this->socketAddress = null;
-      $this->socketCallback = null;
-      $this->socketCallbackPrivate = null;
+      $this->socketConnectResolve = null;
+      $this->socketConnectReject = null;
       
       $this->tlsStatus = ($enableTLS ? true : null);
       $this->Connected = null;
@@ -549,23 +569,30 @@
       // Generate label to look up
       $Label = '_' . $Service . '._' . ($Type == self::TYPE_UDP ? 'udp' : 'tcp') . '.' . $Domain;
       
-      // Perform syncronous lookup
-      if ($this->internalResolver === false) {
-        // Fire a callback
-        $this->___callback ('socketResolve', array ($Label), array (qcEvents_Stream_DNS_Message::TYPE_SRV));
+      return new qcEvents_Promise (function ($resolve, $reject) use ($Label, $Type, $Domain) {
+        // Remember promises
+        $this->socketConnectResolve = $resolve;
+        $this->socketConnectReject = $reject;
         
-        // Do the DNS-Lookup
-        if (!is_array ($Result = dns_get_record ($Label, DNS_SRV, $AuthNS, $Addtl)) || (count ($Result) == 0))
-          return $this->socketConnectTimeout ();
+        // Perform syncronous lookup
+        if ($this->internalResolver === false) {
+
+          // Fire a callback
+          $this->___callback ('socketResolve', array ($Label), array (qcEvents_Stream_DNS_Message::TYPE_SRV));
+          
+          // Do the DNS-Lookup
+          if (!is_array ($Result = dns_get_record ($Label, DNS_SRV, $AuthNS, $Addtl)) || (count ($Result) == 0))
+            return $this->socketConnectTimeout ();
+          
+          // Forward the result
+          return $this->socketResolverResultArray ($Result, $Addtl, $Domain, DNS_SRV, null, $Type);
+        }
         
-        // Forward the result
-        return $this->socketResolverResultArray ($Result, $Addtl, $Domain, DNS_SRV, null, $Type);
-      }
-      
-      // Perform asyncronous lookup
-      require_once ('qcEvents/Client/DNS.php');
-      
-      return $this->socketResolveDo ($Label, null, $Type, qcEvents_Stream_DNS_Message::TYPE_SRV);
+        // Perform asyncronous lookup
+        require_once ('qcEvents/Client/DNS.php');
+        
+        return $this->socketResolveDo ($Label, null, $Type, qcEvents_Stream_DNS_Message::TYPE_SRV);
+      });
     }
     // }}}
      
@@ -607,7 +634,7 @@
       } else 
         $ctx = stream_context_create ();
       
-      if (!is_resource ($Socket = stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, STREAM_CLIENT_ASYNC_CONNECT, $ctx)))
+      if (!is_resource ($Socket = @stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, STREAM_CLIENT_ASYNC_CONNECT, $ctx)))
         return $this->socketHandleConnectFailed (-$errno);
       
       stream_set_blocking ($Socket, 0);
@@ -731,11 +758,11 @@
         return $this->socketHandleConnectFailed ($this::ERROR_NET_TLS_FAILED);
       
       // Fire custom callback
-      if ($this->socketCallback) {
-        $this->___raiseCallback ($this->socketCallback, true, $this->socketCallbackPrivate);
+      if ($this->socketConnectResolve) {
+        call_user_func ($this->socketConnectResolve);
         
-        $this->socketCallback = null;
-        $this->socketCallbackPrivate = null;
+        $this->socketConnectResolve = null;
+        $this->socketConnectReject = null;
       }
       
       // Fire the callback
@@ -790,11 +817,11 @@
       if ((!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0)) &&
           (!is_object ($this->internalResolver) || !$this->internalResolver->isActive ())) {
         // Fire custom callback
-        if ($this->socketCallback) {
-          $this->___raiseCallback ($this->socketCallback, false, $this->socketCallbackPrivate);
+        if ($this->socketConnectReject) {
+          call_user_func ($this->socketConnectReject);
           
-          $this->socketCallback = null;
-          $this->socketCallbackPrivate = null;
+          $this->socketConnectResolve = null;
+          $this->socketConnectReject = null;
         }
         
         // Fire the callback
@@ -845,11 +872,9 @@
       
       // Enqueue Hostnames
       foreach ($Types as $rType)
-        $this->internalResolver->resolve (
-          $Hostname,
-          $rType,
-          null,
-          function (qcEvents_Client_DNS $Resolver, $orgHostname, $Answers, $Authorities, $Additionals, $Message) use ($Hostname, $Port, $Type, $rType) {
+        $this->internalResolver->resolve ($Hostname, $rType)->then (
+          function (qcEvents_Stream_DNS_Recordset $Answers, qcEvents_Stream_DNS_Recordset $Authorities, qcEvents_Stream_DNS_Recordset $Additional, qcEvents_Stream_DNS_Message $Response)
+          use ($Hostname, $Port, $Type, $rType) {
             // Discard any result if we are connected already
             if ($this->isConnected ())
               return;
@@ -857,13 +882,14 @@
             // Update our last event (to prevent a pending disconnect)
             $this->lastEvent = time ();
             
-            // Handle all results
-            if ($Message !== null)
-              $Result = $Resolver->dnsConvertPHP ($Message, $AuthNS, $Addtl);
-            else
-              $Result = $Addtl = array ();
+            // Convert the result
+            $Result = $this->internalResolver->dnsConvertPHP ($Response, $AuthNS, $Addtl);
             
+            // Forward
             return $this->socketResolverResultArray ($Result, $Addtl, $Hostname, $rType, $Port, $Type);
+          },
+          function () use ($Hostname, $Port, $Type, $rType) {
+            return $this->socketResolverResultArray (array (), array (), $Hostname, $rType, $Port, $Type);
           }
         );
       
