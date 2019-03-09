@@ -168,46 +168,41 @@
      * @param string $Originator
      * @param array $Receivers
      * @param string $Mail
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_SMTP $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function sendMail ($Originator, array $Receivers, $Mail, callable $Callback = null, $Private = null) {
+    public function sendMail ($Originator, array $Receivers, $Mail) : qcEvents_Promise {
       return $this->Pool->acquireSocket (
         $this->remoteHost,
         ($this->remotePort === null ? 25 : $this->remotePort),
         qcEvents_Socket::TYPE_TCP,
-        ($this->remotePort == 465),
-        function (qcEvents_Socket_Pool $Pool, qcEvents_Socket $Socket = null, qcEvents_Interface_Stream_Consumer $Client = null)
-        use ($Originator, $Receivers, $Mail, $Callback, $Private) {
-          // Check if a socket was aquired
-          if (!$Socket || !$Client || !($Client instanceof qcEvents_Stream_SMTP_Client)) {
+        ($this->remotePort == 465)
+      )->then (
+        function (qcEvents_Socket $Socket, qcEvents_Interface_Stream_Consumer $Client = null)
+        use ($Originator, $Receivers, $Mail) {
+          // Make sure we got our SMTP-Stream
+          if (!$Client || !($Client instanceof qcEvents_Stream_SMTP_Client)) {
             // Release the socket
             if ($Socket)
-              $Pool->releaseSocket ($Socket);
+              $this->Pool->releaseSocket ($Socket);
             
             // Indicate an error
-            return $this->___raiseCallback ($Callback, false, $Private);
+            throw new exception ('No SMTP-Client was acquired');
           }
           
           // Try to send the mail
-          return $Client->sendMail (
-            $Originator,
-            $Receivers,
-            $Mail,
-            function (qcEvents_Stream_SMTP_Client $Client, $Originator, $Receivers, $Mail, $Status)
-            use ($Pool, $Socket, $Callback, $Private) {
+          return $Client->sendMail ($Originator, $Receivers, $Mail)->then (
+            function () use ($Socket) {
               // Release the socket
-              $Pool->releaseSocket ($Socket);
+              $this->Pool->releaseSocket ($Socket);
+            },
+            function () use ($Socket) {
+              // Release the socket
+              $this->Pool->releaseSocket ($Socket);
               
-              // Forward the result
-              return $this->___raiseCallback ($Callback, $Status, $Private);
+              // Forward the error
+              throw new qcEvents_Promise_Solution (func_get_args ());
             }
           );
         }

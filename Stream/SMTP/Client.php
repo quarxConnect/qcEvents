@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Hookable.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * SMTP-Client
@@ -671,30 +672,23 @@
      * @param string $Originator
      * @param array $Receivers
      * @param string $Mail
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_SMTP_Client $Self, string $Originator, array $Receivers, string $Mail, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function sendMail ($Originator, $Receivers, $Mail, callable $Callback = null, $Private = null) {
+    public function sendMail ($Originator, $Receivers, $Mail) : qcEvents_Promise {
       // Check the size
       if (is_array ($this->serverFeatures) && isset ($this->serverFeatures ['SIZE']) && (count ($this->serverFeatures ['SIZE']) > 0) &&
-          (strlen ($Mail) > $this->serverFeatures ['SIZE'][0]) && ($this->serverFeatures ['SIZE'][0] > 0)) {
-        $this->___raiseCallback ($Callback, $Originator, $Receivers, $Mail, false, $Private);
-        
-        return false;
-      }
+          (strlen ($Mail) > $this->serverFeatures ['SIZE'][0]) && ($this->serverFeatures ['SIZE'][0] > 0))
+        return qcEvents_Promise::reject ('SIZE-constraint failed');
       
       // Enqueue the mail
-      $this->mailQueue [] = array ($Originator, $Receivers, $Mail, $Callback, $Private, $Receivers, array ());
-      
-      // Try to start the submission
-      $this->runMailQueue ();
+      return new qcEvents_Promise (function ($resolve, $reject) use ($Originator, $Receivers, $Mail) {
+        $this->mailQueue [] = array ($Originator, $Receivers, $Mail, $Receivers, array (), $resolve, $reject);
+        
+        // Try to start the submission
+        $this->runMailQueue ();
+      });
     }
     // }}}
     
@@ -738,7 +732,7 @@
           });
           
           // Raise the callback
-          $this->___raiseCallback ($mc [3], $mc [0], $mc [1], $mc [2], false, $mc [4]);
+          return call_user_func ($mc [6], 'MAIL FROM failed');
         }
         
         // Submit receivers
@@ -746,16 +740,16 @@
         $receiverFunc = function (qcEvents_Stream_SMTP_Client $Self, $Receiver, $Params, $Status) use (&$receiverFunc) {
           // Check wheter to append to successfull receivers
           if ($Status)
-            $this->mailCurrent [6][] = $Receiver;
+            $this->mailCurrent [4][] = $Receiver;
           else
             $this->mailCurrent [7] = $this->lastCode;
           
           // Check wheter to submit the next receiver
-          if (count ($this->mailCurrent [5]) > 0)
-            return $this->addReceiver (array_shift ($this->mailCurrent [5]), null, $receiverFunc);
+          if (count ($this->mailCurrent [3]) > 0)
+            return $this->addReceiver (array_shift ($this->mailCurrent [3]), null, $receiverFunc);
           
           // Check if the server accepted any receiver
-          if (count ($this->mailCurrent [6]) == 0) {
+          if (count ($this->mailCurrent [4]) == 0) {
             // Restore the last error-code
             $this->lastCode = $this->mailCurrent [7];
             
@@ -770,7 +764,7 @@
             });
             
             // Raise the callback
-            return $this->___raiseCallback ($mc [3], $mc [0], $mc [1], $mc [2], false, $mc [4]);
+            return call_user_func ($mc [6], 'No receiver was accepted by the server');
           }
           
           // Submit the mail
@@ -782,7 +776,7 @@
             $this->mailCurrent = null;
             
             // Raise the callback
-            $this->___raiseCallback ($mc [3], $mc [0], $mc [6], $mc [2], true, $mc [4]);
+            call_user_func ($mc [5], $mc [4]);
             
             // Move forward to next queue-item
             $this->runMailQueue ();
@@ -790,7 +784,7 @@
         };
         
         // Try to add the first receiver
-        $this->addReceiver (array_shift ($this->mailCurrent [5]), null, $receiverFunc);
+        $this->addReceiver (array_shift ($this->mailCurrent [3]), null, $receiverFunc);
       });
     }
     // }}}
@@ -1260,7 +1254,7 @@
      * @access protected
      * @return void
      **/
-    protected function smtpCommand ($Command) { }
+    protected function smtpCommand ($Command) { echo $Command, "\n"; }
     // }}}
     
     // {{{ smtpResponse
@@ -1273,7 +1267,7 @@
      * @access protected
      * @return void
      **/
-    protected function smtpResponse ($Code, $Lines) { }
+    protected function smtpResponse ($Code, $Lines) { var_dump ($Lines); }
     // }}}
     
     // {{{ eventReadable

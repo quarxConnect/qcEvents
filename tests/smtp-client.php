@@ -63,16 +63,15 @@
   $Client->sendMail (
     $From,
     $Receivers,
-    'Subject: Test' . "\r\n\r\n" . 'This is a test',
-    function (qcEvents_Client_SMTP $Client, $Status) {
-      if ($Status)
-        echo 'E-Mail was sent successfully', "\n";
-      else
-        echo 'E-Mail could NOT be sent', "\n";
-      
-      exit ();
+    'Subject: Test' . "\r\n\r\n" . 'This is a test'
+  )->then (
+    function () {
+      echo 'E-Mail was sent successfully', "\n";
+    },
+    function ($e) {
+      echo 'E-Mail could NOT be sent', "\n", $e, "\n";
     }
-  );
+  )->finally (function () { exit (); });
   
   #qcEvents_Client_SMTP::$debugHooks = true;
   #
