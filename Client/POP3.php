@@ -90,48 +90,51 @@
       $Socket = new qcEvents_Socket ($this->getEventBase ());
       
       // Try to connect to server
-      return $Socket->connect ($Hostname, $Port, qcEvents_Socket::TYPE_TCP, false, function (qcEvents_Socket $Socket, $Status) use ($Hostname, $Port, $Username, $Password, $Callback, $Private) {
-        // Check if the connection was established
-        if (!$Status) {
-          $this->___callback ('popConnectionFailed');
+      return $Socket->connect ($Hostname, $Port, qcEvents_Socket::TYPE_TCP)->then (
+        function () use ($Socket, $Hostname, $Port, $Username, $Password, $Callback, $Private) {
+          // Create a new POP3-Stream
+          $Stream = new qcEvents_Stream_POP3_Client;
           
-          return $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, false, $Private);
-        }
-        
-        // Create a new POP3-Stream
-        $Stream = new qcEvents_Stream_POP3_Client;
-        
-        // Connect both streams
-        $Socket->pipeStream ($Stream);
-        
-        // Fire first callback
-        $this->___callback ('popConnected');
-        
-        // Check wheter to start authentication
-        if (($Username === null) || ($Password === null)) {
-          $this->setStream ($Stream);
+          // Connect both streams
+          $Socket->pipeStream ($Stream);
           
-          return $this->___raiseCallback ($Callback, $Hostname, $Port, null, true, $Private);
-        }
-        
-        # TODO: Negotiate TLS whenever possible (or requested)
-        # TODO: Add support for APOP/SASL-Authentication
-        
-        $Stream->login ($Username, $Password, function (qcEvents_Stream_POP3_Client $Stream, $Username, $Status) {
-          // Check if the authentication was successfull
-          if (!$Status) {
-            // Indicate the connection as failed
-            $this->___callback ('popConnectionFailed');
-            
-            // Reset the stream
-            $this->unsetStream ();
-            $Stream->close ();
-          } else
+          // Fire first callback
+          $this->___callback ('popConnected');
+          
+          // Check wheter to start authentication
+          if (($Username === null) || ($Password === null)) {
             $this->setStream ($Stream);
+            
+            return $this->___raiseCallback ($Callback, $Hostname, $Port, null, true, $Private);
+          }
           
-          return $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, $Status, $Private);
-        });
-      });
+          # TODO: Negotiate TLS whenever possible (or requested)
+          # TODO: Add support for APOP/SASL-Authentication
+          
+          return $Stream->login ($Username, $Password, function (qcEvents_Stream_POP3_Client $Stream, $Username, $Status) {
+            // Check if the authentication was successfull
+            if (!$Status) {
+              // Indicate the connection as failed
+              $this->___callback ('popConnectionFailed');
+              
+              // Reset the stream
+              $this->unsetStream ();
+              $Stream->close ();
+            } else
+              $this->setStream ($Stream);
+            
+            return $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, $Status, $Private);
+          });
+        },
+        function () use ($Callback, $Hostname, $Port, $Username, $Private) {
+          // Run all callbacks
+          $this->___callback ('popConnectionFailed');
+          $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, false, $Private);
+          
+          // Forward the error
+          throw new qcEvents_Promise_Solution (func_get_args ());
+        }
+      );
     }
     // }}}
     

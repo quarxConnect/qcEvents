@@ -116,42 +116,45 @@
       $this->___callback ('mysqlConnecting', $Hostname, $Port, $Username);
       
       // Try to connect
-      return $Socket->connect ($Hostname, $Port, qcEvents_Socket::TYPE_TCP, false, function (qcEvents_Socket $Socket, $Status) use ($Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private) {
-        // Check if the connection succeeded
-        if (!$Status) {
+      return $Socket->connect ($Hostname, $Port, qcEvents_Socket::TYPE_TCP)->then (
+        function () use ($Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private) {
+          // Create a new MySQL-Stream for this
+          $Stream = new qcEvents_Stream_MySQL;
+          
+          // Connect both streams
+          $Socket->pipeStream ($Stream);
+          
+          // Try to authenticate
+          return $Stream->authenticate ($Username, $Password, $this->Database, function (qcEvents_Stream_MySQL $Stream, $Username, $Status) use ($Hostname, $Port, $Password, $Callback, $Private) {
+            // Check if the authentication succeeded and setup the pool
+            if ($Status) {
+              $Stream->addHook ('mysqlDisconnected', array ($this, 'mysqlStreamClosed'));
+              $this->Streams = array ($Stream);
+              
+              $this->Hostname = $Hostname;
+              $this->Port = $Port;
+              $this->Username = $Username;
+              $this->Password = $Password;
+              
+              $this->___callback ('mysqlConnected', $Hostname, $Port, $Username);
+            } else {
+              $this->___callback ('mysqlAuthenticationFailed', $Hostname, $Port, $Username);
+              $this->___callback ('mysqlConnectFailed', $Hostname, $Port, $Username);
+            }
+            
+            // Fire the final callback
+            return $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, $Status, $Private);
+          });
+        },
+        function () use ($Hostname, $Port, $Username, $Callback, $Private) {
+          // Raise all callbacks
           $this->___callback ('mysqlConnectFailed', $Hostname, $Port, $Username);
+          $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, false, $Private);
           
-          return $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, false, $Private);
+          // Forward the error
+          return new qcEvents_Promise_Solution (func_get_args ());
         }
-        
-        // Create a new MySQL-Stream for this
-        $Stream = new qcEvents_Stream_MySQL;
-        
-        // Connect both streams
-        $Socket->pipeStream ($Stream);
-        
-        // Try to authenticate
-        $Stream->authenticate ($Username, $Password, $this->Database, function (qcEvents_Stream_MySQL $Stream, $Username, $Status) use ($Hostname, $Port, $Password, $Callback, $Private) {
-          // Check if the authentication succeeded and setup the pool
-          if ($Status) {
-            $Stream->addHook ('mysqlDisconnected', array ($this, 'mysqlStreamClosed'));
-            $this->Streams = array ($Stream);
-            
-            $this->Hostname = $Hostname;
-            $this->Port = $Port;
-            $this->Username = $Username;
-            $this->Password = $Password;
-            
-            $this->___callback ('mysqlConnected', $Hostname, $Port, $Username);
-          } else {
-            $this->___callback ('mysqlAuthenticationFailed', $Hostname, $Port, $Username);
-            $this->___callback ('mysqlConnectFailed', $Hostname, $Port, $Username);
-          }
-          
-          // Fire the final callback
-          return $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, $Status, $Private);
-        });
-      });
+      );
     }
     // }}}
     
@@ -569,32 +572,35 @@
         $Stream = new qcEvents_Stream_MySQL;
         
         // Try to connect
-        $this->streamPending->connect ($this->Hostname, $this->Port, qcEvents_Socket::TYPE_TCP, false, function (qcEvents_Socket $Socket, $Status) use ($Stream) {
-          // Check if the connection succeeded
-          if (!$Status)
-            return ($this->streamPending = null);
-          
-          // Create a new MySQL-Stream for this
-          $this->streamPending = $Stream;
-          
-          // Connect both streams
-          $Socket->pipeStream ($Stream, true, function (qcEvents_Interface_Stream $Socket, $Status) use ($Stream) {
-            // Check if the connection wasn't successfull
-            if (!$Status)
-              return ($this->streamPending = null);
+        $this->streamPending->connect ($this->Hostname, $this->Port, qcEvents_Socket::TYPE_TCP)->then (
+          function () use ($Stream) {
+            // Create a new MySQL-Stream for this
+            $this->streamPending = $Stream;
             
-            // Try to authenticate
-            $this->streamPending->authenticate ($this->Username, $this->Password, $this->Database, function (qcEvents_Stream_MySQL $Stream, $Username, $Status) {
-              // Check if the authentication succeeded and setup the pool
-              if ($Status) {
-                $Stream->addHook ('mysqlDisconnected', array ($this, 'mysqlStreamClosed'));
-                $this->Streams [] = $Stream;
-              }
-                
-              $this->streamPending = null;
+            // Connect both streams
+            return $Socket->pipeStream ($Stream, true, function (qcEvents_Interface_Stream $Socket, $Status) use ($Stream) {
+              // Check if the connection wasn't successfull
+              if (!$Status)
+                return ($this->streamPending = null);
+              
+              // Try to authenticate
+              $this->streamPending->authenticate ($this->Username, $this->Password, $this->Database, function (qcEvents_Stream_MySQL $Stream, $Username, $Status) {
+                // Check if the authentication succeeded and setup the pool
+                if ($Status) {
+                  $Stream->addHook ('mysqlDisconnected', array ($this, 'mysqlStreamClosed'));
+                  $this->Streams [] = $Stream;
+                }
+                  
+                $this->streamPending = null;
+              });
             });
-          });
-        });
+          },
+          function () {
+            $this->streamPending = null;
+            
+            throw new qcEvents_Promise_Solution (func_get_args ());
+          }
+        );
       }
       
       // Just return the last stream

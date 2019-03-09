@@ -126,30 +126,8 @@
         $this->SocketMaps [$Key] = array ($Index => $Index);
       
       // Try to connect
-      return $Socket->connect (
-        $Host, $Port, $Type, $TLS,
-        function (qcEvents_Socket $Socket, $Status)
-        use ($Key, $Index, $Callback, $Private) {
-          // Check if the connection was successfull
-          if (!$Status) {
-            // Quickly de-register the socket
-            unset ($this->Sockets [$Index], $this->SocketStatus [$Index], $this->SocketPipes [$Index], $this->SocketCallbacks [$Index], $this->SocketMaps [$Key][$Index]);
-            
-            if (count ($this->SocketMaps [$Key]) > 0) {
-              // Check if there is another socket available for usage
-              foreach ($this->SocketMaps [$Key] as $Index)
-                if ($this->SocketStatus [$Index] == self::STATUS_AVAILABLE) {
-                  $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
-                  
-                  return $this->___raiseCallback ($Callback, $this->Sockets [$Index], $this->SocketPipes [$Index], $Private);
-                }
-            } else
-              unset ($this->SocketMaps [$Key]);
-            
-            // Forward the error
-            return $this->___raiseCallback ($Callback, null, null, $Private);
-          }
-          
+      return $Socket->connect ($Host, $Port, $Type, $TLS)->then (
+        function () use ($Socket, $Key, $Index, $Callback, $Private) {
           // Check wheter to further setup the socket
           if (count ($this->getHooks ('socketConnected')) == 0) {
             $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
@@ -162,6 +140,24 @@
           $this->SocketCallbacks [$Index] = array ($Callback, $Private);
           
           $this->___callback ('socketConnected', $Socket);
+        },
+        function () use ($Key, $Index, $Callback, $Private) {
+          // Quickly de-register the socket
+          unset ($this->Sockets [$Index], $this->SocketStatus [$Index], $this->SocketPipes [$Index], $this->SocketCallbacks [$Index], $this->SocketMaps [$Key][$Index]);
+          
+          if (count ($this->SocketMaps [$Key]) > 0) {
+            // Check if there is another socket available for usage
+            foreach ($this->SocketMaps [$Key] as $Index)
+              if ($this->SocketStatus [$Index] == self::STATUS_AVAILABLE) {
+                $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
+                
+                return $this->___raiseCallback ($Callback, $this->Sockets [$Index], $this->SocketPipes [$Index], $Private);
+              }
+          } else
+            unset ($this->SocketMaps [$Key]);
+          
+          // Forward the error
+          return $this->___raiseCallback ($Callback, null, null, $Private);
         }
       );
     }
