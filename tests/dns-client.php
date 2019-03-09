@@ -17,10 +17,16 @@
   qcEvents_Client_DNS::$debugHooks = true;
   
   $Pool = new qcEvents_Client_DNS ($Base);
-  $Pool->resolve ('www.tiggerswelt.net', null, null, function (qcEvents_Client_DNS $Pool, $askedHostname, $Answers, $Authorities, $Additionals, qcEvents_Stream_DNS_Message $wholeMessage = null) {
-    echo 'Response', "\n";
-    print_r ($wholeMessage);
-  });
+  $Pool->resolve ('www.tiggerswelt.net')->then (
+    function (qcEvents_Stream_DNS_Recordset $Answers, qcEvents_Stream_DNS_Recordset $Authorities, qcEvents_Stream_DNS_Recordset $Additional, qcEvents_Stream_DNS_Message $Response) {
+      echo 'Response', "\n";
+      
+      var_dump ($Response);
+    },
+    function () {
+      echo 'Query failed', "\n";
+    }
+  )->then (function () { exit (); });
   
   // Enter main-loop
   $Base->loop ();

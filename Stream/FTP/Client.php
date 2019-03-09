@@ -715,12 +715,14 @@
               $Socket = new qcEvents_Socket ($this->Stream->getEventBase ());
               
               // Try to connect to destination and forward the handle to our caller upon completion
-              $Socket->connect ($IP, $Port, $Socket::TYPE_TCP, false, function (qcEvents_Socket $Socket, $Status) use ($intermediateCallback, $intermediatePrivate) {
-                if (!$Status)
-                  $Socket = null;
-                
-                $this->___raiseCallback ($intermediateCallback, $Socket, $intermediatePrivate);
-              });
+              $Socket->connect ($IP, $Port, $Socket::TYPE_TCP)->then (
+                function () use ($Socket, $intermediateCallback, $intermediatePrivate) {
+                  $this->___raiseCallback ($intermediateCallback, $Socket, $intermediatePrivate);
+                },
+                function () use ($intermediateCallback, $intermediatePrivate) {
+                  $this->___raiseCallback ($intermediateCallback, null, $intermediatePrivate);
+                }
+              );
               
               // Issue the original command
               array_unshift (
