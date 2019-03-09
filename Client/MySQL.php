@@ -117,7 +117,7 @@
       
       // Try to connect
       return $Socket->connect ($Hostname, $Port, qcEvents_Socket::TYPE_TCP)->then (
-        function () use ($Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private) {
+        function () use ($Socket, $Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private) {
           // Create a new MySQL-Stream for this
           $Stream = new qcEvents_Stream_MySQL;
           
@@ -575,6 +575,7 @@
         $this->streamPending->connect ($this->Hostname, $this->Port, qcEvents_Socket::TYPE_TCP)->then (
           function () use ($Stream) {
             // Create a new MySQL-Stream for this
+            $Socket = $this->streamPending;
             $this->streamPending = $Stream;
             
             // Connect both streams
