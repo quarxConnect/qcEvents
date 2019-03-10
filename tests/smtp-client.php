@@ -68,7 +68,7 @@
     function () {
       echo 'E-Mail was sent successfully', "\n";
     },
-    function ($e) {
+    function ($e = null) {
       echo 'E-Mail could NOT be sent', "\n", $e, "\n";
     }
   )->finally (function () { exit (); });
