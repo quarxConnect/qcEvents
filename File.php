@@ -1,6 +1,25 @@
 <?PHP
 
+  /**
+   * qcEvents - File
+   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * 
+   * This program is free software: you can redistribute it and/or modify
+   * it under the terms of the GNU General Public License as published by
+   * the Free Software Foundation, either version 3 of the License, or
+   * (at your option) any later version.
+   * 
+   * This program is distributed in the hope that it will be useful,
+   * but WITHOUT ANY WARRANTY; without even the implied warranty of
+   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   * GNU General Public License for more details.
+   * 
+   * You should have received a copy of the GNU General Public License
+   * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   **/
+  
   require_once ('qcEvents/IOStream.php');
+  require_once ('qcEvents/Promise.php');
   
   class qcEvents_File extends qcEvents_IOStream {
     /* The filename of this stream */
@@ -15,42 +34,39 @@
      * 
      * @param qcEvents_Base $Base Event-Base to use
      * @param string $Filename Path to file
-     * @param callable $Callback Callback to raise when all contents were read
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * Once completed the callback will be raised in the form of
-     * 
-     *   function (string $Content = null, mixed $Private = null) { }
      * 
      * @access public
-     * @return qcEvents_File
+     * @return qcEvents_Promise
      **/
-    public static function readFileContents (qcEvents_Base $Base, $Filename, callable $Callback, $Private = null) {
-      // Try to create a file-stream
-      try {
+    public static function readFileContents (qcEvents_Base $Base, $Filename) : qcEvents_Promise {
+      return new qcEvents_Promise (function ($resolve, $reject) use ($Base, $Filename) {
+        // Try to create a file-stream
         $File = new static ($Base, $Filename, true, false, false);
-      } catch (Exception $E) {
-        return call_user_func ($Callback, null, $Private);
-      }
-      
-      // Bind Event-Handlers
-      $Buffer = '';
-      
-      $File->addHook ('eventReadable', function ($File) use (&$Buffer) {
-        // Try to read from stream
-        if (($Data = $File->read ()) === false)
-          return;
         
-        // Push to our buffer
-        $Buffer .= $Data;
+        // Read all contents of the file
+        $Buffer = '';
+        
+        $File->addHook (
+          'eventReadable',
+          function ($File) use (&$Buffer) {
+            // Try to read from stream
+            if (($Data = $File->read ()) === false)
+              return;
+            
+            // Push to our buffer
+            $Buffer .= $Data;
+          }
+        );
+        
+        // Wait for end-of-file
+        $File->addHook (
+          'eventClosed',
+          function ($File) use (&$Buffer, $resolve) {
+            // Forward the callback
+            $resolve ($Buffer);
+          }
+        );
       });
-      
-      $File->addHook ('eventClosed', function ($File) use ($Callback, $Private, &$Buffer) {
-        // Forward the callback
-        return call_user_func ($Callback, $Buffer, $Private);
-      });
-      
-      return $File;
     }
     // }}}
     

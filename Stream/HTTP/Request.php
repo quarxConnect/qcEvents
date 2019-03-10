@@ -580,16 +580,32 @@
           $Path .= 'index.html';
       }
       
+      // Try to find an event-base
+      $Source = $Server->getPipeSource ();
+      
+      if (!method_exists ($Source, 'getEventBase') ||
+          !is_object ($Base = $Source->getEventBase ()))
+        $Base = qcEvents_Base::singleton ();
+      
       // Try to read the file
       require_once ('qcEvents/File.php');
       
-      qcEvents_File::readFileContents (qcEvents_Base::singleton (), $Path, function ($Content) use ($Server) {
-        $Response = new qcEvents_Stream_HTTP_Header (array (
-          'HTTP/' . $this->getVersion (true) . ($Content !== null ? ' 200 Ok' : ' 403 Forbidden'),
-        ));
+      return qcEvents_File::readFileContents ($Base, $Path)->then (
+        function ($Content) use ($Server) {
+          $Response = new qcEvents_Stream_HTTP_Header (array (
+            'HTTP/' . $this->getVersion (true) . ' 200 Ok',
+          ));
+          
+          return $Server->httpdSetResponse ($this, $Response, $Content);
+        },
+        function () use ($Server) {
+          $Response = new qcEvents_Stream_HTTP_Header (array (
+            'HTTP/' . $this->getVersion (true) . ' 403 Forbidden',
+          ));
         
-        return $Server->httpdSetResponse ($this, $Response, $Content);
-      });
+          return $Server->httpdSetResponse ($this, $Response, 'Forbidden');
+        }
+      );
     }
     // }}}
     
