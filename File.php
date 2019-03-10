@@ -77,36 +77,27 @@
      * @param qcEvents_Base $Base Event-Base to use
      * @param string $Filename Path to file
      * @param string $Content Bytes to write to that file
-     * @param callable $Callback Callback to raise when all contents were written
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * Once completed the callback will be raised in the form of
-     * 
-     *   function (bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return qcEvents_File
+     * @return qcEvents_Promise
      **/
-    public static function writeFileContents (qcEvents_Base $Base, $Filename, $Content, callable $Callback, $Private = null) {
-      // Try to create a file-stream
-      try {
+    public static function writeFileContents (qcEvents_Base $Base, $Filename, $Content) : qcEvents_Promise {
+      return new qcEvents_Promise (function ($resolve, $reject) {
+        // Try to create a file-stream
         $File = new static ($Base, $Filename, false, true, true);
-      } catch (Exception $E) {
-        trigger_error ('Failed to create file-resource: ' . $E->getMessage ());
         
-        return call_user_func ($Callback, false, $Private);
-      }
-      
-      // Enqueue the write
-      $File->write ($Content, function (qcEvents_File $File, $Status) use ($Callback, $Private) {
-        // Close the file when finished
-        $File->close (function () use ($Status, $Callback, $Private) {
-          // Forward the callback
-          call_user_func ($Callback, $Status, $Private);
+        // Enqueue the write
+        $File->write ($Content, function (qcEvents_File $File, $Status) use ($resolve, $reject) {
+          // Close the file when finished
+          $File->close (function () use ($Status, $resolve, $reject) {
+            // Forward the callback
+            if ($Status)
+              $resolve ();
+            else
+              $reject ('Could not write entire content to file');
+          });
         });
       });
-      
-      return $File;
     }
     // }}}
     

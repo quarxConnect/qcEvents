@@ -211,58 +211,47 @@
       qcEvents_File::writeFileContents (
         $this->getEventBase (),
         '/sys/class/gpio/gpio' . $Number . '/direction',
-        ($Direction == $this::GPIO_IN ? 'in' : 'out'),
-        
-        function ($Status) use ($Number, $Direction, $Edge, $Callback, $Private) {
-          // Make sure the write was successfull
-          if (!$Status) {
-            trigger_error ('Failed to set direction');
+        ($Direction == $this::GPIO_IN ? 'in' : 'out')
+      )->then (
+        function () use ($Number, $Direction, $Edge) {
+          // Setup edges
+          return qcEvents_File::writeFileContents (
+            $this->getEventBase (),
+            '/sys/class/gpio/gpio' . $Number . '/edge',
+            (($Direction == $this::GPIO_OUT) || ($Edge == $this::GPIO_EDGE_NONE) ? 'none' : ($Edge == $this::GPIO_EDGE_FALLING ? 'falling' : ($Edge == $this::GPIO_EDGE_RISING ? 'rising' : 'both')))
+          );
+        }
+      )->then (
+        function () use ($Number, $Direction, $Edge, $Callback, $Private) {
+          // Try to open the value-reader
+          $gpioFD = fopen ('/sys/class/gpio/gpio' . $Number . '/value', ($Direction == $this::GPIO_IN ? 'r' : 'w+'));
+          
+          if (!is_resource ($gpioFD)) {
+            trigger_error ('Failed to open GPIO-Pin');
             
             return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
           }
           
-          // Setup edges
-          qcEvents_File::writeFileContents (
-            $this->getEventBase (),
-            '/sys/class/gpio/gpio' . $Number . '/edge',
-            (($Direction == $this::GPIO_OUT) || ($Edge == $this::GPIO_EDGE_NONE) ? 'none' : ($Edge == $this::GPIO_EDGE_FALLING ? 'falling' : ($Edge == $this::GPIO_EDGE_RISING ? 'rising' : 'both'))),
-            
-            function ($Status) use ($Number, $Direction, $Edge, $Callback, $Private) {
-              // Make sure it was successfull
-              if (!$Status) {
-                trigger_error ('Failed to set edge');
-                
-                return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
-              }
-              
-              // Try to open the value-reader
-              $gpioFD = fopen ('/sys/class/gpio/gpio' . $Number . '/value', ($Direction == $this::GPIO_IN ? 'r' : 'w+'));
-              
-              if (!is_resource ($gpioFD)) {
-                trigger_error ('Failed to open GPIO-Pin');
-                
-                return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
-              }
-              
-              // Close old FD
-              if (is_resource ($this->gpioFD))
-                fclose ($this->gpioFD);
-              
-              // Setup new FD
-              $this->gpioNumber = $Number;
-              $this->gpioFD = $gpioFD;
-              $this->gpioDirection = $Direction;
-              $this->gpioEdge = $Edge;
-              
-              if ($Base = $this->getEventBase ())
-                $Base->updateEvent ($this);
-              
-              // Raise the callback
-              return $this->___raiseCallback ($Callback, $this, $Number, true, $Private);
-            }
-          ); // qcEvents_File::writeFileContents () - GPIO-Edge
+          // Close old FD
+          if (is_resource ($this->gpioFD))
+            fclose ($this->gpioFD);
+          
+          // Setup new FD
+          $this->gpioNumber = $Number;
+          $this->gpioFD = $gpioFD;
+          $this->gpioDirection = $Direction;
+          $this->gpioEdge = $Edge;
+          
+          if ($Base = $this->getEventBase ())
+            $Base->updateEvent ($this);
+          
+          // Raise the callback
+          return $this->___raiseCallback ($Callback, $this, $Number, true, $Private);
+        },
+        function () use ($Callback, $Number, $Private) {
+          return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
         }
-      ); // qcEvents_File::writeFileContents () - GPIO-Direction
+      );
     }
     // }}}
     
