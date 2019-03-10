@@ -465,9 +465,14 @@
       
       // Write to source
       if ($Callback)
-        return $this->Source->write ($Frame, function ($Source, $Sucess) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Success, $Private);
-        });
+        return $this->Source->write ($Frame)->then (
+          function () use ($Callback, $Private) {
+            $this->___raiseCallback ($Callback, true, $Private);
+          },
+          function () use ($Callback, $Private) {
+            $this->___raiseCallback ($Callback, false, $Private);
+          }
+        );
       
       return $this->Source->write ($Frame);
     }

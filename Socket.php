@@ -1257,25 +1257,23 @@
      * Write data to this sink
      * 
      * @param string $Data The data to write to this sink
-     * @param callable $Callback (optional) The callback to raise once the data was written
-     * @param mixed $Private (optional) A private parameter to pass to the callback
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function write ($Data, callable $Callback = null, $Private = null) {
+    public function write ($Data) : qcEvents_Promise {
       // Bypass write-buffer in UDP-Server-Mode
       if ($this->Type == self::TYPE_UDP_SERVER) {
-        $this->___write ($Data);
+        if ($this->___write ($Data) === false)
+          return qcEvents_Promise::reject ('Write failed');
         
-        if ($Callback)
-          call_user_func ($Callback, $this, true, $Private);
+        # TODO: We don't honor length here
         
-        return;
+        return qcEvents_Promise::resolve ();
       }
       
       // Let our parent class handle the write-stuff
-      return parent::write ($Data, $Callback, $Private);
+      return parent::write ($Data);
     }
     // }}}
     

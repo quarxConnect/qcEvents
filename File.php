@@ -82,16 +82,19 @@
      * @return qcEvents_Promise
      **/
     public static function writeFileContents (qcEvents_Base $Base, $Filename, $Content) : qcEvents_Promise {
-      return new qcEvents_Promise (function ($resolve, $reject) {
-        // Try to create a file-stream
+      // Try to create a file-stream
+      try {
         $File = new static ($Base, $Filename, false, true, true);
-        
-        // Enqueue the write
-        $File->write ($Content, function (qcEvents_File $File, $Status) use ($resolve, $reject) {
-          // Close the file when finished
-          $File->close ()->then ($resolve, $reject);
-        });
-      });
+      } catch (exception $e) {
+        return qcEvents_Promise::reject ($e);
+      }
+      
+      // Enqueue the write
+      $File->write ($Content)->then (
+        function () use ($File) {
+          return $File->close ();
+        }
+      );
     }
     // }}}
     

@@ -452,23 +452,23 @@
      **/
     public function close () : qcEvents_Promise {
       // Try to gracefully close the stream
-      if ($this->xmlRootLocal && $this->Source)
-        return new qcEvents_Promise (function ($resolve, $reject) {
-          $Source = $this->Source;
-          $this->Source = null;
-          
-          $Source->write (
-            '</' . $this->xmlRootLocal->getName () . '>' . "\r\n",
-            function (qcEvents_Interface_Source $Source) use ($resolve, $reject) {
-              $Source->close ()->then ($resolve, $reject);
-            }
-          );
-          
-          $this->___callback ('eventClosed');
-        });
+      if ($this->xmlRootLocal && $this->Source) {
+        $Source = $this->Source;
+        $this->Source = null;
+        
+        $this->___callback ('eventClosed');
+        
+        return $Source->write ('</' . $this->xmlRootLocal->getName () . '>' . "\r\n")->then (
+          function () use ($Source) {
+            return $Source->close ();
+          },
+          function () use ($Source) {
+            return $Source->close ();
+          }
+        );
       
       // Just close the stream
-      elseif ($this->Source) {
+      } elseif ($this->Source) {
         $Source = $this->Source;
         $this->Source = null;
         

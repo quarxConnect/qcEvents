@@ -460,21 +460,19 @@
       }
       
       // Try to write out the status
-      $this->Source->write (
-        strval ($Header),
-        function (qcEvents_Interface_Sink $Source, $Status)
-        use ($Header) {
-          // Check if the header could be written
-          if (!$Status)
-            return $this->httpUnexpectedClose ();
-          
+      $this->Source->write (strval ($Header))->then (
+        function () use ($Header) {
           // Update the status
           if ($this->State == $this::HTTP_STATE_CONNECTING)
             $this->httpSetState (qcEvents_Stream_HTTP::HTTP_STATE_WAITING);
           
           // Run the callback
           $this->___callback ('httpHeadersSent', $Header);
-        });
+        },
+        function () {
+          return $this->httpUnexpectedClose ();
+        }
+      );
       
       // Run the callback
       $this->___callback ('httpHeadersSend', $Header);

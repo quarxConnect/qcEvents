@@ -101,36 +101,31 @@
         return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
       
       // Try to export the Pin
-      $File = new qcEvents_File ($this->getEventBase (), '/sys/class/gpio/export', false, true);
-      
-      return $File->write ((string)$Number, function (qcEvents_File $File, $Status) use ($Number, $Callback, $Private) {
-        // Forget about the file
-        $File->close ();
-        
-        // Make sure the GPIO was exported
-        if (!$Status) {
+      return qcEvents_File::writeFileContents ($this->getEventBase (), '/sys/class/gpio/export', (string)$Number)->then (
+        function () use ($Number, $Callback, $Private) {
+          // Wait for directiory to appear
+          if (!is_dir ('/sys/class/gpio/gpio' . $Number))
+            return $this->setGPIOWait (0, $Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+          
+          // Check modes
+          if (!is_array ($Ctrl = @stat ('/sys/class/gpio/export')))
+            return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+          
+          if (!is_array ($Stat = stat ('/sys/class/gpio/gpio' . $Number . '/direction')) ||
+            (!is_writable ('/sys/class/gpio/gpio' . $Number . '/direction') &&
+             (($Ctrl ['mode'] != $Stat ['mode']) ||
+              ($Ctrl ['gid'] != $Stat ['gid']))))
+            return $this->setGPIOWait (0, $Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+          
+          // Attach ourself to that GPIO
+          return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+        },
+        function () use ($Callback, $Number, $Private) {
           trigger_error ('Failed to query GPIO-Export');
           
           return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
         }
-        
-        // Wait for directiory to appear
-        if (!is_dir ('/sys/class/gpio/gpio' . $Number))
-          return $this->setGPIOWait (0, $Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
-        
-        // Check modes
-        if (!is_array ($Ctrl = @stat ('/sys/class/gpio/export')))
-          return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
-        
-        if (!is_array ($Stat = stat ('/sys/class/gpio/gpio' . $Number . '/direction')) ||
-          (!is_writable ('/sys/class/gpio/gpio' . $Number . '/direction') &&
-           (($Ctrl ['mode'] != $Stat ['mode']) ||
-            ($Ctrl ['gid'] != $Stat ['gid']))))
-          return $this->setGPIOWait (0, $Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
-        
-        // Attach ourself to that GPIO
-        return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
-      });
+      );
     }
     // }}}
     

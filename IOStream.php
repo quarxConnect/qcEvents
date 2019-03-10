@@ -289,29 +289,19 @@
      * Write data to this sink
      * 
      * @param string $Data The data to write to this sink
-     * @param callable $Callback (optional) The callback to raise once the data was written
-     * @param mixed $Private (optional) A private parameter to pass to the callback
-     * 
-     * The Callback will be raised in the form of
-     * 
-     *   function (qcEvents_IOStream $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function write ($Data, callable $Callback = null, $Private = null) {
-      // Clear private if there is no callback
-      if ($Callback === null)
-        $Private = null;
-      
-      // Enqueue the packet
-      $this->writeBuffer [] = array ($Data, $Callback, $Private);
-      
-      // Make sure we catch write-events
-      if (!$this->watchWrites && $this->eventLoop)
-        $this->eventLoop->updateEvent ($this);
-      
-      return true;
+    public function write ($Data) : qcEvents_Promise {
+      return new qcEvents_Promise (function ($resolve, $reject) use ($Data) {
+        // Enqueue the packet
+        $this->writeBuffer [] = array ($Data, $resolve, $reject);
+        
+        // Make sure we catch write-events
+        if (!$this->watchWrites && $this->eventLoop)
+          $this->eventLoop->updateEvent ($this);
+      });
     }
     // }}}
     
@@ -433,7 +423,7 @@
       
       // Force the write-buffer to be cleared
       foreach ($this->writeBuffer as $writeBuffer)
-        $this->___raiseCallback ($writeBuffer [1], false, $writeBuffer [2]);
+        call_user_func ($writeBuffer [2], 'Close was forced');
       
       $this->writeBuffer = array ();
       
@@ -516,9 +506,8 @@
         // Remove the chunk from the buffer
         $Finished = array_shift ($this->writeBuffer);
         
-        // Raise a callback if requested
-        if ($Finished [1] !== null)
-          $this->___raiseCallback ($Finished [1], true, $Finished [2]);
+        // Resolve promise
+        call_user_func ($Finished [1]);
       }
       
       // Fire the event when
