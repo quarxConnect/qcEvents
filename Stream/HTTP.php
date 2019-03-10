@@ -23,6 +23,7 @@
   require_once ('qcEvents/Trait/Hookable.php');
   require_once ('qcEvents/Trait/Pipe.php');
   require_once ('qcEvents/Stream/HTTP/Header.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * HTTP-Stream
@@ -246,13 +247,10 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Unregister the source
       $this->Source->removeHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
       $this->Source = null;
@@ -261,7 +259,7 @@
       $this->reset ();
       
       // Raise the callback
-      $this->___raiseCallback ($Callback, $Private);
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

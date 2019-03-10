@@ -24,6 +24,7 @@
   require_once ('qcEvents/Trait/Hookable.php');
   require_once ('qcEvents/Trait/Timer.php');
   require_once ('qcEvents/Socket.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * Server-Socket
@@ -453,13 +454,10 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void  
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Check wheter to really close the server
       if ($Open = $this->Socket) {
         fclose ($this->Socket);
@@ -468,11 +466,10 @@
       }
       
       // Raise Callbacks
-      if ($Callback !== null)
-        call_user_func ($Callback, $Private);
-      
       if ($Open)
         $this->___callback ('serverOffline');
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

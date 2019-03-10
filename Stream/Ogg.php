@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Interface/Consumer.php');
   require_once ('qcEvents/Trait/Hookable.php');
+  require_once ('qcEvents/Promise.php');
   
   /** 
    * Ogg Streams
@@ -273,13 +274,10 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       # TODO: Unpipe from our parent source/stream
       
       // Raise a callback for this
@@ -287,6 +285,8 @@
       
       // Reset our state
       $this->resetState ();
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

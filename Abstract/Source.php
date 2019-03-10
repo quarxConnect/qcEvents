@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Abstract/Pipe.php');
   require_once ('qcEvents/Interface/Source.php');
+  require_once ('qcEvents/Promise.php');
   
   class qcEvents_Abstract_Source extends qcEvents_Abstract_Pipe implements qcEvents_Interface_Source {
     /* Local buffer of abstract source */
@@ -153,20 +154,17 @@
     /**   
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void  
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       if (!$this->closed) {
         $this->closed = true;
         $this->___callback ('eventClosed');
         $this->Buffer = '';
       }
       
-      $this->___raiseCallback ($Callback, $Private);
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

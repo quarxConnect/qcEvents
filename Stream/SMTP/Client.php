@@ -552,7 +552,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Check if our stream is already closed
       if (!is_object ($this->Stream)) {
         // Check if we are in disconnected state
@@ -562,8 +562,6 @@
           $this->___callback ('smtpDisconnected');
           $this->___callback ('eventClosed');
         }
-        
-        $this->___raiseCallback ($Callback, true, $Private);
         
         return qcEvents_Promise::resolve ();
       }
@@ -576,8 +574,6 @@
         self::SMTP_STATE_DISCONNECTING
       )->then (
         function ($Code) {
-          $this->___raiseCallback ($Callback, (($Code >= 200) && ($Code < 300)), $Private);
-          
           if (($Code < 200) || ($Code >= 300))
             throw new exception ('Server returned an error');
         }
@@ -1051,14 +1047,16 @@
             if ($Code >= 500) {
               $this->Buffer = '';
               
-              return $this->close (function () use ($Source) {
-                $this->___callback ('smtpConnectionFailed');
-                
-                if ($this->initCallback) {
-                  $this->___raiseCallback ($this->initCallback [0], $Source, false, $this->initCallback [1]);
-                  $this->initCallback = null;
+              return $this->close ()->finally (
+                function () use ($Source) {
+                  $this->___callback ('smtpConnectionFailed');
+                  
+                  if ($this->initCallback) {
+                    $this->___raiseCallback ($this->initCallback [0], $Source, false, $this->initCallback [1]);
+                    $this->initCallback = null;
+                  }
                 }
-              });
+              );
             }
             
             // Do the client-initiation
@@ -1090,14 +1088,16 @@
             if ($this->connectingState > self::SMTP_HANDSHAKE_EHLO) {
               $this->Buffer = '';
               
-              return $this->close (function () use ($Source) {
-                $this->___callback ('smtpConnectionFailed');
-                
-                if ($this->initCallback) {
-                  $this->___raiseCallback ($this->initCallback [0], $Source, false, $this->initCallback [1]);
-                  $this->initCallback = null;
+              return $this->close ()->finally (
+                function () use ($Source) {
+                  $this->___callback ('smtpConnectionFailed');
+                  
+                  if ($this->initCallback) {
+                    $this->___raiseCallback ($this->initCallback [0], $Source, false, $this->initCallback [1]);
+                    $this->initCallback = null;
+                  }
                 }
-              });
+              );
             }
             
             // Try HELO-Fallback

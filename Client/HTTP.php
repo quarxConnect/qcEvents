@@ -195,9 +195,11 @@
         
         // Run the final callback
         if ($File)
-          return $File->close (function () use ($Callback, $Private, $URL, $Destination, $Header) {
-            $this->___raiseCallback ($Callback, $URL, $Destination, ($Header && !$Header->isError () ? ($Header->hasBody () ? true : null) : false), $Private);
-          });
+          return $File->close ()->finally (
+            function () use ($Callback, $Private, $URL, $Destination, $Header) {
+              $this->___raiseCallback ($Callback, $URL, $Destination, ($Header && !$Header->isError () ? ($Header->hasBody () ? true : null) : false), $Private);
+            }
+          );
         
         $this->___raiseCallback ($Callback, $URL, $Destination, ($Header && !$Header->isError () ? ($Header->hasBody () ? true : null) : false), $Private);
       });

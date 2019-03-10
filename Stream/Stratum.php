@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
+  require_once ('qcEvents/Promise.php');
   
   class qcEvents_Stream_Stratum extends qcEvents_Hookable implements qcEvents_Interface_Stream_Consumer {
     // Mining-Algorithm of our client
@@ -352,13 +353,10 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Cancel pending requests
       foreach ($this->Requests as $CallbackSpec)
         $this->___raiseCallback ($CallbackSpec [0], null, null, $CallbackSpec [1]);
@@ -366,15 +364,16 @@
       $this->Requests = array ();
       
       // Make sure we have a stream assigned ...
-      if (!$this->Stream || !$this->Stream->isConnected ()) {
-        $this->___raiseCallback ($Callback, true, $Private);
-        
-        return;
-      }
+      if (!$this->Stream || !$this->Stream->isConnected ())
+        return qcEvents_Promise::resolve ();
       
       // ... and forward the call
-      $this->Stream->close ($Callback, $Private);
       $this->___callback ('eventClosed');
+      
+      $Stream = $this->Stream;
+      $this->Stream = null;
+      
+      return $Stream->close ();
     }
     // }}}
     

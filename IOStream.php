@@ -22,6 +22,7 @@
   require_once ('qcEvents/Interface/Stream.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Abstract/Pipe.php');
+  require_once ('qcEvents/Promise.php');
   
   abstract class qcEvents_IOStream extends qcEvents_Abstract_Pipe implements qcEvents_Interface_Loop, qcEvents_Interface_Stream, qcEvents_Interface_Stream_Consumer {
     const DEFAULT_READ_LENGTH = 4096;
@@ -393,40 +394,60 @@
     /**
      * Close this I/O-Stream
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
      * @param bool $Force (optional) Force close even if there is data on the write-buffer
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null, $Force = false) {
-      // Mark ourself as closing
-      $this->isClosing = array ($Callback, $Private);
+    public function close ($Force = false) : qcEvents_Promise {
+      // Check if there is a pending close
+      if ($this->isClosing instanceof qcEvents_Promise)
+        return $this->isClosing;
       
       // Check if there are writes pending
-      if (count ($this->writeBuffer) > 0) {
-        if (!$Force)
-          return;
-        
-        foreach ($this->writeBuffer as $writeBuffer)
-          $this->___raiseCallback ($writeBuffer [1], false, $writeBuffer [2]);
-        
-        $this->writeBuffer = array ();
-      }
+      if (!$Force && (count ($this->writeBuffer) > 0))
+        return ($this->isClosing = new qcEvents_Promise (function ($resolve, $reject) {
+          $this->addHook (
+            'eventDrained',
+            function () use ($resolve) {
+              // Do the low-level-close
+              $this->___close ();
+              $this->isWatching (false);
+              
+              // Remove closing-state
+              $this->isClosing = false;
+              
+              // Raise callbacks
+              $this->___callback ('eventClosed');
+              
+              $resolve ();
+            },
+            null,
+            true
+          );
+          # $this->isClosing = array ($resolve, $reject);
+        }));
+      
+      // Mark ourself as closing
+      $this->isClosing = true;
+      
+      // Force the write-buffer to be cleared
+      foreach ($this->writeBuffer as $writeBuffer)
+        $this->___raiseCallback ($writeBuffer [1], false, $writeBuffer [2]);
+      
+      $this->writeBuffer = array ();
       
       // Do the low-level-close
       $this->___close ();
       $this->isWatching (false);
       
-      // Fire callbacks
-      if ($Callback !== null) {
-        $this->isClosing = false;
-        
-        call_user_func ($Callback, $Private);
-      }
+      // Remove closing-state
+      $this->isClosing = false;
       
+      // Raise callbacks
       $this->___callback ('eventClosed');
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -502,10 +523,6 @@
       
       // Fire the event when
       $this->___callback ('eventDrained');
-      
-      if ($this->isClosing)
-        return $this->close ($this->isClosing [0], $this->isClosing [1]);
-      
       $this->___callback ('eventWritable');
     }
     // }}}

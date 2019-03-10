@@ -1,8 +1,27 @@
 <?PHP
 
+  /**
+   * qcEvents - FTP-Client
+   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * 
+   * This program is free software: you can redistribute it and/or modify
+   * it under the terms of the GNU General Public License as published by
+   * the Free Software Foundation, either version 3 of the License, or
+   * (at your option) any later version.
+   * 
+   * This program is distributed in the hope that it will be useful,
+   * but WITHOUT ANY WARRANTY; without even the implied warranty of
+   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   * GNU General Public License for more details.
+   * 
+   * You should have received a copy of the GNU General Public License
+   * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   **/
+  
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/Stream/FTP/Client.php');
+  require_once ('qcEvents/Promise.php');
   
   class qcEvents_Client_FTP extends qcEvents_Hookable {
     /* The eventbase we are assigned to */
@@ -204,24 +223,21 @@
      * @access public
      * @return void
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Collect all active streams
       $Streams = array_merge ($this->pendingStreams, $this->availableStreams, $this->blockedStreams);
-      $StreamCount = count ($Streams);
       
       // Reset all streams
       $this->pendingStreams = $this->availableStreams = $this->blockedStreams = array ();
       $this->Ready = false;
       
       // Enqueue close
-      if ($StreamCount == 0)
-        return $this->___raiseCallback ($Callback, $Private);
+      $Promises = array ();
       
       foreach ($Streams as $Stream)
-        $Stream->close (function () use (&$StreamCount, $Callback, $Private) {
-          if (--$StreamCount == 0)
-            $this->___raiseCallback ($Callback, $Private);
-        });
+        $Promises [] = $Stream->close ();
+      
+      return qcEvents_Promise::all ($Promises)->then (function () { });
     }
     // }}}
     

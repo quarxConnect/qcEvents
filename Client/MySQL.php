@@ -21,6 +21,7 @@
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/Stream/MySQL.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * MySQL Client
@@ -101,9 +102,11 @@
     public function connect ($Hostname, $Port, $Username, $Password, $Pool = 5, callable $Callback = null, $Private = null) {
       // Check if there are already openend streams
       if (count ($this->Streams) > 0)
-        return $this->close (function () use ($Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private) {
-          $this->connect ($Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private);
-        });
+        return $this->close ()->finally (
+          function () use ($Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private) {
+            $this->connect ($Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private);
+          }
+        );
       
       // Create a socket for the stream
       $Socket = new qcEvents_Socket ($this->eventLoop);
@@ -499,17 +502,10 @@
     /**
      * Close all connections to the MySQL-Server
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_MySQL $Self, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       $closeFunc = function ($Stream) {
         // Unregister the stream
         if ($this->streamPending == $Stream)
@@ -530,19 +526,24 @@
       // Check if there is nothing to close
       if ((count ($this->Streams) == 0) && !$this->streamPending) {
         $this->___callback ('mysqlDisconnected');
-        $this->___raiseCallback ($Callback, true, $Private);
         
-        return true;
+        return qcEvents_Promise::resolve ();
       }
       
-      // Request the close
+      // Request close on all streams
+      $Promises = array ();
+      
       foreach ($this->Streams as $Stream)
-        $Stream->close ($closeFunc);
+        $Promises [] = $Stream->close ();
       
-      if ($this->streamPending)
-        $this->streamPending->close ($closeFunc);
+      $this->Streams = array ();
       
-      return true;
+      if ($this->streamPending) {
+        $Promises [] = $this->streamPending->close ();
+        $this->streamPending = null;
+      }
+      
+      return qcEvents_Promise::all ($Promises)->then (function () { });
     }
     // }}}
     

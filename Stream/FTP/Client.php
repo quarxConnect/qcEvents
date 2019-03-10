@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * FTP Client Stream
@@ -411,31 +412,32 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Try to close gracefully
       if (!$this->StreamCallback && $this->Stream && ($this->State != self::STATE_CONNECTING))
-        return $this->runFTPCommand ('QUIT', null, function () use ($Callback, $Private) {
-          if ($this->Stream)
-            return $this->Stream->close (function () use ($Callback, $Private) {
-              $this->___callback ('eventClosed');
-              $this->___raiseCallback ($Callback, $Private);
-            });
-          
-          $this->___callback ('eventClosed');
-          $this->___raiseCallback ($Callback, $Private);
+        return new qcEvents_Promise (function ($resolve, $reject) {
+          $this->runFTPCommand ('QUIT', null, function () use ($resolve, $reject) {
+            if ($this->Stream) {
+              $Stream = $this->Stream;
+              $this->Stream = null;
+              
+              $Stream->close ()->then ($resolve, $reject);
+            } else
+              $resolve ();
+            
+            $this->___callback ('eventClosed');
+          });
         });
       
       $this->___raiseCallback ($this->StreamCallback [0], false, $this->StreamCallback [1]);
       $this->StreamCallback = null;
       
       $this->___callback ('eventClosed');
-      $this->___raiseCallback ($Callback, $Private);
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

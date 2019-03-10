@@ -21,6 +21,7 @@
   require_once ('qcEvents/Interface/Consumer.php');
   require_once ('qcEvents/Trait/Hookable.php');
   require_once ('qcEvents/Stream/XML/Node.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * XML-Stream
@@ -446,37 +447,43 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void  
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Try to gracefully close the stream
       if ($this->xmlRootLocal && $this->Source)
-        $this->Source->write ('</' . $this->xmlRootLocal->getName () . '>' . "\r\n", function (qcEvents_Interface_Source $Source) use ($Callback, $Private) {
-          $Source->close (function () use ($Callback, $Private) {
-            $this->___raiseCallback ($Callback, $Private);
-            $this->___callback ('eventClosed');
-          });
-        });
-      
-      // Just close the stream
-      elseif ($this->Source)
-        $this->Source->close (function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Private);
+        return new qcEvents_Promise (function ($resolve, $reject) {
+          $Source = $this->Source;
+          $this->Source = null;
+          
+          $Source->write (
+            '</' . $this->xmlRootLocal->getName () . '>' . "\r\n",
+            function (qcEvents_Interface_Source $Source) use ($resolve, $reject) {
+              $Source->close ()->then ($resolve, $reject);
+            }
+          );
+          
           $this->___callback ('eventClosed');
         });
       
-      // Just raise the callback
-      elseif ($this->streamStarted) {
-        $this->___raiseCallback ($Callback, $Private);
+      // Just close the stream
+      elseif ($this->Source) {
+        $Source = $this->Source;
+        $this->Source = null;
+        
         $this->___callback ('eventClosed');
-      }
+        
+        return $Source->close ();
+      
+      // Just raise the callback
+      } elseif ($this->streamStarted)
+        $this->___callback ('eventClosed');
       
       // Reset our state   
       $this->resetState ();
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

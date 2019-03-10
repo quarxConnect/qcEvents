@@ -22,6 +22,7 @@
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Trait/Hookable.php');
   require_once ('qcEvents/Stream/DNS/Message.php');
+  require_once ('qcEvents/Promise.php');
   
   class qcEvents_Stream_DNS implements qcEvents_Interface_Consumer, qcEvents_Interface_Stream_Consumer {
     use qcEvents_Trait_Hookable;
@@ -268,16 +269,14 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Just raise callbacks
-      $this->___raiseCallback ($Callback, $Private);
       $this->___callback ('eventClosed');
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

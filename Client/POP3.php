@@ -22,6 +22,7 @@
   require_once ('qcEvents/Trait/Parented.php');
   require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/Stream/POP3/Client.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * POP3 Client
@@ -74,13 +75,15 @@
     public function connect ($Hostname, $Port = null, $Username = null, $Password = null, callable $Callback = null, $Private = null) {
       // Check wheter to close an active stream first
       if ($this->Stream)
-        return $this->Stream->close (function () use ($Hostname, $Port, $Username, $Password, $Callback, $Private) {
-          // Make sure the stream is removed
-          $this->unsetStream ();
-          
-          // Try to connect now
-          $this->connect ($Hostname, $Port, $Username, $Password, $Callback, $Private);
-        });
+        return $this->Stream->close ()->finally (
+          function () use ($Hostname, $Port, $Username, $Password, $Callback, $Private) {
+            // Make sure the stream is removed
+            $this->unsetStream ();
+            
+            // Try to connect now
+            $this->connect ($Hostname, $Port, $Username, $Password, $Callback, $Private);
+          }
+        );
       
       // Determine which port to use
       if ($Port === null)
@@ -630,26 +633,17 @@
     /**
      * Close the POP3-Connection
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
-     * @return bool  
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
-      if (!$this->Stream) {
-        $this->___raiseCallback ($Callback, false, $Private);
-        
-        return false;
-      }
-       
-      $this->Stream->close (function (qcEvents_Stream_POP3_Client $Stream, $Status) use ($Callback, $Private) {
-        $this->___raiseCallback ($Callback, $Status, $Private);
-      });
+    public function close () : qcEvents_Promse {
+      if (!$this->Stream)
+        return qcEvents_Promise::resolve ();
+      
+      $Stream = $this->Stream;
+      $this->Stream = null;
+      
+      return $Stream->close ();
     }
     // }}}
     

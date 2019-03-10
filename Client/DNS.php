@@ -277,7 +277,7 @@
             unset ($this->Queries [$ID]);
             
             // Make sure the socket is closed after error
-            $Socket->close (null, null, true);
+            $Socket->close (true);
             
             // Fire callbacks
             $Hostname = $Message->getQuestions ();

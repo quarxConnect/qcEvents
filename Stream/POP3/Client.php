@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Hookable.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * POP3 Client (Stream)
@@ -750,34 +751,29 @@
     /**
      * Close the POP3-Connection
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Check if our stream is already closed
       if (!is_object ($this->Stream)) {
-        // Fire the callback directly
-        $this->___raiseCallback ($Callback, true, $Private);
-        
         // Check if we are in disconnected state
-        if ($this->State == self::POP3_STATE_DISCONNECTED)
-          return;
-
-        // Set disconnected state
-        $this->popSetState (self::POP3_STATE_DISCONNECTED);
-        $this->___callback ('popDisconnected');
+        if ($this->State != self::POP3_STATE_DISCONNECTED) {
+          $this->popSetState (self::POP3_STATE_DISCONNECTED);
+          $this->___callback ('popDisconnected');
+        }
+        
+        return qcEvents_Promise::resolve ();
       }
       
       // Query a stream-close on server-side
-      return $this->popCommand ('QUIT', null, false, function (qcEvents_Stream_POP3_Client $Self, $Success) use ($Callback, $Private) {
-        $this->___raiseCallback ($Callback, $Success, $Private);
+      return new qcEvents_Promise (function ($resolve, $reject) {
+        return $this->popCommand ('QUIT', null, false, function (qcEvents_Stream_POP3_Client $Self, $Success) use ($resolve, $reject) {
+          if ($Success)
+            $resolve ();
+          else
+            $reject ('Command failed');
+        });
       });
     }
     // }}}

@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Hookable.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * MySQL Client
@@ -663,38 +664,41 @@
     /**
      * Initiate a server-disconnect
      * 
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_MySQL $Self, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Check if our stream is already closed
       if (!is_object ($this->Stream) || !$this->Stream->isWatching ()) {
-        // Fire the callback directly
-        $this->___raiseCallback ($Callback, true, $Private);
+        // Make sure we are in disconnected state
+        if ($this->mysqlState != $this::MYSQL_STATE_DISCONNECTED) {
+          $this->mysqlSetProtocolState ($this::MYSQL_STATE_DISCONNECTED);
+          $this->___callback ('mysqlDisconnected');
+        }
         
-        // Check if we are in disconnected state
-        if ($this->mysqlState == $this::MYSQL_STATE_DISCONNECTED)
-          return;
-        
-        // Set disconnected state
-        $this->mysqlSetProtocolState ($this::MYSQL_STATE_DISCONNECTED);
-        $this->___callback ('mysqlDisconnected');
+        // Return resolved promise
+        return qcEvents_Promise::resolve ();
       }
       
       // Check if we are in command-state
       if (is_object ($this->Stream) && ($this->mysqlState < $this::MYSQL_STATE_AUTHENTICATED))
-        return $this->Stream->close (function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, true, $Private);
-        });
+        return $this->Stream->close ();
       
-      return $this->mysqlEnqueueCommand (0x01, null, self::MYSQL_STATE_DISCONNECTING, $Callback, $Private, self::CALLBACK_STATUS);
+      return new qcEvents_Promise (function ($resolve, $reject) {
+        return $this->mysqlEnqueueCommand (
+          0x01,
+          null,
+          self::MYSQL_STATE_DISCONNECTING,
+          function ($Self, $Status) use ($resolve, $reject) {
+            if ($Status)
+              $resolve ();
+            else
+              $reject ('Command failed');
+          },
+          null,
+          self::CALLBACK_STATUS
+        );
+      });
     } 
     // }}}
     

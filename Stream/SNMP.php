@@ -20,9 +20,9 @@
   
   require_once ('qcEvents/Interface/Consumer.php');
   require_once ('qcEvents/Trait/Hookable.php');
+  require_once ('qcEvents/Promise.php');
   require_once ('ASN1/Coder/DER.php');
   require_once ('SNMP/Message.php');
-  require_once ('dump.php');
   
   class qcEvents_Stream_SNMP implements qcEvents_Interface_Consumer {
     use qcEvents_Trait_Hookable;
@@ -71,16 +71,14 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Just raise callbacks
-      $this->___raiseCallback ($Callback, $Private);
       $this->___callback ('eventClosed');
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

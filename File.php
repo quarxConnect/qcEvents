@@ -89,13 +89,7 @@
         // Enqueue the write
         $File->write ($Content, function (qcEvents_File $File, $Status) use ($resolve, $reject) {
           // Close the file when finished
-          $File->close (function () use ($Status, $resolve, $reject) {
-            // Forward the callback
-            if ($Status)
-              $resolve ();
-            else
-              $reject ('Could not write entire content to file');
-          });
+          $File->close ()->then ($resolve, $reject);
         });
       });
     }

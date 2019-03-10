@@ -21,6 +21,7 @@
   require_once ('qcEvents/Interface/Consumer.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Hookable.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * CSV-Stream
@@ -276,18 +277,16 @@
     /**   
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * @access public   
-     * @return void  
+     * @access public
+     * @return qcEvents_Promise
      **/  
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       if ($this->csvBufferLength > 0)
         $this->consume ($this->csvLineEnding, $this->Source);
       
-      $this->___raiseCallback ($Callback, $Private);
       $this->___callback ('eventClosed');
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

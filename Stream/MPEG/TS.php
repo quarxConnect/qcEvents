@@ -22,6 +22,7 @@
   require_once ('qcEvents/Interface/Consumer.php');
   require_once ('qcEvents/Stream/MPEG/TS/Packet.php');
   require_once ('qcEvents/Stream/MPEG/TS/PAT.php');
+  require_once ('qcEvents/Promise.php');
   
   class qcEvents_Stream_MPEG_TS implements qcEvents_Interface_Consumer {
     use qcEvents_Trait_Hookable;
@@ -208,9 +209,9 @@
     }
     // }}}
     
-    public function close (callable $Callback = null, $Private = null) {
-      if ($Callback)
-        call_user_func ($Callback, true, $Private);
+    public function close () : qcEvents_Promise {
+      # TODO?
+      return qcEvents_Promise::resolve ();
     }
         
     public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
