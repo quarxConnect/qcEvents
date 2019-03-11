@@ -169,7 +169,14 @@
       unset ($this->Pipes [$key]);
       
       // Raise an event at the handler
-      $Handler->deinitConsumer ($this, $Callback, $Private);
+      return $Handler->deinitConsumer ($this)->then (
+        function () use ($Callback, $Private, $Handler) {
+          $this->___raiseCallback ($Callback, $Handler, true, $Private);
+        },
+        function () use ($Callback, $Private, $Handler) {
+          $this->___raiseCallback ($Callback, $Handler, false, $Private);
+        }
+      );
     }
     // }}}
     

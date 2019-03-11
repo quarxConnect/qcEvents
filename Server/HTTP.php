@@ -416,23 +416,17 @@
      * Callback: A source was removed from this consumer
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/  
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       // Remove our hooks again
       $this->removeHook ('httpFinished', array ($this, 'httpdRequestReady'));
       $this->removeHook ('httpHeaderReady', array ($this, 'httpdHeaderReady'));
       
       // Forward to our parent
-      return parent::deinitConsumer ($Source, $Callback, $Private);
+      return parent::deinitConsumer ($Source);
     }
     // }}}
     

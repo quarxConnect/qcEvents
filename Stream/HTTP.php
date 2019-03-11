@@ -288,20 +288,26 @@
       
       // Check if there is an existing source
       if ($this->Source)
-        $this->deinitConsumer ($this->Source);
+        $Promise = $this->deinitConsumer ($this->Source);
+      else
+        $Promise = qcEvents_Promise::resolve ();
       
-      // Reset ourself
-      $this->reset ();
-      
-      // Set the new source
-      $this->Source = $Source;
-      
-      // Register hooks there
-      $Source->addHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
-      
-      // Raise an event for this
-      $this->___raiseCallback ($Callback, true, $Private);
-      $this->___callback ('eventPiped', $Source);
+      $Promse->finally (
+        function () use ($Source, $Callback, $Private) {
+          // Reset ourself
+          $this->reset ();
+          
+          // Set the new source
+          $this->Source = $Source;
+          
+          // Register hooks there
+          $Source->addHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
+          
+          // Raise an event for this
+          $this->___raiseCallback ($Callback, true, $Private);
+          $this->___callback ('eventPiped', $Source);
+        }
+      );
       
       return true;
     }
@@ -332,20 +338,26 @@
       
       // Check if there is an existing source
       if ($this->Source)
-        $this->deinitConsumer ($this->Source);
+        $Promise = $this->deinitConsumer ($this->Source);
+      else
+        $Promise = qcEvents_Promise::resolve ();
       
-      // Reset ourself
-      $this->reset ();
-      
-      // Set the new source
-      $this->Source = $Source;
-      
-      // Register hooks there
-      $Source->addHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
-      
-      // Raise an event for this
-      $this->___raiseCallback ($Callback, true, $Private);
-      $this->___callback ('eventPipedStream', $Source);
+      $Promse->finally (
+        function () use ($Source, $Callback, $Private) {
+          // Reset ourself
+          $this->reset ();
+          
+          // Set the new source
+          $this->Source = $Source;
+          
+          // Register hooks there
+          $Source->addHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
+          
+          // Raise an event for this
+          $this->___raiseCallback ($Callback, true, $Private);
+          $this->___callback ('eventPipedStream', $Source);
+        }
+      );
       
       return true;
     }
@@ -356,20 +368,14 @@
      * Callback: A source was removed from this sink
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       // Check if this is the right source
       if ($this->Source !== $Source)
-        return $this->___raiseCallback ($Callback, false, $Private);
+        return qcEvents_Promise::reject ('Invalid source');
       
       // Remove our hooks
       $Source->removeHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
@@ -379,8 +385,9 @@
       $this->Source = null;
       
       // Raise an event for this
-      $this->___raiseCallback ($Callback, true, $Private);
       $this->___callback ('eventUnpiped', $Source);
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

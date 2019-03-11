@@ -832,20 +832,14 @@
      * Callback: A source was removed from this consumer
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       // Check if the source is authentic
       if ($this->Stream !== $Source)
-        return $this->___raiseCallback ($Callback, false, $Private);
+        return qcEvents_Promise::reject ('Invalid source');
       
       // Remove the stream
       $this->Stream = null;
@@ -854,7 +848,7 @@
       $this->close ();
       
       // Raise the custom callback
-      $this->___raiseCallback ($Callback, true, $Private);
+      return qcEvents_Promsie::resolve ();
     }
     // }}}
     

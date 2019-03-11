@@ -218,8 +218,8 @@
       $this->___raiseCallback ($Callback, true, $Private);
     }     
 
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
-      $this->___raiseCallback ($Callback, true, $Private);
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
+      return qcEvents_Promise::resolve ();
     }
     
     
