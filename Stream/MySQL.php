@@ -797,33 +797,39 @@
       
       // Check if we have a stream assigned
       if (is_object ($this->Stream))
-        $this->Stream->unpipe ($this);
+        $Promise = $this->Stream->unpipe ($this);
+      else
+        $Promise = qcEvents_Promise::resolve ();
       
-      // Reset our state
-      $this->Username = null;
-      $this->Password = null;
-      $this->Database = null;
-      
-      $this->mysqlBuffer = '';
-      $this->mysqlCompressedBuffer = '';
-      $this->mysqlSequence = 0;
-      $this->mysqlCommand = null;
-      $this->mysqlCommands = array ();
-      $this->mysqlClientCapabilities = null;
-      
-      $this->mysqlSetProtocolState ($this::MYSQL_STATE_CONNECTING);
-      
-      // Register the callback
-      $this->initCallbacks [] = array ($Callback, $Private);
-      
-      // Assign the new stream
-      $this->Stream = $Source;
-      
-      # if (!$Finishing)
-      #   $Source->addHook ('eventClosed', function () { });
-      
-      // Raise an event for this
-      $this->___callback ('mysqlConnecting', $Source);
+      $Promise->finally (
+        function () use ($Source, $Callback, $Private) {
+          // Reset our state
+          $this->Username = null;
+          $this->Password = null;
+          $this->Database = null;
+          
+          $this->mysqlBuffer = '';
+          $this->mysqlCompressedBuffer = '';
+          $this->mysqlSequence = 0;
+          $this->mysqlCommand = null;
+          $this->mysqlCommands = array ();
+          $this->mysqlClientCapabilities = null;
+          
+          $this->mysqlSetProtocolState ($this::MYSQL_STATE_CONNECTING);
+          
+          // Register the callback
+          $this->initCallbacks [] = array ($Callback, $Private);
+          
+          // Assign the new stream
+          $this->Stream = $Source;
+          
+          # if (!$Finishing)
+          #   $Source->addHook ('eventClosed', function () { });
+          
+          // Raise an event for this
+          $this->___callback ('mysqlConnecting', $Source);
+        }
+      );
     }
     // }}}
     

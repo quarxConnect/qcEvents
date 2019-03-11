@@ -890,22 +890,28 @@
       
       // Check if we have a stream assigned
       if (is_object ($this->Stream))
-        $this->Stream->unpipe ($this);
+        $Promise = $this->Stream->unpipe ($this);
+      else
+        $Promise = qcEvents_Promise::resolve ();
       
-      // Reset our state
-      $this->Stream = $Source;
-      $this->Buffer = '';
-      $this->Command = null;
-      $this->Commands = array ();
-      $this->Response = array ();
-      $this->Capabilities = null;
-      
-      $this->popSetState (self::POP3_STATE_CONNECTING);
-      
-      // Raise callbacks
-      $this->___callback ('eventPipedStream', $Source);
-      $this->___callback ('popConnecting');
-      $this->___raiseCallback ($Callback, true, $Private);
+      $Promise->finally (
+        function () use ($Source, $Callback, $Private) {
+          // Reset our state
+          $this->Stream = $Source;
+          $this->Buffer = '';
+          $this->Command = null;
+          $this->Commands = array ();
+          $this->Response = array ();
+          $this->Capabilities = null;
+          
+          $this->popSetState (self::POP3_STATE_CONNECTING);
+          
+          // Raise callbacks
+          $this->___callback ('eventPipedStream', $Source);
+          $this->___callback ('popConnecting');
+          $this->___raiseCallback ($Callback, true, $Private);
+        }
+      );
     }
     // }}}
     

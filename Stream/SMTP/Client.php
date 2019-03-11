@@ -887,35 +887,41 @@
       
       // Check if we have a stream assigned
       if (is_object ($this->Stream))
-        $this->Stream->unpipe ($this);
-      
-      // Reset our state
-      $this->Stream = $Source;
-      
-      $this->Buffer = '';
-      $this->authenticated = false;
-      $this->connectingState = self::SMTP_HANDSHAKE_START;
-      $this->Command = null;
-      $this->Commands = array ();
-      $this->responseCode = null;
-      $this->responseLines = array ();
-      $this->lastCode = null;
-      $this->lastLines = null;
-      $this->mailCurrent = null;
-      $this->mailQueue = array ();
-      $this->serverDomain = null;
-      $this->serverFeatures = null;
-      
-      $this->smtpSetState (self::SMTP_STATE_CONNECTING);
-      
-      // Raise callbacks
-      $this->___callback ('eventPipedStream', $Source);
-      $this->___callback ('smtpConnecting');
-      
-      if ($Callback)
-        $this->initCallback = array ($Callback, $Private);
+        $Promise = $this->Stream->unpipe ($this);
       else
-        $this->initCallback = null;
+        $Promise = qcEvents_Promise::resolve ();
+      
+      $Promise->finally (
+        function () use ($Source, $Callback, $Private) {
+          // Reset our state
+          $this->Stream = $Source;
+          
+          $this->Buffer = '';
+          $this->authenticated = false;
+          $this->connectingState = self::SMTP_HANDSHAKE_START;
+          $this->Command = null;
+          $this->Commands = array ();
+          $this->responseCode = null;
+          $this->responseLines = array ();
+          $this->lastCode = null;
+          $this->lastLines = null;
+          $this->mailCurrent = null;
+          $this->mailQueue = array ();
+          $this->serverDomain = null;
+          $this->serverFeatures = null;
+          
+          $this->smtpSetState (self::SMTP_STATE_CONNECTING);
+          
+          // Raise callbacks
+          $this->___callback ('eventPipedStream', $Source);
+          $this->___callback ('smtpConnecting');
+          
+          if ($Callback)
+            $this->initCallback = array ($Callback, $Private);
+          else
+            $this->initCallback = null;
+        }
+      );
     }
     // }}}
     

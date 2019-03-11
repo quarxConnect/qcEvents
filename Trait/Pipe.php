@@ -18,6 +18,8 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
+  require_once ('qcEvents/Promise.php');
+  
   trait qcEvents_Trait_Pipe {
     public static $pipeBlockSize = 40960;
     
@@ -150,33 +152,20 @@
      * Remove a handler that is currently being piped
      * 
      * @param qcEvents_Interface_Sink $Handler
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function unpipe (qcEvents_Interface_Consumer $Handler, callable $Callback = null, $Private = null) {
+    public function unpipe (qcEvents_Interface_Consumer $Handler) : qcEvents_Promise {
       // Check if there is already such pipe
       if (($key = $this->getPipeHandlerKey ($Handler)) === false)
-        return;
+        return qcEvents_Promise::reject ('Consumer not found');
       
       // Remove the pipe-reference
       unset ($this->Pipes [$key]);
       
       // Raise an event at the handler
-      return $Handler->deinitConsumer ($this)->then (
-        function () use ($Callback, $Private, $Handler) {
-          $this->___raiseCallback ($Callback, $Handler, true, $Private);
-        },
-        function () use ($Callback, $Private, $Handler) {
-          $this->___raiseCallback ($Callback, $Handler, false, $Private);
-        }
-      );
+      return $Handler->deinitConsumer ($this);
     }
     // }}}
     

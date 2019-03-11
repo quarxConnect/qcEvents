@@ -546,39 +546,41 @@
         function (qcEvents_Stream_HTTP_Request $Request, $Header)
         use ($Source, $Nonce, $Callback, $Private) {
           // Unpipe request from source
-          $Source->unpipe ($Request);
-          
-          // Check the result
-          $Success =
-            ($Header->getStatus () == 101) &&
-            ($Header->hasField ('Upgrade') && (strcasecmp ($Header->getField ('Upgrade'), 'websocket') == 0)) &&
-            ($Header->hasField ('Connection') && (strcasecmp ($Header->getField ('Connection'), 'Upgrade') == 0)) &&
-            ($Header->hasField ('Sec-WebSocket-Accept') && (strcmp ($Header->getField ('Sec-WebSocket-Accept'), base64_encode (sha1 ($Nonce . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true))) == 0));
-          
-          # TODO: Status may be 401 (Authz required) or 3xx (Redirect)
-          
-          if ($Success && ($this->Protocols !== null) && $Header->hasField ('Sec-WebSocket-Protocol') &&
-              in_array ($Header->getField ('Sec-WebSocket-Protocol'), $this->Protocols))
-            $this->Protocol = $Header->getField ('Sec-WebSocket-Protocol');
-          elseif (($this->Protocols !== null) || $Header->hasField ('Sec-WebSocket-Protocol'))
-            $Success = false;
-          
-          if (!$Success) {
-            $this->___raiseCallback ($Callback, false, $Private);
-            $this->___callback ('websocketFailed');
-            
-            return;
-          }
-          
-          // Store the header as start
-          $this->Start = strval ($Header);
-          
-          // Register the source
-          $this->Source = $Source;
-          
-          // Forward the callback
-          $this->___raiseCallback ($Callback, true, $Private);
-          $this->___callback ('websocketConnected');
+          $Source->unpipe ($Request)->finally (
+            function () use ($Header, $Source, $Nonce, $Callback, $Private) {
+              // Check the result
+              $Success =
+                ($Header->getStatus () == 101) &&
+                ($Header->hasField ('Upgrade') && (strcasecmp ($Header->getField ('Upgrade'), 'websocket') == 0)) &&
+                ($Header->hasField ('Connection') && (strcasecmp ($Header->getField ('Connection'), 'Upgrade') == 0)) &&
+                ($Header->hasField ('Sec-WebSocket-Accept') && (strcmp ($Header->getField ('Sec-WebSocket-Accept'), base64_encode (sha1 ($Nonce . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true))) == 0));
+              
+              # TODO: Status may be 401 (Authz required) or 3xx (Redirect)
+              
+              if ($Success && ($this->Protocols !== null) && $Header->hasField ('Sec-WebSocket-Protocol') &&
+                  in_array ($Header->getField ('Sec-WebSocket-Protocol'), $this->Protocols))
+                $this->Protocol = $Header->getField ('Sec-WebSocket-Protocol');
+              elseif (($this->Protocols !== null) || $Header->hasField ('Sec-WebSocket-Protocol'))
+                $Success = false;
+              
+              if (!$Success) {
+                $this->___raiseCallback ($Callback, false, $Private);
+                $this->___callback ('websocketFailed');
+                
+                return;
+              }
+              
+              // Store the header as start
+              $this->Start = strval ($Header);
+              
+              // Register the source
+              $this->Source = $Source;
+              
+              // Forward the callback
+              $this->___raiseCallback ($Callback, true, $Private);
+              $this->___callback ('websocketConnected');
+            }
+          );
         }, null,
         true
       );
@@ -588,11 +590,13 @@
         function (qcEvents_Stream_HTTP_Request $Request)
         use ($Source, $Callback, $Private) {
           // Unpipe request from source
-          $Source->unpipe ($Request);
-          
-          // Forward the callback
-          $this->___raiseCallback ($Callback, false, $Private);
-          $this->___callback ('websocketFailed');
+          $Source->unpipe ($Request)->finally (
+            function () use ($Callback, $Private) {
+              // Forward the callback
+              $this->___raiseCallback ($Callback, false, $Private);
+              $this->___callback ('websocketFailed');
+            }
+          );
         }, null,
         true
       );
