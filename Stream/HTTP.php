@@ -292,7 +292,7 @@
       else
         $Promise = qcEvents_Promise::resolve ();
       
-      $Promse->finally (
+      $Promise->finally (
         function () use ($Source, $Callback, $Private) {
           // Reset ourself
           $this->reset ();
@@ -342,7 +342,7 @@
       else
         $Promise = qcEvents_Promise::resolve ();
       
-      $Promse->finally (
+      $Promise->finally (
         function () use ($Source, $Callback, $Private) {
           // Reset ourself
           $this->reset ();

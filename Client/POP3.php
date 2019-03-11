@@ -636,7 +636,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function close () : qcEvents_Promse {
+    public function close () : qcEvents_Promise {
       if (!$this->Stream)
         return qcEvents_Promise::resolve ();
       
