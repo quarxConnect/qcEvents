@@ -90,7 +90,7 @@
       }
       
       // Enqueue the write
-      $File->write ($Content)->then (
+      return $File->write ($Content)->then (
         function () use ($File) {
           return $File->close ();
         }
