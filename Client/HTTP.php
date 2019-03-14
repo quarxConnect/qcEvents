@@ -65,6 +65,42 @@
     }
     // }}}
     
+    // {{{ request
+    /**
+     * Enqueue an HTTP-Request
+     * 
+     * @param string $URL The requested URL
+     * @param enum $Method (optional) Method to use on the request
+     * @param array $Headers (optional) List of additional HTTP-Headers
+     * @param string $Body (optional) Additional body for the request
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function request ($URL, $Method = null, $Headers = null, $Body = null) : qcEvents_Promise {
+      return new qcEvents_Promise (function ($resolve, $reject) use ($URL, $Method, $Headers, $Body) {
+        $this->addNewRequest (
+          $URL,
+          $Method,
+          $Headers,
+          $Body,
+          function (qcEvents_Client_HTTP $Self, qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, string $Body = null) use ($resolve, $reject) {
+            // Check if there is a header for the response
+            if (!$Header)
+              return $reject ('Request failed without response');
+            
+            // Check if there was an error
+            if ($Header->isError ())
+              return $reject ('Request failed with an error', $Header, $Body);
+            
+            // Forward the result
+            $resolve ($Body, $Header);
+          }
+        );
+      });
+    }
+    // }}}
+    
     // {{{ addNewRequest
     /**
      * Enqueue an HTTP-Request
@@ -110,7 +146,7 @@
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Response $Header = null, string $Body = null, mixed $Private = null) { }
+     *   function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, string $Body = null, mixed $Private = null) { }
      * 
      * @access public
      * @return qcEvents_Stream_HTTP_Request
