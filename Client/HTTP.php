@@ -122,7 +122,7 @@
      * Enqueue an HTTP-Request
      * 
      * @param qcEvents_Stream_HTTP_Request $Request
-     * @param bool $authenticationPreflight (optional)
+     * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
      * 
      * - OR -
      * 
@@ -130,7 +130,7 @@
      * @param enum $Method (optional) Method to use on the request
      * @param array $Headers (optional) List of additional HTTP-Headers
      * @param string $Body (optional) Additional body for the request
-     * @param bool $authenticationPreflight (optional)
+     * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
      * 
      * @access public
      * @return qcEvents_Promise
@@ -420,7 +420,7 @@
         return $Request;
       
       // Enqueue the request
-      $this->request ($Request)->then (
+      $this->request ($Request, $authenticationPreflight)->then (
         function ($Body, qcEvents_Stream_HTTP_Header $Header = null) use ($Callback, $Request, $Private) {
           // Forward socket-error to the callback
           $this->___raiseCallback ($Callback, $Request, $Header, $Body, $Private);
