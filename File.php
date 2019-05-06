@@ -39,34 +39,34 @@
      * @return qcEvents_Promise
      **/
     public static function readFileContents (qcEvents_Base $Base, $Filename) : qcEvents_Promise {
-      return new qcEvents_Promise (function ($resolve, $reject) use ($Base, $Filename) {
-        // Try to create a file-stream
+      // Try to create a file-stream
+      try {
         $File = new static ($Base, $Filename, true, false, false);
-        
-        // Read all contents of the file
-        $Buffer = '';
-        
-        $File->addHook (
-          'eventReadable',
-          function ($File) use (&$Buffer) {
-            // Try to read from stream
-            if (($Data = $File->read ()) === false)
-              return;
-            
-            // Push to our buffer
-            $Buffer .= $Data;
-          }
-        );
-        
-        // Wait for end-of-file
-        $File->addHook (
-          'eventClosed',
-          function ($File) use (&$Buffer, $resolve) {
-            // Forward the callback
-            $resolve ($Buffer);
-          }
-        );
-      });
+      } catch (exception $e) {
+        return qcEvents_Promise::reject ($e);
+      }
+      
+      // Read all contents of the file
+      $Buffer = '';
+      
+      $File->addHook (
+        'eventReadable',
+        function ($File) use (&$Buffer) {
+          // Try to read from stream
+          if (($Data = $File->read ()) === false)
+            return;
+          
+          // Push to our buffer
+          $Buffer .= $Data;
+        }
+      );
+      
+      // Wait for end-of-file
+      return $File->once ('eventClosed')->then (
+        function ($File) use (&$Buffer) {
+          return $Buffer;
+        }
+      );
     }
     // }}}
     
