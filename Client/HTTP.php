@@ -121,93 +121,47 @@
     /**
      * Enqueue an HTTP-Request
      * 
+     * @param qcEvents_Stream_HTTP_Request $Request
+     * @param bool $authenticationPreflight (optional)
+     * 
+     * - OR -
+     * 
      * @param string $URL The requested URL
      * @param enum $Method (optional) Method to use on the request
      * @param array $Headers (optional) List of additional HTTP-Headers
      * @param string $Body (optional) Additional body for the request
+     * @param bool $authenticationPreflight (optional)
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function request ($URL, $Method = null, $Headers = null, $Body = null) : qcEvents_Promise {
-      return new qcEvents_Promise (function ($resolve, $reject) use ($URL, $Method, $Headers, $Body) {
-        $this->addNewRequest (
-          $URL,
-          $Method,
-          $Headers,
-          $Body,
-          function (qcEvents_Client_HTTP $Self, qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, string $Body = null) use ($resolve, $reject) {
-            // Check if there is a header for the response
-            if (!$Header)
-              return $reject ('Request failed without response');
-            
-            // Check if there was an error
-            if ($Header->isError ())
-              return $reject ('Request failed with an error', $Header, $Body);
-            
-            // Forward the result
-            $resolve ($Body, $Header);
-          }
-        );
-      });
-    }
-    // }}}
-    
-    // {{{ addNewRequest
-    /**
-     * Enqueue an HTTP-Request
-     * 
-     * @param string $URL The requested URL
-     * @param enum $Method (optional) Method to use on the request
-     * @param array $Headers (optional) List of additional HTTP-Headers
-     * @param string $Body (optional) Additional body for the request
-     * @param callback $Callback (optional) A callback to raise once the request was finished
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * @remark See addRequest() below for callback-definition
-     * 
-     * @access public
-     * @return qcEvents_Stream_HTTP_Request
-     **/
-    public function addNewRequest ($URL, $Method = null, $Headers = null, $Body = null, callable $Callback = null, $Private = null) {
-      // Make sure we have a request-object
-      $Request = new qcEvents_Stream_HTTP_Request ($URL);
+    public function request () : qcEvents_Promise {
+      // Process function-arguements
+      $argv = func_get_args ();
+      $argc = count ($argv);
       
-      // Set additional properties of the request
-      if ($Method !== null)
-        $Request->setMethod ($Method);
+      if ($argc < 1)
+        return qcEvents_Promise::reject ('Missing Request-Arguement');
       
-      if (is_array ($Headers))
-        foreach ($Headers as $Key=>$Value)
-          $Request->setField ($Key, $Value);
-      
-      if ($Body !== null)
-        $Request->setBody ($Body);
-      
-      return $this->addRequest ($Request, $Callback, $Private);
-    }
-    // }}}
-    
-    // {{{ addRequest
-    /**
-     * Enqueue a prepared HTTP-Request
-     * 
-     * @param qcEvents_Stream_HTTP_Request $Request The HTTP-Request to enqueue
-     * @param callback $Callback (optional) A callback to raise once the request was finished
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, string $Body = null, mixed $Private = null) { }
-     * 
-     * @access public
-     * @return qcEvents_Stream_HTTP_Request
-     **/
-    public function addRequest (qcEvents_Stream_HTTP_Request $Request, callable $Callback = null, $Private = null, $authenticationPreflight = true) {
-      // Check if the request is already being processed
-      if (in_array ($Request, $this->httpRequests, true))
-        return $Request;
+      if ($argv [0] instanceof qcEvents_Stream_HTTP_Request) {
+        $Request = $argv [0];
+        $authenticationPreflight = (($argc < 2) || ($argv [1] === true));
+      } else {
+        $Request = new qcEvents_Stream_HTTP_Request ($argv [0]);
+        
+        // Set additional properties of the request
+        if (($argc > 1) && ($argv [1] !== null))
+          $Request->setMethod ($argv [1]);
+        
+        if (($argc > 2) && is_array ($argv [2]))
+          foreach ($argv [2] as $Key=>$Value)
+            $Request->setField ($Key, $Value);
+        
+        if (($argc > 3) && ($argv [3] !== null))
+          $Request->setBody ($argv [3]);
+        
+        $authenticationPreflight = (($argc < 5) || ($argv [4] === true));
+      }
       
       // Push to our request-queue
       $this->httpRequests [] = $Request;
@@ -236,32 +190,28 @@
         $orgCookies = null;
       
       // Acquire a socket for this
-      $this->socketPool->acquireSocket (
+      return $this->socketPool->acquireSocket (
         $Request->getHostname (),
         $Request->getPort (),
         qcEvents_Socket::TYPE_TCP,
         $Request->useTLS ()
       )->then (
         function (qcEvents_Socket $Socket) use ($Request, $authenticationPreflight, $Username, $Password) {
-          // Pipe the socket to our request
-          $Socket->pipe ($Request);
-          
           // Handle authenticiation more special
           if (!$Request->hasBody () && $authenticationPreflight && (($Username !== null) || ($Password !== null))) {
             $Request->setMethod ('OPTIONS');
             $Request->setCredentials (null, null);
           }
-        },
-        function () use ($Callback, $Request, $Private) {
-          // Forward socket-error to the callback
-          $this->___raiseCallback ($Callback, $Request, null, null, $Private);
+          
+          // Pipe the socket to our request
+          $Socket->pipe ($Request);
+          
+          // Watch events on the request
+          return $Request->once ('httpRequestResult');
         }
-      );
-      
-      // Watch events on the request
-      $Request->once ('httpRequestResult')->then (
+      )->then (
         function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, $Body = null)
-        use ($authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies, $Callback, $Private) {
+        use ($authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies) {
           // Remove from request-queue
           unset ($this->httpRequests [$Index]);
           
@@ -364,7 +314,7 @@
             $Request->setCredentials ($Username, $Password);
             
             // Re-enqueue the request
-            return $this->addRequest ($Request, $Callback, $Private, false);
+            return $this->request ($Request, false);
           }
           
           // Check for redirects
@@ -373,6 +323,7 @@
               (($Status >= 300) && ($Status < 400)) &&
               (($max = $Request->getMaxRedirects ()) > 0) &&
               is_array ($URI = parse_url ($Location))) {
+            // Make sure the URL is fully qualified
             // Make sure the URL is fully qualified
             if ($rebuild = !isset ($URI ['scheme']))
               $URI ['scheme'] = ($Request->useTLS () ? 'https' : 'http');
@@ -395,19 +346,88 @@
             
             // Set the new location as destination
             $Request->setURL ($Location);
-   
+            
             // Lower the number of max requests
             $Request->setMaxRedirects ($max - 1);
-   
+            
             // Re-Enqueue the request
-            return $this->addRequest ($Request, $Callback, $Private);
+            return $this->request ($Request);
           }
- 
+          
           // Fire the callbacks
-          if ($Callback)
-            $this->___raiseCallback ($Callback, $Request, $Header, $Body, $Private);
- 
           $this->___callback ('httpRequestResult', $Request, $Header, $Body);
+          
+          return new qcEvents_Promise_Solution (array ($Body, $Header));
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ addNewRequest
+    /**
+     * Enqueue an HTTP-Request
+     * 
+     * @param string $URL The requested URL
+     * @param enum $Method (optional) Method to use on the request
+     * @param array $Headers (optional) List of additional HTTP-Headers
+     * @param string $Body (optional) Additional body for the request
+     * @param callback $Callback (optional) A callback to raise once the request was finished
+     * @param mixed $Private (optional) Private data to pass to the callback
+     * 
+     * @remark See addRequest() below for callback-definition
+     * 
+     * @access public
+     * @return qcEvents_Stream_HTTP_Request
+     **/
+    public function addNewRequest ($URL, $Method = null, $Headers = null, $Body = null, callable $Callback = null, $Private = null) {
+      // Make sure we have a request-object
+      $Request = new qcEvents_Stream_HTTP_Request ($URL);
+      
+      // Set additional properties of the request
+      if ($Method !== null)
+        $Request->setMethod ($Method);
+      
+      if (is_array ($Headers))
+        foreach ($Headers as $Key=>$Value)
+          $Request->setField ($Key, $Value);
+      
+      if ($Body !== null)
+        $Request->setBody ($Body);
+      
+      return $this->addRequest ($Request, $Callback, $Private);
+    }
+    // }}}
+    
+    // {{{ addRequest
+    /**
+     * Enqueue a prepared HTTP-Request
+     * 
+     * @param qcEvents_Stream_HTTP_Request $Request The HTTP-Request to enqueue
+     * @param callback $Callback (optional) A callback to raise once the request was finished
+     * @param mixed $Private (optional) Private data to pass to the callback
+     * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
+     * 
+     * The callback will be raised in the form of
+     * 
+     *   function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, string $Body = null, mixed $Private = null) { }
+     * 
+     * @access public
+     * @return qcEvents_Stream_HTTP_Request
+     **/
+    public function addRequest (qcEvents_Stream_HTTP_Request $Request, callable $Callback = null, $Private = null, $authenticationPreflight = true) {
+      // Check if the request is already being processed
+      if (in_array ($Request, $this->httpRequests, true))
+        return $Request;
+      
+      // Enqueue the request
+      $this->request ($Request)->then (
+        function ($Body, qcEvents_Stream_HTTP_Header $Header = null) use ($Callback, $Request, $Private) {
+          // Forward socket-error to the callback
+          $this->___raiseCallback ($Callback, $Request, $Header, $Body, $Private);
+        },
+        function () use ($Callback, $Request, $Private) {
+          // Forward socket-error to the callback
+          $this->___raiseCallback ($Callback, $Request, null, null, $Private);
         }
       );
       
