@@ -210,6 +210,18 @@
     }
     // }}}
     
+    // {{{ getURL
+    /**
+     * Retrive the URL from this header (only if it is a request)
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getURL () {
+      return 'http' . ($this->useTLS ? 's' : '') . '://' . $this->getField ('Host') . $this->getURI ();
+    }
+    // }}}
+    
     // {{{ setURL
     /**
      * Set a URL for this request
