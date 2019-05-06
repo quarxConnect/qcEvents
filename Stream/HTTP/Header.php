@@ -375,7 +375,7 @@
       
       // Check if the field is present
       if (!isset ($this->Headers [$Key]))
-        return null;
+        return ($allowMulti ? array () : null);
       
       // Collect all values
       $Values = array ();
