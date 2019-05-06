@@ -46,6 +46,12 @@
     /* Enqueued Callbacks */
     private $SocketCallbacks = array ();
     
+    /* Enqueued Socket-Requests */
+    private $SocketQueue = array ();
+    
+    /* Maximum number of open sockets */
+    private $maxSockets = 64;
+    
     // {{{ __construct
     /**
      * Create a new socket-pool
@@ -57,6 +63,22 @@
      **/
     function __construct (qcEvents_Base $eventBase) {
       $this->eventBase = $eventBase;
+    }
+    // }}}
+    
+    // {{{ setMaximumSockets
+    /**
+     * Set the maximum amounts of open sockets on the pool
+     * 
+     * @param int $Number
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setMaximumSockets ($Number) {
+      $this->maxSockets = max (1, (int)$Number);
+      
+      return true;
     }
     // }}}
     
@@ -72,7 +94,7 @@
      * @access public
      * @return void
      **/
-    public function acquireSocket ($Host, $Port, $Type, $TLS, callable $Callback = null, $Private = null) : qcEvents_Promise {
+    public function acquireSocket ($Host, $Port, $Type, $TLS) : qcEvents_Promise {
       // Sanatize parameters
       $Port = (int)$Port;
       $Type = (int)$Type;
@@ -96,6 +118,27 @@
             return qcEvents_Promise::resolve ($this->Sockets [$Index], $this->SocketPipes [$Index]);
           }
       
+      // Check if we may create a new socket
+      if (count ($this->Sockets) >= $this->maxSockets) {
+        // Check if we could kick some sockets
+        foreach (array_keys ($this->SocketStatus, self::STATUS_AVAILABLE) as $kKey) {
+          // Release the socket
+          $this->releaseSocketByIndex ($kKey);
+          
+          // Check if we may proceed already
+          if (count ($this->Sockets) < $this->maxSockets)
+            break;
+        }
+        
+        // Check if enough sockets were released
+        if (count ($this->Sockets) >= $this->maxSockets)
+          return new qcEvents_Promise (
+            function ($resolve, $reject) use ($Host, $Port, $Type, $TLS) {
+              $this->SocketQueue [] = array ($Host, $Port, $Type, $TLS, $resolve, $reject);
+            }
+          );
+      }
+      
       // Create new socket
       $Socket = new qcEvents_Socket ($this->eventBase);
       
@@ -115,7 +158,7 @@
       
       // Try to connect
       return $Socket->connect ($Host, $Port, $Type, $TLS)->then (
-        function () use ($Socket, $Key, $Index, $Callback, $Private) {
+        function () use ($Socket, $Key, $Index) {
           // Check wheter to further setup the socket
           if (count ($this->getHooks ('socketConnected')) == 0) {
             $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
@@ -145,6 +188,9 @@
               }
           } else
             unset ($this->SocketMaps [$Key]);
+          
+          // Check if we could connect queued sockets
+          $this->checkSocketQueue ();
           
           // Forward the error
           throw new qcEvents_Promise_Solution (func_get_args ());
@@ -179,7 +225,6 @@
       }
       
       // Enable the socket
-      $this->SocketStatus [$Index] = self::STATUS_AVAILABLE;
       $this->SocketPipes [$Index] = $Pipe;
       
       if (isset ($this->SocketCallbacks [$Index])) {
@@ -210,6 +255,20 @@
         return false;
       }
       
+      return $this->releaseSocketByIndex ($Index);
+    }
+    // }}}
+    
+    // {{{ releaseSocketByIndex
+    /**
+     * Remove a socket by index from this pool
+     * 
+     * @param int $Index
+     * 
+     * @access private
+     * @return void
+     **/
+    private function releaseSocketByIndex ($Index) {
       // Check wheter to run a failed-callback
       if (($this->SocketStatus [$Index] == self::STATUS_ENABLING) && isset ($this->SocketCallbacks [$Index]))
         call_user_func ($this->SocketCallbacks [$Index][1], 'Socket was released');
@@ -232,8 +291,55 @@
           
           break;
         }
+      
+      // Check if we could connect queued sockets
+      $this->checkSocketQueue ();
     }
     // }}}
+    
+    // {{{ checkSocketQueue
+    /**
+     * Check if we can connect sockets from our queue
+     * 
+     * @access private
+     * @return void
+     **/
+    private function checkSocketQueue () {
+      // Check for available sockets
+      foreach ($this->SocketQueue as $Pos=>$Info) {
+        $Host = $Info [0];
+        $Port = $Info [1];
+        $Type = $Info [2];
+        $TLS = $Info [3];
+        
+        $Key = strtolower (is_array ($Host) ? implode ('-', $Host) : $Host) . '-' . $Port . '-' . $Type . ($TLS ? '-tls' : '');
+        
+        // Check if we have a socket available
+        if (isset ($this->SocketMaps [$Key]))
+          foreach ($this->SocketMaps [$Key] as $Index)
+            if ($this->SocketStatus [$Index] == self::STATUS_AVAILABLE) {
+              // Mark the socket as acquired
+              $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
+              
+              // Remove from queue
+              unset ($this->SocketQueue [$Pos]);
+              
+              // Push the socket
+              call_user_func ($Info [4], $this->Sockets [$Index], $this->SocketPipes [$Index]);
+            }
+      }
+      
+      // Connect sockets as long as possible
+      while ((count ($this->Sockets) < $this->maxSockets) && (count ($this->SocketQueue) > 0)) {
+        // Get the next request from queue
+        $Info = array_shift ($this->SocketQueue);
+        
+        // Re-Request the socket
+        $this->acquireSocket ($Info [0], $Info [1], $Info [2], $Info [3])->then ($Info [4], $Info [5]);
+      }
+    }
+    // }}}
+    
     
     // {{{ socketConnected
     /**
