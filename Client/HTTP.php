@@ -236,20 +236,21 @@
             $this->socketPool->releaseSocket ($Socket);
           }
           
+          // Abort here if no header was received
+          if (!$Header)
+            throw new exception ('No header was received');
+          
           // Retrive the status of the response
-          if ($Header) {
-            $Status = $Header->getStatus ();
-            
-            // Check wheter to process cookies
-            if (($this->sessionCookies !== null) && $Header->hasField ('Set-Cookie'))
-              $this->updateSessionCookies ($Request, $Header);
-          } else
-            $Status = 500;
+          $Status = $Header->getStatus ();
+          
+          // Check wheter to process cookies
+          if (($this->sessionCookies !== null) && $Header->hasField ('Set-Cookie'))
+            $this->updateSessionCookies ($Request, $Header);
           
           // Check for authentication
           if ($authenticationPreflight &&
               (($Username !== null) || ($Password !== null)) &&
-              (($Status == 401) || ($Header && ($Header->hasField ('WWW-Authenticate'))))) {
+              (($Status == 401) || $Header->hasField ('WWW-Authenticate'))) {
             // Retrive supported methods
             $Methods = explode (',', $Header->getField ('WWW-Authenticate'));
             $onMethod = false;
@@ -318,8 +319,7 @@
           }
           
           // Check for redirects
-          if ($Header &&
-              ($Location = $Header->getField ('Location')) &&
+          if (($Location = $Header->getField ('Location')) &&
               (($Status >= 300) && ($Status < 400)) &&
               (($max = $Request->getMaxRedirects ()) > 0) &&
               is_array ($URI = parse_url ($Location))) {
