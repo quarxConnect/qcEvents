@@ -89,6 +89,25 @@
     }
     // }}}
     
+    // {{{ setInterval
+    /**
+     * Set a new interval for this timer
+     * 
+     * @param float $Interval
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setInterval ($Interval) {
+      // Store the new interval
+      $this->Interval = (float)$Interval;
+      
+      // Try to restart the timer
+      if ($this->getEventBase ()->clearTimer ($this))
+        $this->getEventBase ()->addTimer ($this);
+    }
+    // }}}
+    
     // {{{ run
     /**
      * Run the timer
@@ -111,6 +130,19 @@
         $this->getEventBase ()->addTimer ($this);
       } elseif ($Repeat)
         $this->Repeat = true;
+    }
+    // }}}
+    
+    // {{{ restart
+    /**
+     * Restart this timer
+     * 
+     * @access public
+     * @return void
+     **/
+    public function restart () {
+      $this->cancel ();
+      $this->getEventBase ()->addTimer ($this);
     }
     // }}}
     
