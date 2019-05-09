@@ -42,6 +42,9 @@
       qcEvents_Promise::DONE_REJECT    => array (),
     );
     
+    /* Reset callbacks after use */
+    protected $resetCallbacks = true;
+    
     // {{{ resolve
     /**
      * Create a resolved promise
@@ -341,10 +344,11 @@
           $this->invoke ($callback [0], $callback [1]);
       
       // Reset callbacks
-      $this->callbacks = array (
-        qcEvents_Promise::DONE_FULLFILL  => array (),
-        qcEvents_Promise::DONE_REJECT    => array (),
-      );
+      if ($this->resetCallbacks)
+        $this->callbacks = array (
+          qcEvents_Promise::DONE_FULLFILL  => array (),
+          qcEvents_Promise::DONE_REJECT    => array (),
+        );
     }
     // }}}
     
@@ -422,15 +426,19 @@
         $reject = $this::$noopReject;
       
       // Check if we are not already done
-      if ($this->done == $this::DONE_NONE) {
+      if (($this->done == $this::DONE_NONE) || !$this->resetCallbacks) {
         if ($resolve)
           $this->callbacks [$this::DONE_FULLFILL][] = array ($resolve, $Promise);
         
         if ($reject)
           $this->callbacks [$this::DONE_REJECT][] = array ($reject, $Promise);
+        
+        if ($this->done == $this::DONE_NONE)
+          return $Promise;
+      }
       
       // Check if we were fullfilled
-      } elseif ($this->done == $this::DONE_FULLFILL)
+      if ($this->done == $this::DONE_FULLFILL)
         $this->invoke ($resolve, $Promise);
       
       // Check if we were rejected
