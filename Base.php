@@ -199,9 +199,6 @@
         $this->forcedEvents [] = array ($Event, 'raiseWrite');
       elseif ($evType == self::EVENT_ERROR)
         $this->forcedEvents [] = array ($Event, 'raiseError');
-      # Deprecated
-      elseif (($evType == self::EVENT_TIMER) && ($Event instanceof qcEvents_Interface_Timer))
-        $this->forcedEvents [] = array ($Event, 'raiseTimer');
       else
         return false;
       
