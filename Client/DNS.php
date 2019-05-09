@@ -18,11 +18,9 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Interface/Timer.php');
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/Stream/DNS.php');
-  require_once ('qcEvents/Trait/Timer.php');
   require_once ('qcEvents/Promise.php');
   
   /**
@@ -34,9 +32,7 @@
    * @package qcEvents
    * @revision 02
    **/
-  class qcEvents_Client_DNS extends qcEvents_Hookable implements qcEvents_Interface_Timer {
-    use qcEvents_Trait_Timer;
-    
+  class qcEvents_Client_DNS extends qcEvents_Hookable {
     /* DNS64-Prefix-Hack */
     public static $DNS64_Prefix = null;
     
