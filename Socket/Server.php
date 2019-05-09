@@ -499,7 +499,7 @@
           
           // Make sure we have a timer
           if (!$this->udpTimer && $this->eventLoop) {
-            $this->udpTimer = $this->eventLoop->addTimer (max (2, intval (self::CHILD_UDP_TIMEOUT / 4)), true);
+            $this->udpTimer = $this->eventLoop->addTimeout (max (2, intval (self::CHILD_UDP_TIMEOUT / 4)), true);
             $this->udpTimer->then (
               function () {
                 // Retrive the actual time
