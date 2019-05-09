@@ -289,8 +289,8 @@
         }
       };
       
-      if ($Base)
-        return $Base->forceCallback ($Invoke);
+      if ($eventBase)
+        return $eventBase->forceCallback ($Invoke);
       
       $Invoke ();
     }
