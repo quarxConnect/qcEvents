@@ -19,9 +19,7 @@
    **/
   
   require_once ('qcEvents/Hookable.php');
-  require_once ('qcEvents/Interface/Timer.php');
   require_once ('qcEvents/Trait/Parented.php');
-  require_once ('qcEvents/Trait/Timer.php');
   require_once ('qcEvents/Client/MySQL.php');
   
   /**
@@ -34,8 +32,8 @@
    * @package qcEvents
    * @revision 02
    **/
-  class qcEvents_Watchdog_MySQL_Query extends qcEvents_Hookable implements qcEvents_Interface_Timer {
-    use qcEvents_Trait_Parented, qcEvents_Trait_Timer;
+  class qcEvents_Watchdog_MySQL_Query extends qcEvents_Hookable {
+    use qcEvents_Trait_Parented;
     
     // MySQL-Connection
     private $Client = null;
@@ -80,52 +78,49 @@
       // Setup ourself
       $this->Limit = $Limit;
       $this->Client = new qcEvents_Client_MySQL ($Base);
-      $this->Client->connect ($Host, 3306, $User, $Password, 1, function (qcEvents_Client_MySQL $Client, $Hostname, $Port, $Username, $Status) use ($Interval) {
-        if (!$Status)
-          return;
-        
-        $this->addTimer ($Interval, true);
-      });
+      
+      $this->Client->connect ($Host, 3306, $User, $Password, 1)->then (
+        function () use ($Base, $Interval) {
+          $Base->addTimeout ($Interval, true)->then (
+            // Check if we are busy right now
+            if ($this->Busy)
+              return;
+            
+            // Mark ourself as busy
+            $this->Busy = true;
+            
+            // Run the query
+            $this->Client->query ('SHOW PROCESSLIST')->then (
+              function ($Rows) {
+                foreach ($Rows as $Process) {
+                  // Check if the query is over limit
+                  if ($Process ['Time'] < $this->Limit)
+                    return;
+                  
+                  // Check if this is a query or just an idle client
+                  if ($Process ['Command'] == 'Sleep')
+                    continue;
+                  
+                  // Check wheter to ignore this user
+                  if (in_array ($Process ['User'], $this->ignoreUsers))
+                    continue;
+                  
+                  // Stop the query
+                  $Client->exec ('KILL QUERY ' . $Process ['Id']);
+                }
+              }
+            )->finally (
+              function () {
+                // Remove the busy-status when finished
+                $this->Busy = false;
+              }
+            );
+          );
+        }
+      );
+      
       $this->Client->addHook ('mysqlDisconnected', function () use ($Host, $User, $Password) {
         $this->Client->connect ($Host, 3306, $User, $Password, 1);
-      });
-    }
-    // }}}
-    
-    // {{{ raiseTimer
-    /**
-     * Check if any mySQL-Query is over limit
-     * 
-     * @access public
-     * @return void
-     **/
-    public function raiseTimer () {
-      // Check if we are busy right now
-      if ($this->Busy)
-        return;
-      
-      // Mark ourself as busy
-      $this->Busy = true;
-      
-      // Run the query
-      $this->Client->queryAsync ('SHOW PROCESSLIST', function (qcEvents_Client_MySQL $Client, $Field, $Process) {
-        // Check if the query is over limit
-        if ($Process ['Time'] < $this->Limit)
-          return;
-        
-        // Check if this is a query or just an idle client
-        if ($Process ['Command'] == 'Sleep')
-          continue;
-        
-        // Check wheter to ignore this user
-        if (in_array ($Process ['User'], $this->ignoreUsers))
-          continue;
-        
-        // Stop the query
-        $Client->exec ('KILL QUERY ' . $Process ['Id']);
-      }, null, function () {
-        // Remove the busy-status when finished
-        $this->Busy = false;
       });
     }
     // }}}
