@@ -52,6 +52,12 @@
     /* Timeout of this connection */
     private $keepAliveTimeout = 5;
     
+    /* Timer for keep-alive */
+    private $keepAliveTimer = null;
+    
+    /* Time of last event */
+    private $lastEvent = 0;
+    
     // {{{ __construct   
     /**
      * Create a new HTTP-Stream   
@@ -207,13 +213,11 @@
      **/
     private function httpdFinish () {
       // Handle response-headers
-      if ($this->Response && $this->Response->hasField ('Connection')) {
-        if ($this->Response->getField ('Connection') == 'close') {
-          if ($Source = $this->getPipeSource ())
-            $Source->close ();
-        } elseif (($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Timer)
-          $Source->addTimer ($this->keepAliveTimeout, false, array ($this, 'httpdCheckKeepAlive'));
-      }
+      if ($this->Response &&
+          $this->Response->hasField ('Connection') &&D
+          ($this->Response->getField ('Connection') == 'close') &&
+          ($Source = $this->getPipeSource ()))
+        $Source->close ();
       
       // Reset ourself
       $this->reset ();
@@ -231,13 +235,14 @@
      * @return void
      **/
     protected function reset () {
-      #$t = debug_backtrace (DEBUG_BACKTRACE_IGNORE_ARGS, 1);
-      #echo 'RESET from ', $t [0]['file'], ' ', $t [0]['line'], "\n";
-      
       // Reset ourself
       $this->Request = null;
       $this->RequestBody = null;
       $this->Response = null;
+      $this->lastEvent = time ();
+      
+      if ($this->keepAliveTimer)
+        $this->keepAliveTimer->restart ();
       
       // Reset our parent, too
       parent::reset ();
@@ -342,6 +347,10 @@
       if ($this->Request !== null)
         return;
       
+      // Stop keep-alive-timer for the moment
+      if ($this->keepAliveTimer)
+        $this->keepAliveTimer->cancel ();
+      
       // Activate the next request
       $Request = array_shift ($this->Requests);
       $this->Request = $Request [0];
@@ -355,29 +364,37 @@
     }
     // }}}
     
-    // {{{ httpdCheckKeepAlive
+    // {{{ httpdSetKeepAlive
     /**
-     * Check wheter to timeout this connection
+     * Setup timer to check the liveness of our connection
      * 
-     * @access protected
+     * @access private
      * @return void
      **/
-    public final function httpdCheckKeepAlive () {
-      // Ignore the check if a request is beeing processed
-      if ($this->Request)
+    private function httpdSetKeepAlive ($Force = false) {
+      // Just restart the timer if we already have one
+      if ($this->keepAliveTimer) {
+        if (!$Force)
+          return $this->keepAliveTimer->restart ();
+        
+        $this->keepAliveTimer->cancel ();
+      }
+      
+      // Make sure we have a source
+      if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Common))
         return;
       
-      if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Socket))
+      // Make sure we have an event-base
+      if (!($eventBase = $Source->getEventBase ()))
         return;
       
-      // Check if the timeout was reached
-      $Duration = time () - $Source->getLastEvent ();
-      
-      if ($Duration >= $this->keepAliveTimeout)
-        return $Source->close ();
-      
-      // Requeue the timeout
-      $Source->addTimer (max (1, $this->keepAliveTimeout - $Duration), false, array ($this, 'httpdCheckKeepAlive'));
+      // Setup the timer
+      $this->keepAliveTimer = $eventBase->addTimeout ($this->keepAliveTimeout);
+      $this->keepAliveTimer->then (
+        function () use ($Source) {
+          $Source->close ();
+        }
+      );
     }
     // }}}
     
@@ -399,7 +416,9 @@
     public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       // Make sure the source is a socket and close the connection if it misses to send the first request
       if (($rc = parent::initConsumer ($Source, $Callback, $Private)) && ($Source instanceof qcEvents_Socket))
-        $Source->addTimer ($this->keepAliveTimeout, false, array ($this, 'httpdCheckKeepAlive'));
+        $this->httpdSetKeepAlive (true);
+      
+      $this->lastEvent = time ();
       
       // Register our hooks
       if ($rc) {
