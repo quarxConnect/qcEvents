@@ -89,22 +89,16 @@
      * @param string $Username
      * @param string $Password
      * @param int $Pool (optional) Size of the connection-pool, we'll always create an initial connection
-     * @param callable $Callback (optional) Callback to raise once the operation was finished
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * The Callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_MySQL $Client, String $Hostname, Int $Port, String $Username, Bool $Status, Mixed $Private) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function connect ($Hostname, $Port, $Username, $Password, $Pool = 5, callable $Callback = null, $Private = null) {
+    public function connect ($Hostname, $Port, $Username, $Password, $Pool = 5) : qcEvents_Promise {
       // Check if there are already openend streams
       if (count ($this->Streams) > 0)
-        return $this->close ()->finally (
-          function () use ($Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private) {
-            $this->connect ($Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private);
+        return $this->close ()->catch (function () { })->then (
+          function () use ($Hostname, $Port, $Username, $Password, $Pool) {
+            return $this->connect ($Hostname, $Port, $Username, $Password, $Pool);
           }
         );
       
@@ -120,7 +114,7 @@
       
       // Try to connect
       return $Socket->connect ($Hostname, $Port, qcEvents_Socket::TYPE_TCP)->then (
-        function () use ($Socket, $Hostname, $Port, $Username, $Password, $Pool, $Callback, $Private) {
+        function () use ($Socket, $Hostname, $Port, $Username, $Password, $Pool) {
           // Create a new MySQL-Stream for this
           $Stream = new qcEvents_Stream_MySQL;
           
@@ -128,9 +122,8 @@
           $Socket->pipeStream ($Stream);
           
           // Try to authenticate
-          return $Stream->authenticate ($Username, $Password, $this->Database, function (qcEvents_Stream_MySQL $Stream, $Username, $Status) use ($Hostname, $Port, $Password, $Callback, $Private) {
-            // Check if the authentication succeeded and setup the pool
-            if ($Status) {
+          return $Stream->authenticate ($Username, $Password, $this->Database)->then (
+            function () use ($Stream, $Hostname, $Port, $Username, $Password) {
               $Stream->addHook ('mysqlDisconnected', array ($this, 'mysqlStreamClosed'));
               $this->Streams = array ($Stream);
               
@@ -140,19 +133,20 @@
               $this->Password = $Password;
               
               $this->___callback ('mysqlConnected', $Hostname, $Port, $Username);
-            } else {
+            },
+            function () use ($Hostname, $Port, $Username) {
+              // Run local callbacks
               $this->___callback ('mysqlAuthenticationFailed', $Hostname, $Port, $Username);
               $this->___callback ('mysqlConnectFailed', $Hostname, $Port, $Username);
+              
+              // Forward the failure
+              throw new qcEvents_Promise_Solution (func_get_args ());
             }
-            
-            // Fire the final callback
-            return $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, $Status, $Private);
-          });
+          );
         },
-        function () use ($Hostname, $Port, $Username, $Callback, $Private) {
-          // Raise all callbacks
+        function () use ($Hostname, $Port, $Username) {
+          // Raise callback
           $this->___callback ('mysqlConnectFailed', $Hostname, $Port, $Username);
-          $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, false, $Private);
           
           // Forward the error
           return new qcEvents_Promise_Solution (func_get_args ());
@@ -277,31 +271,17 @@
      * Execute a MySQL-Query and retrive the result at once
      * 
      * @param string $Query
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_MySQL $Self, string $Query, bool $Status, array $Fields, array $Rows, int $Flags, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function query ($Query, callable $Callback, $Private = null) {
+    public function query ($Query) : qcEvents_Promise {
       // Try to acquire a MySQL-Stream
-      if (!is_object ($Stream = $this->acquireStream ())) {
-         $this->___raiseCallback ($Callback, $Query, false, null, null, null, $Private);
-         
-        return false;
-      }
+      if (!is_object ($Stream = $this->acquireStream ()))
+        return qcEvents_Promise::reject ('Could not acquire stream');
        
       // Dispatch the query to the stream
-      return $Stream->query ($Query,
-        // Remap the callback-parameters to ourself
-        function (qcEvents_Stream_MySQL $Stream, $Query, $Status, $Fields, $Rows, $Flags) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Query, $Status, $Fields, $Rows, $Flags, $Private);
-        }
-      );
+      return $Stream->query ($Query);
     }
     // }}}
     
@@ -586,15 +566,16 @@
                 return ($this->streamPending = null);
               
               // Try to authenticate
-              $this->streamPending->authenticate ($this->Username, $this->Password, $this->Database, function (qcEvents_Stream_MySQL $Stream, $Username, $Status) {
-                // Check if the authentication succeeded and setup the pool
-                if ($Status) {
+              $this->streamPending->authenticate ($this->Username, $this->Password, $this->Database)->then (
+                function () use ($Stream) {
                   $Stream->addHook ('mysqlDisconnected', array ($this, 'mysqlStreamClosed'));
                   $this->Streams [] = $Stream;
                 }
-                  
-                $this->streamPending = null;
-              });
+              )->finally (
+                function () { 
+                  $this->streamPending = null;
+                }
+              );
             });
           },
           function () {
