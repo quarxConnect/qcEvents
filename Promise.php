@@ -267,16 +267,16 @@
      **/
     function __construct (callable $Callback, qcEvents_Base $eventBase = null) {
       // Make sure we have a NoOp-Indicator
-      if ($this::$noopResolve === null) {
-        $this::$noopResolve = function () { return new qcEvents_Promise_Solution (func_get_args ()); };
-        $this::$noopReject  = function () { throw  new qcEvents_Promise_Solution (func_get_args ()); };
+      if (self::$noopResolve === null) {
+        self::$noopResolve = function () { return new qcEvents_Promise_Solution (func_get_args ()); };
+        self::$noopReject  = function () { throw  new qcEvents_Promise_Solution (func_get_args ()); };
       }
       
       // Store the assigned base
       $this->eventBase = $eventBase;
       
       // Check wheter to invoke the callback
-      if ($Callback === $this::$noopResolve)
+      if ($Callback === self::$noopResolve)
         return;
       
       // Invoke/Enqueue the callback
@@ -416,14 +416,14 @@
      **/
     public function then (callable $resolve = null, callable $reject = null) {
       // Create an empty promise
-      $Promise = new $this ($this::$noopResolve, $this->eventBase);
+      $Promise = new self (self::$noopResolve, $this->eventBase);
       
       // Polyfill callbacks
       if ($resolve === null)
-        $resolve = $this::$noopResolve;
+        $resolve = self::$noopResolve;
       
       if ($reject === null)
-        $reject = $this::$noopReject;
+        $reject = self::$noopReject;
       
       // Check if we are not already done
       if (($this->done == $this::DONE_NONE) || !$this->resetCallbacks) {
