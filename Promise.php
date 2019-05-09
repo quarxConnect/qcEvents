@@ -311,6 +311,18 @@
     }
     // }}}
     
+    // {{{ getDone
+    /**
+     * Retrive our done-state
+     * 
+     * @access protected
+     * @return enum
+     **/
+    protected function getDone () {
+      return $this->done;
+    }
+    // }}}
+    
     // {{{ finish
     /**
      * Finish this promise
