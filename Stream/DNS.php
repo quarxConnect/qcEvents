@@ -36,6 +36,9 @@
     /* Active queries */
     private $dnsQueries = array ();
     
+    /* Timeouts of queries */
+    private $dnsTimeouts = array ();
+    
     /* Timeout for queries */
     private $dnsTimeout = 4;
     
@@ -136,10 +139,10 @@
         $Data = chr ((strlen ($Data) & 0xFF00) >> 8) . chr (strlen ($Data) & 0xFF) . $Data;
       
       // Add to local storage if it is a query
-      if ($Query && ($this->Source instanceof qcEvents_Interface_Timer)) {
+      if ($Query && ($this->Source instanceof qcEvents_Interface_Common)) {
         $this->dnsQueries [$Message->getID ()] = $Message;
-        $this->Source->addTimer ($this->dnsTimeout, false, array ($this, 'dnsStreamTimeout'), $Message);
-      
+        $this->dnsAddTimeout ($Message);
+        
       // Or remove from queue if this is a response
       } elseif (!$Query)
         unset ($this->dnsQueries [$Message->getID ()]);
@@ -170,43 +173,64 @@
       
       // Process depending on message-type
       if (!$Message->isQuestion ()) {
+        $mID = $Message->getID ();
+        
         // Check if we have the corresponding query saved
-        unset ($this->dnsQueries [$Message->getID ()]);
+        unset ($this->dnsQueries [$mID]);
+        
+        // Make sure our timeout is removed
+        if (isset ($this->dnsTimeouts [$mID])) {
+          $this->dnsTimeouts [$mID]->cancel ();
+          
+          unset ($this->dnsTimeouts [$mID]);
+        }
         
         return $this->___callback ('dnsResponseReceived', $Message);
       }
       
-      if ($this->Source instanceof qcEvents_Interface_Timer) {
-        $this->dnsQueries [$Message->getID ()] = $Message;
-        $this->Source->addTimer ($this->dnsTimeout, false, array ($this, 'dnsStreamTimeout'), $Message);
-      }
+      $this->dnsQueries [$Message->getID ()] = $Message;
+      $this->dnsAddTimeout ($Message);
       
       return $this->___callback ('dnsQuestionReceived', $Message);
     }
     // }}}
     
-    // {{{ dnsStreamTimeout
+    // {{{ dnsAddTimeout
     /**
-     * Timeout a localy queued query
+     * Setup a timeout for a given message
      * 
      * @param qcEvents_Stream_DNS_Message $Message
      * 
-     * @access public
+     * @access private
      * @return void
      **/
-    public function dnsStreamTimeout (qcEvents_Stream_DNS_Message $Message) {
-      // Retrive the ID of the message
-      $ID = $Message->getID ();
-      
-      // Sanatize the call
-      if (!isset ($this->dnsQueries [$ID]) || ($this->dnsQueries [$ID] !== $Message))
+    private function dnsAddTimeout (qcEvents_Stream_DNS_Message $Message) {
+      // Check if we can setup timeouts at all
+      if (!$this->Source || !($eventBase = $this->Source->getEventBase ()))
         return;
       
-      // Remove from the queue
-      unset ($this->dnsQueries [$ID]);
+      $mID = $Message->getID ();
       
-      // Fire a callback
-      $this->___callback ('dnsQuestionTimeout', $Message);
+      // Check wheter just to restart an old timeout
+      if (isset ($this->dnsTimeouts [$mID]))
+        return $this->dnsTimeouts [$mID]->restart ();
+      
+      // Create a new timeout
+      $this->dnsTimeouts [$mID] = $eventBase->addTimeout ($this->dnsTimeout);
+      $this->dnsTimeouts [$mID]->then (
+        function () use ($Message, $mID) {
+          // Check if the query already vanished
+          if (!isset ($this->dnsQueries [$mID]))
+            return;
+          
+          // Remove from the queue
+          unset ($this->dnsQueries [$mID]);
+          unset ($this->dnsTimeouts [$mID]);
+          
+          // Fire a callback
+          $this->___callback ('dnsQuestionTimeout', $Message);
+        }
+      );
     }
     // }}}
     

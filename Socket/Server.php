@@ -20,9 +20,7 @@
   
   require_once ('qcEvents/Interface/Loop.php');
   require_once ('qcEvents/Interface/Hookable.php');
-  require_once ('qcEvents/Interface/Timer.php');
   require_once ('qcEvents/Trait/Hookable.php');
-  require_once ('qcEvents/Trait/Timer.php');
   require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/Promise.php');
   
@@ -35,8 +33,8 @@
    * @package qcEvents
    * @revision 03
    **/
-  class qcEvents_Socket_Server implements qcEvents_Interface_Loop, qcEvents_Interface_Hookable, qcEvents_Interface_Timer {
-    use qcEvents_Trait_Hookable, qcEvents_Trait_Timer;
+  class qcEvents_Socket_Server implements qcEvents_Interface_Loop, qcEvents_Interface_Hookable {
+    use qcEvents_Trait_Hookable;
     
     /* Base-Class for Child-Connections */
     const CHILD_CLASS_BASE = 'qcEvents_Socket';
@@ -72,8 +70,8 @@
     // All connections we handle (only in UDP-Mode)
     private $Clients = array ();
     
-    // Do we have an Timer set to timeout UDP-Children
-    private $haveUDPTimer = false;
+    /* Timer to time-out UDP-Connections */
+    private $udpTimer = null;
     
     /* Preset of TLS-Options */
     private $tlsOptions = array (
@@ -500,9 +498,19 @@
           $this->Clients [$Remote] = $Client = $this->serverCreateChild ($Remote);
           
           // Make sure we have a timer
-          if (!$this->haveUDPTimer) {
-            $this->addTimer (max (2, intval (self::CHILD_UDP_TIMEOUT / 4)), true, array ($this, 'checkUDPChildren'));
-            $this->haveUDPTimer = true;
+          if (!$this->udpTimer && $this->eventLoop) {
+            $this->udpTimer = $this->eventLoop->addTimeout (max (2, intval (self::CHILD_UDP_TIMEOUT / 4)), true);
+            $this->udpTimer->then (
+              function () {
+                // Retrive the actual time
+                $Now = time ();
+                
+                // Check all clients
+                foreach ($this->Clients as $Client)
+                  if ($Now - $Client->getLastEvent () > self::CHILD_UDP_TIMEOUT)
+                    $Client->close ();
+              }
+            );
           }
         
         // Peek the client from storage
@@ -630,23 +638,6 @@
       $this->___callback ('serverClientClosed', $Peer, $Client);
       
       return true;
-    }
-    // }}}
-    
-    // {{{ checkUDPChildren
-    /**
-     * Check if one of our children timed out
-     * 
-     * @access public
-     * @return void
-     **/
-    public function checkUDPChildren () {
-      // Retrive the actual time
-      $t = time ();
-      
-      foreach ($this->Clients as $C)
-        if ($t - $C->getLastEvent () > self::CHILD_UDP_TIMEOUT)
-          $C->close ();
     }
     // }}}
     

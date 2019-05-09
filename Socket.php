@@ -19,8 +19,6 @@
    **/
   
   require_once ('qcEvents/IOStream.php');
-  require_once ('qcEvents/Interface/Timer.php');
-  require_once ('qcEvents/Trait/Timer.php');
   require_once ('qcEvents/Promise.php');
   
   /**
@@ -32,9 +30,7 @@
    * @package qcEvents
    * @revision 03
    **/
-  class qcEvents_Socket extends qcEvents_IOStream implements qcEvents_Interface_Timer {
-    use qcEvents_Trait_Timer;
-    
+  class qcEvents_Socket extends qcEvents_IOStream {
     /* Error-types */
     const ERROR_NET_UNKNOWN     =  0;
     const ERROR_NET_DNS_FAILED  = -1;
@@ -95,6 +91,9 @@
     
     /* Reject-Function of connect-promise */
     private $socketConnectReject = null;
+    
+    /* Socket-Connect-Timeout */
+    private $socketConnectTimer = null;
     
     /* Our current remote hostname */
     private $remoteHost = '';
@@ -582,7 +581,7 @@
           
           // Do the DNS-Lookup
           if (!is_array ($Result = dns_get_record ($Label, DNS_SRV, $AuthNS, $Addtl)) || (count ($Result) == 0))
-            return $this->socketConnectTimeout ();
+            return $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED);
           
           // Forward the result
           return $this->socketResolverResultArray ($Result, $Addtl, $Domain, DNS_SRV, null, $Type);
@@ -653,8 +652,8 @@
       
       // Set our connection-state
       if ($this->socketAddress [3] !== (self::TYPE_UDP ? true : null)) {
-        $this->addTimer (self::CONNECT_TIMEOUT, false, array ($this, 'socketConnectTimeout'));
         $this->addHook ('eventWritable', array ($this, 'socketHandleConnected'), null, true);
+        $this->socketSetupConnectionTimeout ();
       } else
         $this->socketHandleConnected ();
       
@@ -720,6 +719,10 @@
      * @return void
      **/
     public function socketHandleConnected () {
+      // Make sure we don't time out
+      if ($this->socketConnectTimer)
+        $this->socketConnectTimer->cancel ();
+      
       // Unwatch writes - as we are buffered all the time, this should be okay
       $this->watchWrite (false);
       
@@ -900,7 +903,29 @@
       $this->___callback ('socketResolve', array ($Hostname), $Types);
       
       // Setup a timeout
-      $this->addTimer (self::CONNECT_TIMEOUT, false, array ($this, 'socketConnectTimeout'));
+      $this->socketSetupConnectionTimeout ();
+    }
+    // }}}
+    
+    // {{{ socketSetupConnectionTimeout
+    /**
+     * Make sure we have a timer to let connection-attempts time out
+     * 
+     * @access private
+     * @return void
+     **/
+    private function socketSetupConnectionTimeout () {
+      // Check if we are already set up
+      if ($this->socketConnectTimer)
+        return $this->socketConnectTimer->restart ();
+      
+      // Create a new timeout
+      $this->socketConnectTimer = $this->getEventBase ()->addTimeout (self::CONNECT_TIMEOUT);
+      $this->socketConnectTimer->then (
+        function () {
+          $this->socketHandleConnectFailed ($this::ERROR_NET_TIMEOUT);
+        }
+      );
     }
     // }}}
     
@@ -991,29 +1016,6 @@
       // Check wheter to try to connect
       if (is_array ($this->socketAddresses) && (count ($this->socketAddresses) > 0))
         $this->socketConnectMulti ();
-    }
-    // }}}
-    
-    // {{{ socketConnectTimeout
-    /**
-     * Timeout a pending connection
-     * 
-     * @remark This is for internal use only! It does not have any effect when called directly! :-P
-     * 
-     * @access public
-     * @return void
-     **/
-    public function socketConnectTimeout () {
-      // Check if we are still trying to connect
-      if (!$this->isConnecting ())
-        return;
-      
-      // Check if the timeout is ready
-      if ((time () - $this->lastEvent) + 1 < self::CONNECT_TIMEOUT)
-        return;
-      
-      // Mark this connection as failed
-      $this->socketHandleConnectFailed ($this::ERROR_NET_TIMEOUT);
     }
     // }}}
     

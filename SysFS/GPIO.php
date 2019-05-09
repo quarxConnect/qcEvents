@@ -19,15 +19,13 @@
    **/
   
   require_once ('qcEvents/Interface/Loop.php');
-  require_once ('qcEvents/Interface/Timer.php');
   require_once ('qcEvents/Trait/Parented.php');
-  require_once ('qcEvents/Trait/Timer.php');
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/File.php');
   
-  class qcEvents_SysFS_GPIO extends qcEvents_Hookable implements qcEvents_Interface_Loop, qcEvents_Interface_Timer {
+  class qcEvents_SysFS_GPIO extends qcEvents_Hookable implements qcEvents_Interface_Loop {
     /* Re-use common functions for our interface */
-    use qcEvents_Trait_Parented, qcEvents_Trait_Timer;
+    use qcEvents_Trait_Parented;
     
     /* GPIO-Direction */
     const GPIO_IN = 0;
@@ -157,9 +155,11 @@
         }
         
         // Wait a while
-        return $this->getEventBase ()->addTimer ($this, array (0, 10), false, function () use ($Iteration, $Number, $Direction, $Edge, $Callback, $Private) {
-          return $this->setGPIOWait (++$Iteration, $Number, $Direction, $Edge, $Callback, $Private);
-        });
+        return $this->getEventBase ()->addTimeout (0.01)->then (
+          function () use ($Iteration, $Number, $Direction, $Edge, $Callback, $Private) {
+            return $this->setGPIOWait (++$Iteration, $Number, $Direction, $Edge, $Callback, $Private);
+          }
+        );
       }
       
       // Try to check modes
@@ -178,9 +178,11 @@
         }
         
         // Wait a while
-        return $this->getEventBase ()->addTimer ($this, array (0, 10), false, function () use ($Iteration, $Number, $Direction, $Edge, $Callback, $Private) {
-          return $this->setGPIOWait (++$Iteration, $Number, $Direction, $Edge, $Callback, $Private);
-        });
+        return $this->getEventBase ()->addTimeout (0.01)->then (
+          function () use ($Iteration, $Number, $Direction, $Edge, $Callback, $Private) {
+            return $this->setGPIOWait (++$Iteration, $Number, $Direction, $Edge, $Callback, $Private);
+          }
+        );
       }
       
       // Just try to attach

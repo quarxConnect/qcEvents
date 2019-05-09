@@ -26,12 +26,8 @@
   }
   
   require_once ('qcEvents/Stream/Stratum.php');
-  require_once ('qcEvents/Interface/Timer.php');
-  require_once ('qcEvents/Trait/Timer.php');
   
-  class qcEvents_Server_Stratum extends qcEvents_Stream_Stratum implements qcEvents_Interface_Timer {
-    use qcEvents_Trait_Timer;
-    
+  class qcEvents_Server_Stratum extends qcEvents_Stream_Stratum {
     // Used nonces
     private static $Nonces = array ();
     private static $nextNonce = 0;
@@ -430,27 +426,29 @@
           
           // Check if we have a job ready
           if (($this->jobLatest === null) || !isset ($this->Jobs [$this->jobLatest]))
-            return $this->addTimer (3, false, function () use ($Message) {
-              if (($this->jobLatest === null) || !isset ($this->Jobs [$this->jobLatest]))
+            return $this->getStream ()->getEventBase ()->addTimeout (3)->then (
+              function () use ($Message) {
+                if (($this->jobLatest === null) || !isset ($this->Jobs [$this->jobLatest]))
+                  return $this->sendMessage (array (
+                    'id' => $Message->id,
+                    'error' => array (
+                      0,
+                      'Work not ready',
+                    ),
+                    'result' => null,
+                  ));
+                
                 return $this->sendMessage (array (
                   'id' => $Message->id,
-                  'error' => array (
-                    0,
-                    'Work not ready',
+                  'error' => null,
+                  'result' => array (
+                    $this->Jobs [$this->jobLatest][0],
+                    $this->Jobs [$this->jobLatest][1],
+                    $this->Jobs [$this->jobLatest][2],
                   ),
-                  'result' => null,
                 ));
-              
-              return $this->sendMessage (array (
-                'id' => $Message->id,
-                'error' => null,
-                'result' => array (
-                  $this->Jobs [$this->jobLatest][0],
-                  $this->Jobs [$this->jobLatest][1],
-                  $this->Jobs [$this->jobLatest][2],
-                ),
-              ));
-            });
+              }
+            );
           
           // Push back the latest job
           return $this->sendMessage (array (

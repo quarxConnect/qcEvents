@@ -619,6 +619,8 @@
     }
     // }}}
     
+    public function getEventBase () { }
+    
     public function setEventBase (qcEvents_Base $Base) { }
     
     // {{{ read
