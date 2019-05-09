@@ -57,9 +57,18 @@
      * 
      * If $Handler features a getEventBase()-Call:
      * 
+     * @param qcEvents_Promise $Promise
+     * 
+     * -- OR --
+     * 
      * @param object $Handler
      * @param string $Function
      * @param ...
+     * 
+     * -- OR --
+     * 
+     * @param qcEvents_Base $Base
+     * @param qcEvents_Promise $Promise
      * 
      * -- OR --
      * 
@@ -80,14 +89,14 @@
         $Base = $Handler;
         $Handler = $Function;
         
-        if (count ($Parameters) == 0)
+        if ((count ($Parameters) == 0) && !($Handler instanceof qcEvents_Promise))
           throw new InvalidArgumentException ('Asyncronous calls on event-base not supported');
         
         $Function = array_shift ($Parameters);
       } elseif (!is_callable (array ($Handler, 'getEventBase')))
         throw new InvalidArgumentException ('Unable to find event-base anywhere');
-      else
-        $Base = $Handler->getEventBase ();
+      elseif (!is_object ($Base = $Handler->getEventBase ()))
+        throw new InvalidArgumentException ('Did not get an event-base from object');
       
       // Prepare Callback
       $Ready = $Loop = false;
@@ -105,45 +114,47 @@
           $Base->loopBreak ();
       };
       
-      // Analyze parameters of the call
-      $Method = new ReflectionMethod ($Handler, $Function);
-      
-      if (!($isPromise = ($Method->getReturnType () == 'qcEvents_Promise'))) {
-        $CallbackIndex = null;
+      if (!($Handler instanceof qcEvents_Promise)) {
+        // Analyze parameters of the call
+        $Method = new ReflectionMethod ($Handler, $Function);
         
-        foreach ($Method->getParameters () as $Index=>$Parameter) 
-          if ($Parameter->isCallable ()) {
-            $CallbackIndex = $Index;
+        if (!($isPromise = ($Method->getReturnType () == 'qcEvents_Promise'))) {
+          $CallbackIndex = null;
+          
+          foreach ($Method->getParameters () as $Index=>$Parameter) 
+            if ($Parameter->isCallable ()) {
+              $CallbackIndex = $Index;
+              
+              break;
+            }
+          
+          // Store the callback on parameters
+          if ($CallbackIndex !== null) {
+            // Make sure parameters is big enough
+            if (count ($Parameters) < $CallbackIndex)
+              for ($i = 0; $i < $CallbackIndex; $i++)
+                if (!isset ($Parameters [$i]))
+                  $Parameters [$i] = null;
             
-            break;
+            // Set the callback
+            $Parameters [$CallbackIndex] = $Callback;
+          } else {
+            trigger_error ('No position for callback detected, just giving it a try', E_USER_NOTICE);
+            
+            $Parameters [] = $Callback;
           }
-        
-        // Store the callback on parameters
-        if ($CallbackIndex !== null) {
-          // Make sure parameters is big enough
-          if (count ($Parameters) < $CallbackIndex)
-            for ($i = 0; $i < $CallbackIndex; $i++)
-              if (!isset ($Parameters [$i]))
-                $Parameters [$i] = null;
-          
-          // Set the callback
-          $Parameters [$CallbackIndex] = $Callback;
-        } else {
-          trigger_error ('No position for callback detected, just giving it a try', E_USER_NOTICE);
-          
-          $Parameters [] = $Callback;
         }
-      }
-      
-      // Do the call
-      $rc = $Method->invokeArgs ((is_object ($Handler) ? $Handler : null), $Parameters);
+        
+        // Do the call
+        $rc = $Method->invokeArgs ((is_object ($Handler) ? $Handler : null), $Parameters);
+      } else
+        $rc = $Handler;
       
       // Check for a returned promise
       if ($rc instanceof qcEvents_Promise) {
         // Check if this was expected
         if (!$isPromise)
           trigger_error ('Got an unexpected Promise in return');
-        
         
         $rc->then (
           $Callback,
