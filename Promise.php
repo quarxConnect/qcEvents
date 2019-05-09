@@ -24,7 +24,7 @@
     private static $noopReject = null;
     
     /* Assigned event-base */
-    private $Base = null;
+    private $eventBase = null;
     
     /* Has this promise been done already */
     const DONE_NONE = 0;
@@ -257,12 +257,12 @@
      * Create a new promise
      * 
      * @param callable $Callback
-     * @param qcEvents_Base $Base (optional)
+     * @param qcEvents_Base $eventBase (optional)
      + 
      * @access friendly
      * @return void
      **/
-    function __construct (callable $Callback, qcEvents_Base $Base = null) {
+    function __construct (callable $Callback, qcEvents_Base $eventBase = null) {
       // Make sure we have a NoOp-Indicator
       if ($this::$noopResolve === null) {
         $this::$noopResolve = function () { return new qcEvents_Promise_Solution (func_get_args ()); };
@@ -270,7 +270,7 @@
       }
       
       // Store the assigned base
-      $this->Base = $Base;
+      $this->eventBase = $eventBase;
       
       // Check wheter to invoke the callback
       if ($Callback === $this::$noopResolve)
@@ -293,6 +293,18 @@
         return $Base->forceCallback ($Invoke);
       
       $Invoke ();
+    }
+    // }}}
+    
+    // {{{ getEventBase
+    /**
+     * Retrive the event-base assigned to this promise
+     * 
+     * @access public
+     * @return qcEvents_Base
+     **/
+    public function getEventBase () : ?qcEvents_Base {
+      return $this->eventBase;
     }
     // }}}
     
@@ -378,7 +390,7 @@
      **/
     public function then (callable $resolve = null, callable $reject = null) {
       // Create an empty promise
-      $Promise = new $this ($this::$noopResolve, $this->Base);
+      $Promise = new $this ($this::$noopResolve, $this->eventBase);
       
       // Polyfill callbacks
       if ($resolve === null)
