@@ -188,10 +188,8 @@
         return $this->___callback ('dnsResponseReceived', $Message);
       }
       
-      if ($this->Source instanceof qcEvents_Interface_Timer) {
-        $this->dnsQueries [$Message->getID ()] = $Message;
-        $this->dnsAddTimeout ($Message);
-      }
+      $this->dnsQueries [$Message->getID ()] = $Message;
+      $this->dnsAddTimeout ($Message);
       
       return $this->___callback ('dnsQuestionReceived', $Message);
     }
