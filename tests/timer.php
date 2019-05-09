@@ -15,39 +15,23 @@
     }
   );
   
-  // Check timer without repeat
-  require_once ('qcEvents/Timer.php');
-  
-  $Timeout = new qcEvents_Timer ($Base);
-  $Timeout->addTimer (
-    3,
-    false,
-    function ($Time) {
-      echo 'Timer::addTimer(3) took ', time () - $Time, " sec.\n";
-    },
-    $Time
-  );
-  
-  // Check repeated timer
+  // Check repeated Promise-based timeouts
   $t = time ();
   $c = 0;
-  $cb = function () use (&$t, &$c, &$cb, &$Timer) {
-    echo 'Timer::addTimer(1, true) took ', time () - $t, " sec.\n";
-    $t = time ();
-    
-    if ($c++ > 3) {
-      $Timer->clearTimer (1, true, $cb);
-      exit ();
+  
+  $Timer = $Base->addTimeout (1, true);
+  $Timer->then (
+    function () use (&$t, &$c, &$cb, $Timer) {
+      echo 'addTimeout(1,true) took ', time () - $t, ' sec. (c = ', $c, ")\n";
+      $t = time ();
+      
+      if ($c++ > 3)
+        $Timer->cancel ();
+    },
+    function ($e) {
+      echo 'rejected: ', $e, "\n";
     }
-  };
-  
-  $Timer = new qcEvents_Timer ($Base);
-  $Timer->addTimer (
-    1,
-    true,
-    $cb
   );
-  
   
   $Base->loop ();
 
