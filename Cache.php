@@ -18,8 +18,6 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Interface/Timer.php');
-  require_once ('qcEvents/Trait/Timer.php');
   require_once ('qcEvents/Trait/Parented.php');
   require_once ('qcEvents/Hookable.php');
   
@@ -33,8 +31,8 @@
    * @package qcEvents
    * @revision 03
    **/
-  class qcEvents_Cache extends qcEvents_Hookable implements qcEvents_Interface_Timer {
-    use qcEvents_Trait_Timer, qcEvents_Trait_Parented;
+  class qcEvents_Cache extends qcEvents_Hookable {
+    use qcEvents_Trait_Parented;
     
     /* Callbacks */
     private $lookupFunc = null;
@@ -43,8 +41,8 @@
     /* Values on this cache */
     private $Values = array ();
     
-    /* TTL for keys on this cache */
-    private $TTLs = array ();
+    /* Timers for keys on this cache */
+    private $Timers = array ();
     
     /* Default TTLs for Keys on this cache */
     private $defaultTTL = 60;
@@ -169,18 +167,46 @@
      * @return void
      **/
     public function setKey ($Key, $Value, $TTL = null) {
-      $Existing = isset ($this->Values [(string)$Key]);
-      $TTL = ($TTL !== null ? $TTL : ($Existing ? $this->TTLs [(string)$Key] : $this->defaultTTL));
+      // Always treat key as a string
+      $Key = (string)$Key;
       
-      // Enqueue an expiry-timer
-      if ($Existing)
-        $this->clearTimer ($this->TTLs [(string)$Key], false, array ($this, 'expireKey'), array ($Key, $this->TTLs [(string)$Key]));
-      
-      $this->addTimer ($TTL, false, array ($this, 'expireKey'), array ($Key, $TTL));
+      // Check if the key is known
+      if ($Existing = isset ($this->Values [$Key])) {
+        // Make sure we have a valid TTL
+        if ($TTL !== null)
+          $this->Timers [$Key]->setInterval ($TTL);
+        
+        // Restart the timer
+        $this->Timers [$Key]->restart ();
+      } else {
+        // Make sure we have a valid TTL
+        if ($TTL === null)
+          $TTL = $this->defaultTTL;
+        
+        // Enqueue an expiry-timer
+        $this->Timers [$Key] = $this->getEventBase ()->addTimeout ($TTL);
+        $this->Timers [$Key]->then (
+          function () use ($Key) {
+            // Check if the key is cached
+            if (!isset ($this->Values [$Key]))
+              return;
+            
+            // Check if there is an expire-function set
+            if ($this->expireFunc === null)
+              return $this->unsetKey ($Key);
+            
+            // Call the expire-function
+            if ($this->___raiseCallback ($this->expireFunc, $Key, $this->Values [$Key]) === false)
+              return $this->unsetKey ($Key);
+            
+            // Restart the timer
+            $this->Timers [$Key]->restart ();
+          }
+        );
+      }
       
       // Store the new value
-      $this->Values [(string)$Key] = $Value;
-      $this->TTLs [(string)$Key] = $TTL;
+      $this->Values [$Key] = $Value;
       
       // Fire some callbacks
       if (!$Existing)
@@ -200,48 +226,21 @@
      * @return void
      **/
     public function unsetKey ($Key) {
-      if (!isset ($this->Values [(string)$Key]))
+      // Treat key as a string
+      $Key = (string)$Key;
+      
+      // Make sure the key is still known
+      if (!isset ($this->Values [$Key]))
         return;
       
-      $this->clearTimer ($this->TTLs [(string)$Key], false, array ($this, 'expireKey'), array ($Key, $this->TTLs [$Key]));
-      unset ($this->Values [(string)$Key], $this->TTLs [(string)$Key]);
+      // Stop the timer
+      $this->Timers [$Key]->cancel ();
       
+      // Remove the value
+      unset ($this->Values [$Key], $this->Timers [$Key]);
+      
+      // Raise a callback
       $this->__callback ('keyRemoved', $Key);
-    }
-    // }}}
-    
-    // {{{ expireKey
-    /**
-     * Callback: Try to renew a key on this cache
-     * 
-     * @param array $Private
-     * 
-     * @access public
-     * @return void
-     **/
-    public function expireKey ($Private) {
-      // Sanatize private
-      if (!is_array ($Private) || (count ($Private) !== 2))
-        return;
-      
-      // Unpack private
-      $Key = $Private [0];
-      $TTL = $Private [1];
-      
-      // Check if the key is cached
-      if (!isset ($this->Values [(string)$Key]))
-        return;
-      
-      // Check if there is an expire-function set
-      if ($this->expireFunc === null)
-        return $this->unsetKey ($Key);
-      
-      // Call the expire-function
-      if ($this->___raiseCallback ($this->expireFunc, $Key, $this->Values [(string)$Key]) === false)
-        return $this->unsetKey ($Key);
-      
-      // Requeue the timer
-      $this->addTimer ($TTL, false, array ($this, 'expireKey'), array ($Key, $TTL));
     }
     // }}}
     
