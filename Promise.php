@@ -348,6 +348,28 @@
     }
     // }}}
     
+    // {{{ reset
+    /**
+     * Reset our interal state
+     * 
+     * @param bool $Deep (optional) Reset child-promises as well
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function reset ($Deep = true) {
+      // Reset our own state
+      $this->done = $this::DONE_NONE;
+      $this->result = null;
+      
+      // Forward to child-promises
+      if ($Deep)
+        foreach ($this->callbacks as $type=>$callbacks)
+          foreach ($callbacks as $callbackData)
+            $callbackData [1]->reset (true);
+    }
+    // }}}
+    
     // {{{ invoke
     /**
      * Invoke a callback for this promise
