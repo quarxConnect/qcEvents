@@ -36,6 +36,9 @@
     /* DNS64-Prefix-Hack */
     public static $DNS64_Prefix = null;
     
+    /* Our assigned event-base */
+    private $eventBase = null;
+    
     /* Our registered nameservers */
     private $Nameservers = array ();
     
@@ -176,11 +179,11 @@
     public function enqueueQuery (qcEvents_Stream_DNS_Message $Message, callable $Callback = null, $Private = null) : qcEvents_Promise {
       // Make sure we have nameservers registered
       if ((count ($this->Nameservers) == 0) && !$this->useSystemNameserver ())
-        $Promise = qcEvents_Promise::reject ('No nameservers known');
+        $Promise = qcEvents_Promise::reject ('No nameservers known', $this->eventBase);
       
       // Make sure the message is a question
       elseif (!$Message->isQuestion ())
-        $Promise = qcEvents_Promise::reject ('Message must be a question');
+        $Promise = qcEvents_Promise::reject ('Message must be a question', $this->eventBase);
       
       // Create a socket and a stream for this query
       else {
