@@ -163,7 +163,8 @@
         return;
       
       // Reject the promise
-      call_user_func ($this->reject, 'canceled');
+      if ($this->reject)
+        call_user_func ($this->reject, 'canceled');
       
       // Reset our state
       $this->reset ();
