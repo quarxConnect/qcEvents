@@ -214,7 +214,7 @@
     private function httpdFinish () {
       // Handle response-headers
       if ($this->Response &&
-          $this->Response->hasField ('Connection') &&D
+          $this->Response->hasField ('Connection') &&
           ($this->Response->getField ('Connection') == 'close') &&
           ($Source = $this->getPipeSource ()))
         $Source->close ();
