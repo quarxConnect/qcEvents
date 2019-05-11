@@ -821,7 +821,7 @@
           (!is_object ($this->internalResolver) || !$this->internalResolver->isActive ())) {
         // Fire custom callback
         if ($this->socketConnectReject) {
-          call_user_func ($this->socketConnectReject);
+          call_user_func ($this->socketConnectReject, $Error);
           
           $this->socketConnectResolve = null;
           $this->socketConnectReject = null;
