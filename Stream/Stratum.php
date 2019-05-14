@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Stratum-Stream Implementation
-   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018-2019 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -126,13 +126,12 @@
      * 
      * @param string $Request
      * @param array $Parameters
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
+     * @param array $Extra (optional)
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function sendRequest ($Request, array $Parameters = null, callable $Callback = null, $Private = null, array $Extra = null) {
+    public function sendRequest ($Request, array $Parameters = null, array $Extra = null) : qcEvents_Promise {
       // Make sure parameters are an array
       if ($Parameters === null)
         $Parameters = array ();
@@ -140,18 +139,22 @@
       // Get a message-id
       $MessageID = $this->nextRequest++;
       
-      // Store the request-callback
-      if ($Callback)
-        $this->Requests [$MessageID] = array ($Callback, $Private);
+      // Prepare the request
+      $Message = array (
+        'id' => $MessageID,
+        'method' => $Request,
+        'params' => $Parameters,
+      );
       
-      // Write out the request
-      $this->sendMessage (
-        array (
-          'id' => $MessageID,
-          'method' => $Request,
-          'params' => $Parameters,
-        ),
-        $Extra
+      return new qcEvents_Promise (
+        function ($Resolve, $Reject)
+        use ($Message, $Extra) {
+          // Store the callback
+          $this->Requests [$Message ['id']] = array ($Resolve, $Reject);
+          
+          // Send the request
+          return $this->sendMessage ($Message, $Extra);
+        }
       );
     }
     // }}}
@@ -323,11 +326,16 @@
       // Check if there is a request pending
       if (isset ($this->Requests [$Message->id])) {
         // Get the callback
-        $CallbackSpec = $this->Requests [$Message->id];
+        $Callbacks = $this->Requests [$Message->id];
         unset ($this->Requests [$Message->id]);
         
         // Run the callback
-        return $this->___raiseCallback ($CallbackSpec [0], $Message->result, $Message->error, $CallbackSpec [1]);
+        if ($Message->error)
+          call_user_func ($Callbacks [1], $Message->error);
+        else
+          call_user_func ($Callbacks [0], $Message->result, $Message);
+        
+        return;
       }
       
       // Raise generic callback for this
@@ -358,8 +366,8 @@
      **/
     public function close () : qcEvents_Promise {
       // Cancel pending requests
-      foreach ($this->Requests as $CallbackSpec)
-        $this->___raiseCallback ($CallbackSpec [0], null, null, $CallbackSpec [1]);
+      foreach ($this->Requests as $Callbacks)
+        call_user_func ($Callbacks [1], 'Stream closing');
       
       $this->Requests = array ();
       
@@ -438,8 +446,8 @@
       $this->Buffer = '';
       
       // Cancel pending requests
-      foreach ($this->Requests as $CallbackSpec)
-        $this->___raiseCallback ($CallbackSpec [0], null, null, $CallbackSpec [1]);
+      foreach ($this->Requests as $Callbacks)
+        call_user_func ($Callbacks [1], 'Removing pipe from consumer');
       
       $this->Requests = array ();
       

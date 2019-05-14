@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Stratum-Client
-   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018-2019 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
    **/
   
   require_once ('qcEvents/Stream/Stratum.php');
+  require_once ('qcEvents/Promise.php');
   
   class qcEvents_Client_Stratum extends qcEvents_Stream_Stratum {
     /* Mining-Difficulty */
@@ -35,19 +36,21 @@
      * Try to subscribe to service
      * 
      * @param string $clientVersion (optional)
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function subscribe ($Version = 'qcEvents/Stratum', callable $Callback = null, $Private = null) {
+    public function subscribe ($Version = 'qcEvents/Stratum') : qcEvents_Promise {
       switch ($this->getProtocolVersion ()) {
         // Ethereum-GetWork does not support this and negotiates version later
         case $this::PROTOCOL_ETH_GETWORK:
           $this->Version = $Version;
           
-          return $this->___raiseCallback ($Callback, null, array (), null, null, $Private);
+          return qcEvents_Promise::resolve (array (
+            'Services' => array (),
+            'ExtraNonce1' => null,
+            'ExtraNonce2Length' => null,
+          ));
         
         // Ethereum-Stratum has empty parameters?!
         case $this::PROTOCOL_ETH_STRATUM:
@@ -65,16 +68,29 @@
       
       return $this->sendRequest (
         'mining.subscribe',
-        $Params,
-        function (qcEvents_Client_Stratum $Self, $Result, $Error) use ($Version, $Callback, $Private) {
-          // Check for success
-          if ($Result && is_array ($Result) && (count ($Result) > 2)) {
-            $this->Version = $Version;
-            
-            $this->___callback ('stratumSubscribed', $Result [0], hexdec ($Result [1]), $Result [2]);
-            $this->___raiseCallback ($Callback, true, $Result [0], hexdec ($Result [1]), $Result [2], $Private);
-          } else
-            $this->___raiseCallback ($Callback, false, null, null, null, $Private);
+        $Params
+      )->then (
+        function ($Result)
+        use ($Version) {
+          // Sanatize the result
+          if (!$Result || !is_array ($Result) || (count ($Result) <= 2))
+            throw new exception ('Invalid result received');
+          
+          // Store the version
+          $this->Version = $Version;
+          
+          // Transform the result
+          $Result = array (
+            'Services' => $Result [0],
+            'ExtraNonce1' => hexdec ($Result [1]),
+            'ExtraNonce2Length' => $Result [2],
+          );
+          
+          // Raise the callback
+          $this->___callback ('stratumSubscribed', $Result ['Services'], $Result ['ExtraNonce1'], $Result ['ExtraNonce2Length']);
+          
+          // Forward the result
+          return $Result;
         }
       );
     }
@@ -86,17 +102,18 @@
      * 
      * @param string $Username
      * @param string $Password (optional)
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function authenticate ($Username, $Password = null, callable $Callback = null, $Private = null) {
+    public function authenticate ($Username, $Password = null) : qcEvents_Promise {
       return $this->sendRequest (
         ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK ? 'eth_submitLogin' : 'mining.authorize'),
         ($Password !== null ? array ($Username, $Password) : array ($Username)),
-        function (qcEvents_Client_Stratum $Self, $Result) use ($Username, $Callback, $Private) {
+        ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK ? array ('worker' => $this->Version) : null)
+      )->then (
+        function ($Result)
+        use ($Username) {
           // Make sure its a bool
           $Result = !!$Result;
           
@@ -113,9 +130,8 @@
           }
           
           // Forward the result
-          $this->___raiseCallback ($Callback, $Result, $Private);
-        }, null,
-        ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK ? array ('worker' => $this->Version) : null)
+          return $Result;
+        }
       );
     }
     // }}}
@@ -137,13 +153,11 @@
      * Submit work
      * 
      * @param array $Work
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function submitWork (array $Work, callable $Callback = null, $Private = null) {
+    public function submitWork (array $Work) : qcEvents_Promise {
       // Preprocess Work for ethereum
       if ($this->getAlgorithm () == $this::ALGORITHM_ETH) {
         # GetWork:
@@ -165,14 +179,7 @@
       // Send out the message
       return $this->sendRequest (
         ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK ? 'eth_submitWork' : 'mining.submit'),
-        $Work,
-        function (qcEvents_Client_Stratum $Self, $Result, $Error) use ($Callback, $Private) {
-          if ($Error !== null) {
-            return $this->___raiseCallback ($Callback, false, $Private);
-          }
-          
-          return $this->___raiseCallback ($Callback, !!$Result, $Private);
-        }
+        $Work
       );
     }
     // }}}
