@@ -91,7 +91,7 @@
         
         // Raise the initial callback
         if ($Status)
-          $this->___raiseCallback ($this->initCallback [0], $Status, $this->initCallback [1]);
+          call_user_func ($this->initCallback [0]);
         else
           $this->deinitConsumer ($Source);
         
@@ -400,7 +400,7 @@
       $this->___callback ('eventPiped', $Source);
       
       // Store the requested callback
-      $this->initCallback = array ($Callback, $Private);
+      $this->initCallback = array ($Callback, $Callback);
     }
     // }}}
     
@@ -409,25 +409,23 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Reset ourself first
       $this->resetState ();
       
       // Raise a callback for this
       $this->___callback ('eventPipedStream', $Source);
       
-      // Store the requested callback
-      $this->initCallback = array ($Callback, $Private);
+      // Return a fresh proise
+      return new qcEvents_Promise (
+        function () {
+         $this->initCallback = func_get_args ();
+        }
+      );
     }
     // }}}
     
@@ -460,7 +458,7 @@
      **/
     private function resetState () {
       if ($this->initCallback)
-        $this->___raiseCallback ($this->initCallback [0], false, $this->initCallback [1]);
+        call_user_func ($this->initCallback [1], 'Resetting state');
       
       $this->initCallback = null;
       $this->Buffer = '';

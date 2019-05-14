@@ -560,23 +560,24 @@
             $this->streamPending = $Stream;
             
             // Connect both streams
-            return $Socket->pipeStream ($Stream, true, function (qcEvents_Interface_Stream $Socket, $Status) use ($Stream) {
-              // Check if the connection wasn't successfull
-              if (!$Status)
-                return ($this->streamPending = null);
-              
-              // Try to authenticate
-              $this->streamPending->authenticate ($this->Username, $this->Password, $this->Database)->then (
-                function () use ($Stream) {
-                  $Stream->addHook ('mysqlDisconnected', array ($this, 'mysqlStreamClosed'));
-                  $this->Streams [] = $Stream;
-                }
-              )->finally (
-                function () { 
-                  $this->streamPending = null;
-                }
-              );
-            });
+            return $Socket->pipeStream ($Stream, true)->then (
+              function () use ($Stream) {
+                // Try to authenticate
+                return $this->streamPending->authenticate ($this->Username, $this->Password, $this->Database)->then (
+                  function () use ($Stream) {
+                    $Stream->addHook ('mysqlDisconnected', array ($this, 'mysqlStreamClosed'));
+                    $this->Streams [] = $Stream;
+                  }
+                )->finally (
+                  function () { 
+                    $this->streamPending = null;
+                  }
+                );
+              },
+              function () {
+                $this->streamPending = null;
+              }
+            );
           },
           function () {
             $this->streamPending = null;

@@ -432,7 +432,7 @@
           });
         });
       
-      $this->___raiseCallback ($this->StreamCallback [0], false, $this->StreamCallback [1]);
+      call_user_func ($this->StreamCallback [1], 'Stream closed');
       $this->StreamCallback = null;
       
       $this->___callback ('eventClosed');
@@ -512,7 +512,11 @@
 
         // Fire the callback
         if ($this->StreamCallback) {
-          $this->___raiseCallback ($this->StreamCallback [0], ($Code < 400), $this->StreamCallback [1]);
+          if ($Code < 400)
+            call_user_func ($this->StreamCallback [0]);
+          else
+            call_user_func ($this->StreamCallback [1], 'Received ' . $Code);
+          
           $this->StreamCallback = null;
         }
 
@@ -861,19 +865,13 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     *  
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       if ($this->StreamCallback)
-        $this->___raiseCallback ($this->StreamCallback [0], false, $this->StreamCallback [1]);
+        call_user_func ($this->StreamCallback [1], 'Replaced by new source');
       
       // Update our internal state
       $this->State = self::STATE_CONNECTING;
@@ -883,10 +881,11 @@
       $this->CommandQueue = array ();
       $this->Stream = $Source;
       
-      if ($Callback)
-        $this->StreamCallback = array ($Callback, $Private);
-      else
-        $this->StreamCallback = null;
+      return new qcEvents_Promise (
+        function () {
+          $this->StreamCallback = func_get_args ();
+        }
+      );
     }
     // }}}
     
@@ -901,7 +900,7 @@
      **/
     public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       if ($this->StreamCallback) {
-        $this->___raiseCallback ($this->StreamCallback [0], false, $this->StreamCallback [1]);
+        call_user_func ($this->StreamCallback [1], 'Removed as source');
         $this->StreamCallback = null;
       }
       

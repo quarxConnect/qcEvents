@@ -390,40 +390,41 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Store the stream
       $this->Stream = $Source;
       
       // Indicate success
-      if (($Source instanceof qcEvents_Socket) && !$Source->isConnected ()) {
-        $Source->addHook ('socketConnected', function () use ($Callback, $Private, $Source) {
-          if ($Source !== $this->Stream)
-            return;
-          
-          $this->___raiseCallback ($Callback, $Source, true, $Private);
-          $this->___callback ('eventPipedStream', $this->Stream);
-          
-          foreach ($this->Queue as $Q)
-            $this->sendMessage ($Q);
-          
-          $this->Queue = array ();
-        });
-        
-        return;
-      }
+      if (($Source instanceof qcEvents_Socket) && !$Source->isConnected ())
+        return $Source->once ('socketConnected')->then (
+          function () use ($Source) {
+            // Sanity-Check stream and source
+            if ($this->Stream !== $Source)
+              throw new exception ('Stream was changed');
+            
+            // Raise callback
+            $this->___callback ('eventPipedStream', $this->Stream);
+            
+            // Push queue to the wire
+            foreach ($this->Queue as $Q)
+              $this->sendMessage ($Q);
+                                  
+            $this->Queue = array ();
+                        
+            // Forward success
+            return true;
+          }
+        );
       
-      $this->___raiseCallback ($Callback, $Source, true, $Private);
+      // Raise a callback for this
       $this->___callback ('eventPipedStream', $Source);
+      
+      // Return resolved promise
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

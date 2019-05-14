@@ -30,17 +30,11 @@
      * 
      * @param qcEvents_Interface_Stream_Consumer $Handler
      * @param bool $Finish (optional) Raise close on the handler if we are finished (default)
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     *  
-     *   function (qcEvents_Interface_Stream $Self, qcEvents_Interface_Stream_Consumer $Destination, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function pipeStream (qcEvents_Interface_Stream_Consumer $Handler, $Finish = true, callable $Callback = null, $Private = null);
+    public function pipeStream (qcEvents_Interface_Stream_Consumer $Handler, $Finish = true) : qcEvents_Promise;
     // }}}
     
     // {{{ unpipe

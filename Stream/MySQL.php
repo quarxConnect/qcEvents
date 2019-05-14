@@ -775,28 +775,22 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Check if this is really a new stream
       if ($this->Stream === $Source)
-        return $this->___raiseCallback ($Callback, false, $Private);
+        return qcEvents_Promise::resolve ();
       
       // Check if we have a stream assigned
       if (is_object ($this->Stream))
-        $Promise = $this->Stream->unpipe ($this);
+        $Promise = $this->Stream->unpipe ($this)->catch (function () { });
       else
         $Promise = qcEvents_Promise::resolve ();
       
-      $Promise->finally (
+      return $Promise->then (
         function () use ($Source, $Callback, $Private) {
           // Reset our state
           $this->Username = null;
@@ -812,9 +806,6 @@
           
           $this->mysqlSetProtocolState ($this::MYSQL_STATE_CONNECTING);
           
-          // Register the callback
-          $this->initCallbacks [] = array ($Callback, $Private);
-          
           // Assign the new stream
           $this->Stream = $Source;
           
@@ -823,6 +814,12 @@
           
           // Raise an event for this
           $this->___callback ('mysqlConnecting', $Source);
+          
+          return new qcEvents_Promise (
+            function () {
+              $this->initCallbacks [] = array (func_get_args ());
+            }
+          );
         }
       );
     }
@@ -1072,7 +1069,7 @@
           $this->mysqlProtocolError ('Unsupported MySQL-Version');
         
         foreach ($this->initCallbacks as $Callback)
-          $this->___raiseCallback ($Callback [0], false, $Callback [1]);
+          call_user_func ($Callback [1], 'Handshake failed');
         
         $this->initCallbacks = array ();
         
@@ -1092,7 +1089,10 @@
       if ($this->Username !== null)
         return $this->authenticate ($this->Username, $this->Password, $this->Database, function (qcEvents_Stream_MySQL $Self, $Username, $Status) {
           foreach ($this->initCallbacks as $Callback)
-            $this->___raiseCallback ($Callback [0], $Status, $Callback [1]);
+            if ($Status)
+              call_user_func ($Callback [0]);
+            else
+              call_user_func ($Callback [1], 'Authentication failed');
           
           $this->initCallbacks = array ();
           
@@ -1104,7 +1104,7 @@
       
       // Fire initial callbacks
       foreach ($this->initCallbacks as $Callback)
-        $this->___raiseCallback ($Callback [0], true, $Callback [1]);
+        call_user_func ($Callback [0]);
       
       $this->initCallbacks = array ();
       $this->___callback ('eventPipedStream', $this->Stream);

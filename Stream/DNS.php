@@ -368,32 +368,23 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Check if this source is already set
-      if ($this->Source === $Source) {
-        $this->___raiseCallback ($Callback, true, $Private);
-        
-        return;
-      }
+      if ($this->Source === $Source)
+        return qcEvents_Promise::resolve ();
       
       // Check if there is an existing source
       if ($this->Source)
-        $Promise = $this->deinitConsumer ($this->Source);
+        $Promise = $this->deinitConsumer ($this->Source)->catch (function () { });
       else
         $Promise = qcEvents_Promise::resolve ();
       
-      $Promise->finally (
-        function () use ($Source, $Callback, $Private) {
+      return $Promise->then (
+        function () use ($Source) {
           // Reset ourself
           $this->reset ();
           
@@ -402,7 +393,8 @@
           
           // Raise an event for this
           $this->___callback ('eventPipedStream', $Source);
-          $this->___raiseCallback ($Callback, true, $Private);
+          
+          return true;
         }
       );
     }

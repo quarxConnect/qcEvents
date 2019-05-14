@@ -110,6 +110,18 @@
     }
     // }}}
     
+    // {{{ getEventBase
+    /**
+     * Retrive the assigned event-base
+     * 
+     * @access public
+     * @return qcEvents_Base
+     **/
+    public function getEventBase () {
+      # Unimplemented
+    }
+    // }}}
+    
     // {{{ setEventBase
     /**   
      * Set the Event-Base of this source

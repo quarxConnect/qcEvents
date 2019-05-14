@@ -867,23 +867,14 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     *  
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Check if this is really a new stream
-      if ($this->Stream === $Source) {
-        $this->___raiseCallback ($Callback, true, $Private);
-        
-        return;
-      }
+      if ($this->Stream === $Source)
+        return qcEvents_Promise::resolve ();
       
       // Check if we have a stream assigned
       if (is_object ($this->Stream))
@@ -891,8 +882,8 @@
       else
         $Promise = qcEvents_Promise::resolve ();
       
-      $Promise->finally (
-        function () use ($Source, $Callback, $Private) {
+      return $Promise->catch (function () { })->then (
+        function () use ($Source) {
           // Reset our state
           $this->Stream = $Source;
           
@@ -916,10 +907,10 @@
           $this->___callback ('eventPipedStream', $Source);
           $this->___callback ('smtpConnecting');
           
-          if ($Callback)
-            $this->initCallback = array ($Callback, $Private);
-          else
-            $this->initCallback = null;
+          // Create a new promise
+          return new qcEvents_Promise (function ($resolve, $reject) {
+            $this->initCallback = array ($resolve, $reject);
+          })
         }
       );
     }
@@ -1049,7 +1040,7 @@
                   $this->___callback ('smtpConnectionFailed');
                   
                   if ($this->initCallback) {
-                    $this->___raiseCallback ($this->initCallback [0], $Source, false, $this->initCallback [1]);
+                    call_user_func ($this->initCallback [1], 'Received ' . $Code);
                     $this->initCallback = null;
                   }
                 }
@@ -1066,7 +1057,7 @@
                 $this->___callback ('smtpConnected');
                 
                 if ($this->initCallback) {
-                  $this->___raiseCallback ($this->initCallback [0], $Source, true, $this->initCallback [1]);
+                  call_user_func ($this->initCallback [0], true);
                   $this->initCallback = null;
                 }
                 
@@ -1090,7 +1081,7 @@
                   $this->___callback ('smtpConnectionFailed');
                   
                   if ($this->initCallback) {
-                    $this->___raiseCallback ($this->initCallback [0], $Source, false, $this->initCallback [1]);
+                    call_user_func ($this->initCallback [1], 'Neither HELO nor EHLO were successfull');
                     $this->initCallback = null;
                   }
                 }
@@ -1107,7 +1098,7 @@
                 $this->___callback ('smtpConnected');
                 
                 if ($this->initCallback) {
-                  $this->___raiseCallback ($this->initCallback [0], $Source, true, $this->initCallback [1]);
+                  call_user_func ($this->initCallback [0], true);
                   $this->initCallback = null;
                 }
                 

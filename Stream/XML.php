@@ -273,7 +273,7 @@
             
             // Raise callbacks
             if ($this->initCallback)
-              $this->___raiseCallback ($this->initCallback [0], true, $this->initCallback [1]);
+              call_user_func ($this->initCallback [0], true);
             
             $this->___callback ('xmlReceiveRoot', $this->xmlRootRemote);
             
@@ -520,7 +520,7 @@
       $this->___callback ('eventPiped', $Source);
       
       // Register Init-Callback
-      $this->initCallback = array ($Callback, $Private);
+      $this->initCallback = array ($Callback, $Callback);
     }
     // }}}
     
@@ -529,17 +529,11 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Reset our state   
       $this->resetState ();
       
@@ -555,8 +549,12 @@
       // Fire callback
       $this->___callback ('eventPipedStream', $Source);
       
-      // Register Init-Callback
-      $this->initCallback = array ($Callback, $Private);
+      // Return a new promise
+      return new qcEvents_Promise (
+        function () {
+          $this->initCallback = func_get_args ();
+        }
+      );
     }
     // }}}
     
@@ -589,7 +587,7 @@
      **/
     private function resetState () {
       if ($this->initCallback)
-        $this->___raiseCallback ($this->initCallback [0], false, $this->initCallback [1]);
+        call_user_func ($this->initCallback [1], 'State was resetted');
       
       $this->xmlBuffer = '';
       $this->xmlNodeRoot = null;

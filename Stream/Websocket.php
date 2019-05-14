@@ -496,17 +496,11 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Check if we should generate a handshake
       if ($this->URI === null) {
         // Register the source
@@ -514,10 +508,9 @@
         $this->Start = null;
         
         // Forward the callback
-        $this->___raiseCallback ($Callback, true, $Private);
         $this->___callback ('websocketConnected');
         
-        return;
+        return qcEvents_Promise::resolve ();
       }
       
       // Create a new HTTP-Request for the Upgrade
@@ -541,68 +534,59 @@
       
       $this->Start = true;
       
-      $Request->addHook (
-        'httpFinished',
-        function (qcEvents_Stream_HTTP_Request $Request, $Header)
-        use ($Source, $Nonce, $Callback, $Private) {
+      // Pipe source to request
+      return $Source->pipeStream ($Request)->then (
+        function () use ($Request) {
+          return $Request->once ('httpFinished');
+        },
+        function () use ($Source, $Request) {
+          // Unpipe the request from the source
+          $Source->unpipe ($Request);
+          
+          // Raise local callback for this
+          $this->___callback ('websocketFailed');
+          
+          // Forward the error
+          throw new qcEvents_Promise_Solution (func_get_args ());
+        }
+      )->then (
+        function ($Source, $Request, $Header) {
           // Unpipe request from source
-          $Source->unpipe ($Request)->finally (
-            function () use ($Header, $Source, $Nonce, $Callback, $Private) {
+          return $Source->unpipe ($Request)->then (
+            function () use ($Header, $Source, $Nonce) {
               // Check the result
               $Success =
                 ($Header->getStatus () == 101) &&
                 ($Header->hasField ('Upgrade') && (strcasecmp ($Header->getField ('Upgrade'), 'websocket') == 0)) &&
                 ($Header->hasField ('Connection') && (strcasecmp ($Header->getField ('Connection'), 'Upgrade') == 0)) &&
                 ($Header->hasField ('Sec-WebSocket-Accept') && (strcmp ($Header->getField ('Sec-WebSocket-Accept'), base64_encode (sha1 ($Nonce . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true))) == 0));
-              
+
               # TODO: Status may be 401 (Authz required) or 3xx (Redirect)
-              
+
               if ($Success && ($this->Protocols !== null) && $Header->hasField ('Sec-WebSocket-Protocol') &&
                   in_array ($Header->getField ('Sec-WebSocket-Protocol'), $this->Protocols))
                 $this->Protocol = $Header->getField ('Sec-WebSocket-Protocol');
               elseif (($this->Protocols !== null) || $Header->hasField ('Sec-WebSocket-Protocol'))
                 $Success = false;
-              
+
               if (!$Success) {
-                $this->___raiseCallback ($Callback, false, $Private);
                 $this->___callback ('websocketFailed');
-                
-                return;
+
+                throw new exception ('Failed to negotiate websocket-connection');
               }
-              
+
               // Store the header as start
               $this->Start = strval ($Header);
-              
+
               // Register the source
               $this->Source = $Source;
-              
+
               // Forward the callback
-              $this->___raiseCallback ($Callback, true, $Private);
               $this->___callback ('websocketConnected');
             }
           );
-        }, null,
-        true
+        }
       );
-      
-      $Request->addHook (
-        'httpFailed',
-        function (qcEvents_Stream_HTTP_Request $Request)
-        use ($Source, $Callback, $Private) {
-          // Unpipe request from source
-          $Source->unpipe ($Request)->finally (
-            function () use ($Callback, $Private) {
-              // Forward the callback
-              $this->___raiseCallback ($Callback, false, $Private);
-              $this->___callback ('websocketFailed');
-            }
-          );
-        }, null,
-        true
-      );
-      
-      // Pipe source to request
-      $Source->pipe ($Request);
     }
     // }}}
     
