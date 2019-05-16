@@ -65,6 +65,9 @@
     /* Known unreachable addresses */
     private static $Unreachables = array ();
     
+    /* Internal resolver */
+    private static $Resolver = null;
+    
     /* Our connection-state */
     private $Connected = false;
     
@@ -129,8 +132,8 @@
     /* Time of last event on this socket */
     private $lastEvent = 0;
     
-    /* Use our own internal resolver (which works asyncronously as well) */
-    private $internalResolver = true;
+    /* Counter for DNS-Actions */
+    private $Resolving = 0;
     
     // {{{ isIPv4
     /**
@@ -474,7 +477,7 @@
             $Host = '[' . $Host . ']';
           
           // Check for IPv4/v6 or wheter to skip the resolver
-          if (!$this->internalResolver || $this::isIPv4 ($Host) || $IPv6)
+          if (($this->Resolving < 0) || $this::isIPv4 ($Host) || $IPv6)
             $this->socketAddresses [] = array ($Host, $Host, $Port, $Type);
           else
             $Resolve [] = $Host;
@@ -488,7 +491,7 @@
           $this->socketConnectMulti ();
         
         // Sanity-Check if to use internal resolver
-        if (!$this->internalResolver || (count ($Resolve) == 0))
+        if (($this->Resolving < 0) || (count ($Resolve) == 0))
           return;
         
         // Perform asyncronous resolve
@@ -574,8 +577,7 @@
         $this->socketConnectReject = $reject;
         
         // Perform syncronous lookup
-        if ($this->internalResolver === false) {
-
+        if ($this->Resolving < 0) {
           // Fire a callback
           $this->___callback ('socketResolve', array ($Label), array (qcEvents_Stream_DNS_Message::TYPE_SRV));
           
@@ -747,10 +749,6 @@
         $this->socketAddress = null;
         $this->socketAddresses = null;
         
-        // Destroy our resolver
-        if (is_object ($this->internalResolver))
-          $this->internalResolver = true;
-        
         // Check wheter to enable TLS
         if (($this->tlsStatus === true) && !$this->tlsEnable ())
           return $this->tlsEnable (true, array ($this, 'socketHandleConnected'));
@@ -818,7 +816,7 @@
       
       // Check if there are more hosts on our list
       if ((!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0)) &&
-          (!is_object ($this->internalResolver) || !$this->internalResolver->isActive ())) {
+          ($this->Resolving <= 0)) {
         // Fire custom callback
         if ($this->socketConnectReject) {
           call_user_func ($this->socketConnectReject, $Error);
@@ -857,10 +855,11 @@
         return false;
       
       // Create a new resolver
-      if (!is_object ($this->internalResolver)) {
+      if (!is_object (self::$Resolver)) {
         require_once ('qcEvents/Client/DNS.php');
         
-        $this->internalResolver = new qcEvents_Client_DNS ($this->getEventBase ());
+        # TODO: This is bound to our event-base
+        self::$Resolver = new qcEvents_Client_DNS ($this->getEventBase ());
       }
       
       // Check which types to resolve
@@ -874,10 +873,15 @@
         $Types = array ($Types);
       
       // Enqueue Hostnames
+      $this->Resolving += count ($Types);
+      
       foreach ($Types as $rType)
-        $this->internalResolver->resolve ($Hostname, $rType)->then (
+        self::$Resolver->resolve ($Hostname, $rType)->then (
           function (qcEvents_Stream_DNS_Recordset $Answers, qcEvents_Stream_DNS_Recordset $Authorities, qcEvents_Stream_DNS_Recordset $Additional, qcEvents_Stream_DNS_Message $Response)
           use ($Hostname, $Port, $Type, $rType) {
+            // Decrese counter
+            $this->Resolving--;
+            
             // Discard any result if we are connected already
             if ($this->isConnected ())
               return;
@@ -886,12 +890,15 @@
             $this->lastEvent = time ();
             
             // Convert the result
-            $Result = $this->internalResolver->dnsConvertPHP ($Response, $AuthNS, $Addtl);
+            $Result = self::$Resolver->dnsConvertPHP ($Response, $AuthNS, $Addtl);
             
             // Forward
             return $this->socketResolverResultArray ($Result, $Addtl, $Hostname, $rType, $Port, $Type);
           },
           function () use ($Hostname, $Port, $Type, $rType) {
+            // Decrese counter
+            $this->Resolving--;
+            
             return $this->socketResolverResultArray (array (), array (), $Hostname, $rType, $Port, $Type);
           }
         );
@@ -945,7 +952,7 @@
      **/
     private function socketResolverResultArray ($Results, $Addtl, $Hostname, $rType, $Port, $Type) {
       // Check if there are no results
-      if ((count ($Results) == 0) && (!is_object ($this->internalResolver) || !$this->internalResolver->isActive ())) {
+      if ((count ($Results) == 0) && ($this->Resolving <= 0)) {
         // Mark connection as failed if there are no addresses pending and no current address
         if ((!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0)) && ($this->socketAddress === null))
           return $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED);
@@ -1030,12 +1037,12 @@
      **/
     public function useInternalResolver ($Toggle = null) {
       if ($Toggle === null)
-        return ($this->internalResolver !== false);
+        return ($this->Resolving >= 0);
       
       if (!$Toggle)
-        $this->internalResolver = false;
-      elseif (!$this->internalResolver)
-        $this->internalResolver = true;
+        $this->Resolving = -1;
+      elseif ($this->Resolving < 0)
+        $this->Resolving = 0;
       
       return true;
     }
@@ -1074,10 +1081,6 @@
       
       // Unbind from our event-base
       $this->isWatching (false);
-      
-      // Destroy our resolver
-      if (is_object ($this->internalResolver))
-        $this->internalResolver = true;
       
       // Clean up buffers
       $this->readBuffer = ''; 
