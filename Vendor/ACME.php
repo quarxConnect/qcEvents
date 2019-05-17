@@ -59,28 +59,6 @@
     }
     // }}}
     
-    // {{{ getDataPath
-    /**
-     * Retrive path to our data-directory
-     * 
-     * @access public
-     * @return string
-     **/
-    public static function getDataPath () {
-      // Check if we can get user-settings
-      if (!function_exists ('posix_getpwuid'))
-        return null;
-      
-      // Retrive info about current user
-      $pw = posix_getpwuid (posix_geteuid ());
-      $Path = $pw ['dir'] . '/.qcEvents';
-      
-      // Make sure our path exists
-      if (is_dir ($Path) || mkdir ($Path, 0700))
-        return $Path;
-    }
-    // }}}
-    
     // {{{ __construct
     /**
      * Create new ACME-Client

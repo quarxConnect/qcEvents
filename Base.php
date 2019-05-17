@@ -182,6 +182,34 @@
     }
     // }}}
     
+    // {{{ getDataPath
+    /**
+     * Retrive path to our data-directory
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getDataPath () {
+      // Check if we can get user-settings
+      if (function_exists ('posix_getpwuid')) {
+        $pw = posix_getpwuid (posix_geteuid ());
+        $Path = $pw ['dir'];
+      
+      // Have a look at our environment as fallback
+      } elseif (isset ($_ENV ['HOME']))
+        $Path = $_ENV ['HOME'];
+      else
+        return null;
+      
+      // Append ourself to path
+      $Path .= '/.qcEvents';
+      
+      // Make sure our path exists
+      if (is_dir ($Path) || mkdir ($Path, 0700))
+        return $Path;
+    }
+    // }}}
+    
     // {{{ forceEventRaise
     /**
      * Force the raise of a given event on next iteration of event-loop
