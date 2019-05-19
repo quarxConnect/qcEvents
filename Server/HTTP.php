@@ -18,6 +18,7 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
+  require_once ('qcEvents/Promise.php');
   require_once ('qcEvents/Stream/HTTP.php');
   require_once ('qcEvents/Stream/HTTP/Request.php');
   
@@ -393,6 +394,35 @@
       $this->keepAliveTimer->then (
         function () use ($Source) {
           $Source->close ();
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ initStreamConsumer
+    /**
+     * Setup ourself to consume data from a stream
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+      // Setup our parent first
+      return parent::initStreamConsumer ($Source)->then (
+        function () use ($Source) {
+          // Setup keep-alive
+          $this->httpdSetKeepAlive (true);
+          
+          // Remember current time as last action
+          $this->lastEvent = time ();
+      
+          // Register our hooks
+          $this->addHook ('httpFinished', array ($this, 'httpdRequestReady'));
+          $this->addHook ('httpHeaderReady', array ($this, 'httpdHeaderReady'));
+          
+          return new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
