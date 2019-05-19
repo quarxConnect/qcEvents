@@ -398,18 +398,20 @@
      * @return bool
      **/
     public function setBody ($Body, $Mime = null) {
-      // Store the body
-      $this->Body = $Body;
-      
-      // Set fields on header
+      // Check wheter to remove the body from request
       if ($Body === null) {
         $this->unsetField ('Content-Length');
         $this->unsetField ('Content-Type');
+        $this->Body = null;
         
-        return;
+        return true;
       }
       
-      $this->setField ('Content-Length', strlen ($Body));
+      // Set the body
+      $this->Body = strval ($Body);
+      
+      // Set headers
+      $this->setField ('Content-Length', strlen ($this->Body));
       
       if ($Mime !== null)
         $this->setField ('Content-Type', $Mime);
