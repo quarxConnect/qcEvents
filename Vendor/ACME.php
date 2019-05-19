@@ -74,7 +74,7 @@
       // Prepare the key
       if ($Key === null) {
         // Construct path to our key
-        if ($path = $this::getDataPath ()) {
+        if ($path = $Base->getDataPath ()) {
           $Key = $path . '/acme-' . md5 ($directoryURL) . '.key';
           
           if (is_file ($Key))
