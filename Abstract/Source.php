@@ -35,6 +35,9 @@
     /* Closed state */
     private $closed = false;
     
+    /* Close stream on drain */
+    private $closeOnDrain = false;
+    
     // {{{ __construct
     /**
      * Create a new abstract source
@@ -54,11 +57,12 @@
      * Insert some data into the abstract source
      * 
      * @param string $Data
+     * @param bool $closeOnDrain (optional)
      * 
      * @access public
      * @return void
      **/
-    public function sourceInsert ($Data) {
+    public function sourceInsert ($Data, $closeOnDrain = null) {
       // Check if we are closed
       if ($this->closed)
         return;
@@ -73,6 +77,9 @@
         else
           $this->___callback ('eventReadable');
       }
+      
+      if ($closeOnDrain !== null)
+        $this->closeOnDrain = !!$closeOnDrain;
     }
     // }}}
     
@@ -98,12 +105,21 @@
      * @return string
      **/
     public function read ($Size = null) {
+      // Get the requested bytes from buffer
       if ($Size === null) {
         $Buffer = $this->Buffer;
         $this->Buffer = '';
       } else {
         $Buffer = substr ($this->Buffer, 0, $Size);
         $this->Buffer = substr ($this->Buffer, $Size);
+      }
+      
+      // Check if we shall close
+      if ($this->closeOnDrain && (strlen ($this->Buffer) == 0)) {
+        if ($this->eventBase)
+          $this->eventBase->forceCallback (array ($this, 'close'));
+        else
+          $this->close ();
       }
       
       return $Buffer;  
@@ -143,7 +159,7 @@
      * @return qcEvents_Base
      **/
     public function getEventBase () {
-      # Unimplemented
+      return $this->eventBase;
     }
     // }}}
     
@@ -157,7 +173,7 @@
      * @return void
      **/
     public function setEventBase (qcEvents_Base $Base) {
-      # Unused
+      $this->eventBase = $Base;
     }
     // }}}
     
