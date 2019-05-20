@@ -23,6 +23,9 @@
   require_once ('qcEvents/Promise.php');
   
   class qcEvents_Abstract_Source extends qcEvents_Abstract_Pipe implements qcEvents_Interface_Source {
+    /* Assigned event-base */
+    private $eventBase = null;
+    
     /* Local buffer of abstract source */
     private $Buffer = '';
     
@@ -31,6 +34,20 @@
     
     /* Closed state */
     private $closed = false;
+    
+    // {{{ __construct
+    /**
+     * Create a new abstract source
+     * 
+     * @param  qcEvents_Base $eventBase (optional)
+     * 
+     * @access friendly
+     * @return void
+     **/
+    function __construct (qcEvents_Base $eventBase = null) {
+      $this->eventBase = $eventBase;
+    }
+    // }}}
     
     // {{{ sourceInsert
     /**
@@ -50,8 +67,12 @@
       $this->Buffer .= $Data;
       
       // Check wheter to raise an event
-      if ($this->raiseEvents)
-        $this->___callback ('eventReadable');
+      if ($this->raiseEvents) {
+        if ($this->eventBase)
+          $this->eventBase->forceCallback (array ($this, 'raiseRead'));
+        else
+          $this->___callback ('eventReadable');
+      }
     }
     // }}}
     
@@ -100,8 +121,12 @@
      **/
     public function watchRead ($Set = null) {
       if ($Set !== null) {
-        if ($this->raiseEvents = !!$Set)
-          $this->___callback ('eventReadable');
+        if ($this->raiseEvents = !!$Set) {
+          if ($this->eventBase)
+            $this->eventBase->forceCallback (array ($this, 'raiseRead'));
+          else
+            $this->___callback ('eventReadable');
+        }
         
         return true;
       }
@@ -177,6 +202,24 @@
       }
       
       return qcEvents_Promise::resolve ();
+    }
+    // }}}
+    
+    // {{{ raiseRead
+    /**
+     * Callback: The Event-Loop detected a read-event
+     * 
+     * @access public
+     * @return void
+     **/
+    public function raiseRead () {
+      if (strlen ($this->Buffer) == 0)
+        return;
+      
+      $this->___callback ('eventReadable');
+      
+      if ($this->eventBase)
+        $this->eventBase->forceCallback (array ($this, 'raiseRead'));
     }
     // }}}
     
