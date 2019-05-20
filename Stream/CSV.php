@@ -58,13 +58,20 @@
      * 
      * @param string $Separator (optional) Separator-Character on stream
      * @param string $Enclosure (optional) Enclosure-Character on stream
+     * @param string $LineEnd (optional) Line-Ending-Character on stream
      * 
      * @access friendly
      * @return void
      **/
-    function __construct ($Separator = ',', $Enclosure = '"') {
-      $this->csvSeparator = $Separator;
-      $this->csvEnclosure = $Enclosure;
+    function __construct ($Separator = null, $Enclosure = null, $LineEnd = null) {
+      if ($Separator !== null)
+        $this->csvSeparator = $Separator;
+      
+      if ($Enclosure !== null)
+        $this->csvEnclosure = $Enclosure;
+      
+      if ($LineEnd !== null)
+        $this->csvLineEnding = $LineEnd;
     }
     // }}}
     
