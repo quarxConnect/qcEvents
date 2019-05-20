@@ -395,8 +395,12 @@
         }
         
         // Check if there are queued event-handlers
-        if ((count ($this->fdOwner) == 0) && (count ($this->Timers) == 0))
+        if ((count ($this->fdOwner) == 0) && (count ($this->Timers) == 0)) {
+          if (count ($this->forcedEvents) > 0)
+            continue;
+          
           break;
+        }
         
         // Copy the fdSets (We do the copy because the arrays will be modified)
         $readFDs = $this->readFDs;
