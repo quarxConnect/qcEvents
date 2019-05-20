@@ -278,7 +278,11 @@
     public function once ($Name) : qcEvents_Promise {
       return new qcEvents_Promise (
         function ($resolve, $reject) use ($Name) {
-          if (!$this->addHook ($Name, $resolve, null, true))
+          $Callback = function () use ($resolve) {
+            call_user_func_array ($resolve, array_slice (func_get_args (), 1, -1));
+          };
+          
+          if (!$this->addHook ($Name, $Callback, null, true))
             $reject ('Could not register hook');
         }
       );
