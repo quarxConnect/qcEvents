@@ -210,8 +210,8 @@
           return $Request->once ('httpRequestResult');
         }
       )->then (
-        function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, $Body = null)
-        use ($authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies) {
+        function (qcEvents_Stream_HTTP_Header $Header = null, $Body = null)
+        use ($Request, $authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies) {
           // Remove from request-queue
           unset ($this->httpRequests [$Index]);
           

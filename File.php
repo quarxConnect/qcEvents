@@ -63,7 +63,7 @@
       
       // Wait for end-of-file
       return $File->once ('eventClosed')->then (
-        function ($File) use (&$Buffer) {
+        function () use (&$Buffer) {
           return $Buffer;
         }
       );
