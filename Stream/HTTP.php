@@ -240,7 +240,7 @@
         return;
       
       $this->bufferBody .= $Data;
-      $this->___callback ('eventReadable');
+      # $this->___callback ('eventReadable');
     }
     // }}}
     
@@ -643,7 +643,7 @@
     }
     // }}}
     
-    // {{{ eventRead
+    // {{{ eventReadable
     /**
      * Callback: A readable-event was received for this handler on the event-loop
      * 
