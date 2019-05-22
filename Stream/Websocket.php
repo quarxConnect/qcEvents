@@ -550,7 +550,8 @@
           throw new qcEvents_Promise_Solution (func_get_args ());
         }
       )->then (
-        function ($Request, $Header) use ($Source) {
+        function (qcEvents_Stream_HTTP_Header $Header)
+        use ($Source, $Request, $Nonce) {
           // Unpipe request from source
           return $Source->unpipe ($Request)->then (
             function () use ($Header, $Source, $Nonce) {
