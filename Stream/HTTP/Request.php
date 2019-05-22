@@ -664,6 +664,43 @@
     }
     // }}}
     
+    // {{{ initStreamConsumer
+    /**
+     * Setup ourself to consume data from a stream
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+      // Inherit to our parent
+      return parent::initStreamConsumer ($Source)->then (
+        function () use ($Source) {
+          // Make sure source-socket is connected
+          if (($Source instanceof qcEvents_Socket) &&
+              !$Source->isConnected ())
+            return qcEvents_Promise::race (array (
+              $Source->once ('socketConnected')->then (
+                function () {
+                  // Write out the request
+                  $this->httpHeaderWrite ($this);
+                }
+              ),
+              $Source->once ('socketDisconnected')->then (
+                function () {
+                  throw new exception ('Source-Socket was disconnected');
+                }
+              )
+            ));
+          
+          // Write out the request
+          $this->httpHeaderWrite ($this);
+        }
+      );
+    }
+    // }}}
+    
     // {{{ initConsumer
     /**
      * Setup ourself to consume data from a source
