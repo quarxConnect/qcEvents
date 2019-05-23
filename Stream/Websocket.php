@@ -98,6 +98,36 @@
     }
     // }}}
     
+    // {{{ getURI
+    /**
+     * Retrive the URI of this websocket
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getURI () {
+      return $this->URI;
+    }
+    // }}}
+    
+    // {{{ setURI
+    /**
+     * Set a new URI for this websocket
+     * 
+     * @param string $URI
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setURI ($URI) {
+      # TODO: Make sure we are not connected yet
+      
+      $this->URI = $URI;
+      
+      return true;
+    }
+    // }}}
+    
     // {{{ consume
     /**
      * Consume a set of data
@@ -300,11 +330,14 @@
       // Process special messages
       if ($Message instanceof qcEvents_Stream_Websocket_Ping) {
         $Response = new qcEvents_Stream_Websocket_Pong ($this, $Message->getData ());
+        
         $this->sendMessage ($Response);
       } elseif ($Message instanceof qcEvents_Stream_Websocket_Close)
-        $this->sendMessage (new qcEvents_Stream_Websocket_Close ($this), function () {
-          $this->close ();
-        });
+        $this->sendMessage (new qcEvents_Stream_Websocket_Close ($this))->then (
+          function () {
+            $this->close ();
+          }
+        );
     }
     // }}}
     
@@ -313,40 +346,39 @@
      * Write out a message to the remote peer
      * 
      * @param qcEvents_Stream_Websocket_Message $Message
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_Websocket $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function sendMessage (qcEvents_Stream_Websocket_Message $Message, callable $Callback = null, $Private = null) {
+    public function sendMessage (qcEvents_Stream_Websocket_Message $Message) : qcEvents_Promise {
       // Make sure we may write out messages
-      if (($this->Start !== null) || !$this->Source) {
-        $this->writeMessages [] = array ($Message, $Callback, $Private);
+      if (($this->Start === null) && $this->Source) {
+        // Check if the message contains complete buffered data
+        if ($Message->isClosed ())
+          return $this->sendFrame ($Message->getOpcode (), $Message->getData (), true);
         
-        return;
+        // Write out control-messages directly as single frame
+        if ($Message->isControlMessage ())
+          return $Message->once (
+            'eventClosed'
+          )->then (
+            function () use ($Message) {
+              // Forward to the wire
+              return $this->sendFrame ($Message->getOpcode (), $Message->getData (), true);
+            }
+          );
       }
       
-      // Check if the message contains complete buffered data
-      if ($Message->isClosed ())
-        return $this->sendFrame ($Message->getOpcode (), $Message->getData (), true, $Callback, $Private);
-      
-      // Write out control-messages directly as single frame
-      if ($Message->isControlMessage ())
-        return $Message->addHook ('eventClosed', function (qcEvents_Stream_Websocket_Message $Message) {
-          // Forward to the wire
-          $this->sendFrame ($Message->getOpcode (), $Message->getData (), true, $Callback, $Private);
-        }, null, true);
-      
-      // Push message to queue
-      $this->writeMessages [] = array ($Message, $Callback, $Private);
-      
-      // Check wheter to send pending messages
-      $this->sendPendingMessage ();
+      // Create a new promise
+      return new qcEvents_Promise (
+        function (callable $resolve, callable $reject) use ($Message) {
+          // Push message to queue
+          $this->writeMessages [] = array ($Message, $resolve, $reject);
+          
+          // Check wheter to send pending messages
+          $this->sendPendingMessage ();
+        }
+      );
     }
     // }}}
     
@@ -372,7 +404,10 @@
       // Check if the message already has finished
       if ($this->writeMessage [0]->isClosed ()) {
         // Write out this message
-        $this->sendFrame ($this->writeMessage [0]->getOpcode (), $this->writeMessage [0]->getData (), true, $this->writeMessage [1], $this->writeMessage [2]);
+        $this->sendFrame ($this->writeMessage [0]->getOpcode (), $this->writeMessage [0]->getData (), true)->then (
+          $this->writeMessage [1],
+          $this->writeMessage [2]
+        );
         
         // Remove active message
         $this->writeMessage = null;
@@ -394,7 +429,10 @@
         
         // Forward to the wire
         if ($Closed = $Message->isClosed ())
-          $this->sendFrame (($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()), $Message->read (), true, $this->writeMessage [1], $this->writeMessage [2]);
+          $this->sendFrame (($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()), $Message->read (), true)->then (
+            $this->writeMessage [1],
+            $this->writeMessage [2]
+          );
         else
           $this->sendFrame (($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()), $Message->read (), false);
         
@@ -405,7 +443,10 @@
       $this->writeMessage [0]->addHook ('eventClosed', function (qcEvents_Stream_Websocket_Message $Message) use (&$Written, &$Closed) {
         // Forward to the wire
         if (!$Closed)
-          $this->sendFrame (($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()), $Message->getData (), true, $this->writeMessage [1], $this->writeMessage [2]);
+          $this->sendFrame (($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()), $Message->getData (), true)->then (
+            $this->writeMessage [1],
+            $this->writeMessage [2]
+          );
         
         $Closed = true;
         
@@ -428,17 +469,11 @@
      * @param int $Opcode
      * @param string $Payload
      * @param bool $Finish
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_Websocket $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access private
-     * @return void
+     * @return qcEvents_Promise
      **/
-    private function sendFrame ($Opcode, $Payload, $Finish, callable $Callback = null, $Private = null) {
+    private function sendFrame ($Opcode, $Payload, $Finish) : qcEvents_Promise {
       // Retrive the length of payload
       $Length = strlen ($Payload);
       
@@ -464,16 +499,6 @@
       unset ($Payload);
       
       // Write to source
-      if ($Callback)
-        return $this->Source->write ($Frame)->then (
-          function () use ($Callback, $Private) {
-            $this->___raiseCallback ($Callback, true, $Private);
-          },
-          function () use ($Callback, $Private) {
-            $this->___raiseCallback ($Callback, false, $Private);
-          }
-        );
-      
       return $this->Source->write ($Frame);
     }
     // }}}
@@ -514,7 +539,7 @@
       }
       
       // Create a new HTTP-Request for the Upgrade
-      $Nonce = base64_encode (pack ('JJ', time (), $this::$Nonce++));
+      $Nonce = base64_encode (pack ('JJ', time (), self::$Nonce++));
       
       $Request = new qcEvents_Stream_HTTP_Request (array (
         'GET ' . $this->URI . ' HTTP/1.1',
