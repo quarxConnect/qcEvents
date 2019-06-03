@@ -295,6 +295,23 @@
     }
     // }}}
     
+    // {{{ getLocalPort
+    /**
+     * Retrive the local port of this server
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getLocalPort () {
+      $Local = stream_socket_get_name ($this->Socket, false);
+      
+      if (($p = strrpos ($Local, ':')) === false)
+        return false;
+      
+      return (int)substr ($Local, $p + 1);
+    }
+    // }}}
+    
     // {{{ tlsCiphers
     /**
      * Set a list of supported TLS-Ciphers
@@ -386,14 +403,14 @@
      * Create a the server-process
      * 
      * @param enum $Type
-     * @param int $Port
+     * @param int $Port (optional)
      * @param string $Host (optional)
      * @param int $Backlog (optional)
      * 
      * @access public
      * @return bool
      **/
-    public function listen ($Type, $Port, $Host = null, $Backlog = null) {
+    public function listen ($Type, $Port = null, $Host = null, $Backlog = null) {
       // Handle Context
       if ($Backlog !== null)
         $Context = stream_context_create (array ('backlog' => $Backlog));
@@ -412,6 +429,9 @@
         $Flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
       } else
         return false;
+      
+      if ($Port === null)
+        $Port = 0;
       
       if (!is_resource ($Socket = stream_socket_server ($Proto . '://' . $Host . ':' . $Port, $ErrNo, $ErrStr, $Flags, $Context)))
         return false;
