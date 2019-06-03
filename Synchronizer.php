@@ -99,15 +99,17 @@
         throw new InvalidArgumentException ('Did not get an event-base from object');
       
       // Prepare Callback
-      $Ready = $Loop = false;
+      $Ready = $Loop = $isPromise = false;
       $Result = null;
-      $Callback = function () use (&$Loop, &$Ready, &$Result, $Base) {
+      $Callback = function () use (&$Loop, &$Ready, &$Result, &$isPromise, $Base) {
         // Store the result
         $Ready = true;
         $Result = func_get_args ();
         
         if (count ($Result) == 0)
           $Result [] = true;
+        elseif ($isPromise && (count ($Result) == 1) && ($Result [0] === null))
+          $Result [0] = true;
         
         // Leave the loop
         if ($Loop)
@@ -153,8 +155,11 @@
       // Check for a returned promise
       if ($rc instanceof qcEvents_Promise) {
         // Check if this was expected
-        if (!$isPromise)
+        if (!$isPromise) {
           trigger_error ('Got an unexpected Promise in return');
+          
+          $isPromise = true;
+        }
         
         $rc->then (
           $Callback,
