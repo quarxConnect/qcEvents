@@ -43,7 +43,7 @@
     private static $Nonce = 0x00000000;
     
     /* Source-Stream for websocket-connection */
-    private $Source = null;
+    private $Stream = null;
     
     /* Received Upgrade-header */
     private $Start = null;
@@ -140,7 +140,7 @@
      **/
     public function consume ($Data, qcEvents_Interface_Source $Source) {
       // Validate the source
-      if ($Source !== $this->Source)
+      if ($Source !== $this->Stream)
         return;
       
       // Check if we are starting (and discard data)
@@ -352,7 +352,7 @@
      **/
     public function sendMessage (qcEvents_Stream_Websocket_Message $Message) : qcEvents_Promise {
       // Make sure we may write out messages
-      if (($this->Start === null) && $this->Source) {
+      if (($this->Start === null) && $this->Stream) {
         // Check if the message contains complete buffered data
         if ($Message->isClosed ())
           return $this->sendFrame ($Message->getOpcode (), $Message->getData (), true);
@@ -474,6 +474,10 @@
      * @return qcEvents_Promise
      **/
     private function sendFrame ($Opcode, $Payload, $Finish) : qcEvents_Promise {
+      // Make sure we have a stream assigned
+      if (!$this->Stream)
+        return qcEvents_Promise::reject ('Not connected to a stream');
+      
       // Retrive the length of payload
       $Length = strlen ($Payload);
       
@@ -499,7 +503,7 @@
       unset ($Payload);
       
       // Write to source
-      return $this->Source->write ($Frame);
+      return $this->Stream->write ($Frame);
     }
     // }}}
     
@@ -511,6 +515,8 @@
      * @return qcEvents_Promise
      **/
     public function close () : qcEvents_Promise {
+      $this->___callback ('eventClosed');
+      
       # TODO
       return qcEvents_Promise::resolve ();
     }
@@ -529,7 +535,7 @@
       // Check if we should generate a handshake
       if ($this->URI === null) {
         // Register the source
-        $this->Source = $Source;
+        $this->Stream = $Source;
         $this->Start = null;
         
         // Forward the callback
@@ -605,10 +611,11 @@
               $this->Start = strval ($Header);
 
               // Register the source
-              $this->Source = $Source;
+              $this->Stream = $Source;
 
               // Forward the callback
               $this->___callback ('websocketConnected');
+              $this->___callback ('eventPipedStream', $Source);
             }
           );
         }
@@ -626,9 +633,16 @@
      * @return qcEvents_Promise
      **/
     public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
+      if ($this->Stream === $Source) {
+        $this->Stream = null;
+        
+        $this->___callback ('eventUnpiped', $Source);
+      }
+      
       return qcEvents_Promise::resolve ();
     }
     // }}}
+    
     
     // {{{ eventPipedStream
     /**
