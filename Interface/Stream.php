@@ -41,12 +41,12 @@
     /**
      * Remove a handler that is currently being piped
      * 
-     * @param qcEvents_Interface_Consumer $Handler
+     * @param qcEvents_Interface_Consumer_Common $Handler
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function unpipe (qcEvents_Interface_Consumer $Handler) : qcEvents_Promise;
+    public function unpipe (qcEvents_Interface_Consumer_Common $Handler) : qcEvents_Promise;
     // }}}
   }
 

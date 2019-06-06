@@ -154,12 +154,12 @@
     /**
      * Remove a handler that is currently being piped
      * 
-     * @param qcEvents_Interface_Sink $Handler
+     * @param qcEvents_Interface_Consumer_Common $Handler
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function unpipe (qcEvents_Interface_Consumer $Handler) : qcEvents_Promise {
+    public function unpipe (qcEvents_Interface_Consumer_Common $Handler) : qcEvents_Promise {
       // Check if there is already such pipe
       if (($key = $this->getPipeHandlerKey ($Handler)) === false)
         return qcEvents_Promise::reject ('Consumer not found');

@@ -18,32 +18,9 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Interface/Hookable.php');
+  require_once ('qcEvents/Interface/Consumer/Common.php');
   
-  interface qcEvents_Interface_Stream_Consumer extends qcEvents_Interface_Hookable {
-    // {{{ consume
-    /**
-     * Consume a set of data
-     * 
-     * @param mixed $Data
-     * @param qcEvents_Interface_Source $Source
-     * 
-     * @access public
-     * @return void
-     **/
-    public function consume ($Data, qcEvents_Interface_Source $Source);
-    // }}}
-    
-    // {{{ close
-    /**
-     * Close this event-interface
-     * 
-     * @access public
-     * @return qcEvents_Promise
-     **/
-    public function close () : qcEvents_Promise;
-    // }}}
-    
+  interface qcEvents_Interface_Stream_Consumer extends qcEvents_Interface_Consumer_Common {
     // {{{ initStreamConsumer
     /**
      * Setup ourself to consume data from a stream
@@ -54,18 +31,6 @@
      * @return qcEvents_Promise
      **/
     public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise;
-    // }}}
-    
-    // {{{ deinitConsumer
-    /**
-     * Callback: A source was removed from this consumer
-     * 
-     * @param qcEvents_Interface_Source $Source
-     * 
-     * @access public
-     * @return qcEvents_Promise
-     **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise;
     // }}}
     
     
@@ -79,38 +44,6 @@
      * @return void
      **/
     # protected function eventPipedStream (qcEvents_Interface_Stream $Source);
-    // }}}
-    
-    // {{{ eventUnpiped
-    /**
-     * Callback: A source was removed from this consumer
-     * 
-     * @param qcEvents_Interface_Source $Source
-     * 
-     * @access protected
-     * @return void
-     **/
-    # protected function eventUnpiped (qcEvents_Interface_Source $Source);
-    // }}}
-    
-    // {{{ eventReadable
-    /**
-     * Callback: A readable-event was received for this handler on the event-loop
-     * 
-     * @access protected
-     * @return void
-     **/
-    # protected function eventReadable ();
-    // }}}
-    
-    // {{{ eventClosed
-    /**
-     * Callback: The interface was closed
-     * 
-     * @access public
-     * @return void
-     **/
-    # protected function eventClosed ();
     // }}}
   }
 
