@@ -255,13 +255,14 @@
      * Write out a HTTP-Header
      * 
      * @param qcEvents_Stream_HTTP_Header $Header
+     * 
      * @access protected
-     * @return void
+     * @return qcEvents_Promise
      **/
-    protected function httpHeaderWrite (qcEvents_Stream_HTTP_Header $Header) {
+    protected function httpHeaderWrite (qcEvents_Stream_HTTP_Header $Header) : qcEvents_Promise {
       // Check if headers have been written already
       if ($this->Response)
-        return false;
+        return qcEvents_Promise::reject ('Response-Header was already sent');
       
       // Check for some hard-coded headers
       if (!$Header->hasField ('Server'))

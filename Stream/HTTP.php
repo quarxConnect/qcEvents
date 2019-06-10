@@ -447,18 +447,15 @@
      * @param qcEvents_Stream_HTTP_Header $Header
      * 
      * @access protected
-     * @return void
+     * @return qcEvents_Promise
      **/
-    protected function httpHeaderWrite (qcEvents_Stream_HTTP_Header $Header) {
+    protected function httpHeaderWrite (qcEvents_Stream_HTTP_Header $Header) : qcEvents_Promise {
       // Make sure we have the right source for this
-      if (!$this->Source || !($this->Source instanceof qcEvents_Interface_Sink)) {
-        trigger_error ('No suitable source to write headers');
-        
-        return false;
-      }
+      if (!$this->Source || !($this->Source instanceof qcEvents_Interface_Sink))
+        return qcEvents_Promise::reject ('No suitable source to write headers');
       
       // Try to write out the status
-      $this->Source->write (strval ($Header))->then (
+      return $this->Source->write (strval ($Header))->then (
         function () use ($Header) {
           // Update the status
           if ($this->State == $this::HTTP_STATE_CONNECTING)
@@ -471,9 +468,6 @@
           return $this->httpUnexpectedClose ();
         }
       );
-      
-      // Run the callback
-      $this->___callback ('httpHeadersSend', $Header);
     }
     // }}}
     
