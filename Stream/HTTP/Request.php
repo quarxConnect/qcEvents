@@ -601,13 +601,20 @@
             $ContentType = mime_content_type ($Path);
             
             // Catch text/plain to cover some edge-cases
-            if ($ContentType == 'text/plain')
+            if ($ContentType == 'text/plain') {
+              // Handle some known special cases of text/plain
               switch (strtolower (substr ($Path, strrpos ($Path,'.')))) {
                 case '.css':
                   $ContentType = 'text/css'; break;
                 case '.js':
                   $ContentType = 'text/javascript'; break;
               }
+              
+              // Try to detect character-encoding
+              if (function_exits ('mb_detect_encoding') &&
+                  ($Encoding = mb_detect_encoding ($Content)))
+                $ContentType .= '; charset="' . $Encoding . '"';
+            }
             
             // Push to response
             $Response->setField ('Content-Type', $ContentType);
