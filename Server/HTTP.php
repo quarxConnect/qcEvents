@@ -81,29 +81,40 @@
      * @param string $Body (optional)
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function httpdSetResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response, $Body = null) {
+    public function httpdSetResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response, $Body = null) : qcEvents_Promise {
       // Check if the given request matches the current one
-      if ($Request !== $this->Request) {
-        trigger_error ('Request is not active');
-        
-        return false;
-      }
+      if ($Request !== $this->Request)
+        return qcEvents_Promise::reject ('Request is not active');
       
       // Set length of content
-      $Response->setField ('Content-Length', strlen ($Body));
+      if ($Body !== null)
+        $Response->setField ('Content-Length', strlen ($Body));
       
       // Write out the response
-      $this->httpHeaderWrite ($Response);
-      
-      if (($Source = $this->getPipeSource ()) && ($Source instanceof qcEvents_Interface_Sink))
-        $Source->write ($Body);
-      
-      // Reset the current state
-      $this->httpdFinish ();
-      
-      return true;
+      return $this->httpHeaderWrite ($Response)->then (
+        function () use ($Body) {
+          // Make sure we may write to our source (should never fail)
+          if (!is_object ($Source = $this->getPipeSource ()) ||
+              !($Source instanceof qcEvents_Interface_Sink))
+            throw new exception ('Source is not writeable');
+          
+          // Write out the body
+          if ($Body !== null)
+            return $Source->write ($Body);
+          
+          return true;
+        }
+      )->then (
+        function () {
+          // Reset the current state
+          $this->httpdFinish ();
+          
+          // Forward success
+          return true;
+        }
+      );
     }
     // }}}
     
@@ -115,16 +126,16 @@
      * @param qcEvents_Stream_HTTP_Header $Response
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function httpdStartResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response) {
+    public function httpdStartResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response) : qcEvents_Promise {
       // Check if the given request matches the current one
       if ($Request !== $this->Request)
-        return false;
+        return qcEvents_Promise::reject ('Request is not active');
       
       // Check if headers are already sent
       if ($this->Response)
-        return false;
+        return qcEvents_Promise::reject ('Response-Headers already been sent');
       
       // Make sure the response-header is correct for this response
       if ($Response->getVersion () < 1.1) {
@@ -136,9 +147,7 @@
       $Response->unsetField ('Content-Length');
       
       // Write out the response  
-      $this->httpHeaderWrite ($Response);
-      
-      return true;
+      return $this->httpHeaderWrite ($Response);
     }
     // }}}
     
@@ -150,23 +159,24 @@
      * @param string $Body
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function httpdWriteResponse (qcEvents_Stream_HTTP_Header $Request, $Body) {
+    public function httpdWriteResponse (qcEvents_Stream_HTTP_Header $Request, $Body) : qcEvents_Promise {
       // Check if the given request matches the current one
-      if (($Request !== $this->Request) || !$this->Response)
-        return false;
+      if ($Request !== $this->Request)
+        return qcEvents_Promise::reject ('Request is not active');
+      
+      if (!$this->Response)
+        return qcEvents_Promise::reject ('Request-Headers have not been sent yet');
       
       // Write out the chunk
       if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Sink))
-        return;
+        return qcEvents_Promise::reject ('Source is not writable');
       
       if ($this->Response->getVersion () < 1.1)
-        $Source->write ($Body);
+        return $Source->write ($Body);
       else
-        $Source->mwrite (dechex (strlen ($Body)), "\r\n", $Body, "\r\n");
-      
-      return true;
+        return $Source->mwrite (dechex (strlen ($Body)), "\r\n", $Body, "\r\n");
     }
     // }}}
     
@@ -178,30 +188,40 @@
      * @param qcEvents_Stream_HTTP_Header $Trailer (optional)
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function httpdFinishResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Trailer = null) {
+    public function httpdFinishResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Trailer = null) : qcEvents_Promise {
       // Check if the given request matches the current one
-      if (($Request !== $this->Request) || !$this->Response)
-        return false;
+      if ($Request !== $this->Request)
+        return qcEvents_Promise::reject ('Request is not active');
+      
+      if (!$this->Response)
+        return qcEvents_Promise::reject ('Request-Headers have not been sent yet');
       
       if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Sink))
-        return;
-      
-      // Write out last chunk
-      $Source->write ("0\r\n");
+        return qcEvents_Promise::reject ('Source is not writable');
       
       // Check for tailing header
       if (is_object ($Trailer)) {
-        $Header = strval ($Trailer);
-        $Source->write (substr ($Header, strpos ($Header, "\r\n") + 2));
+        // Make sure Trailer is a string
+        $Trailer = strval ($Trailer);
+        
+        // Write out last chunk + trailer
+        $Promise = $Source->write ("0\r\n" . substr ($Trailer, strpos ($Trailer, "\r\n") + 2));
+      
+      // Write out last chunk
       } else
-        $Source->write ("\r\n");
+        $Promise = $Source->write ("0\r\n\r\n");
       
-      // Reset ourself
-      $this->httpdFinish ();
-      
-      return true;
+      // Wait for the write() to finish
+      return $Promise->then (
+        function () {
+          // Reset ourself
+          $this->httpdFinish ();
+          
+          return true;
+        }
+      );
     }
     // }}}
     
