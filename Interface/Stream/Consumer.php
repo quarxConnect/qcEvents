@@ -18,69 +18,19 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Interface/Hookable.php');
+  require_once ('qcEvents/Interface/Consumer/Common.php');
   
-  interface qcEvents_Interface_Stream_Consumer extends qcEvents_Interface_Hookable {
-    // {{{ consume
-    /**
-     * Consume a set of data
-     * 
-     * @param mixed $Data
-     * @param qcEvents_Interface_Source $Source
-     * 
-     * @access public
-     * @return void
-     **/
-    public function consume ($Data, qcEvents_Interface_Source $Source);
-    // }}}
-    
-    // {{{ close
-    /**
-     * Close this event-interface
-     * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * @access public
-     * @return void
-     **/
-    public function close (callable $Callback = null, $Private = null);
-    // }}}
-    
+  interface qcEvents_Interface_Stream_Consumer extends qcEvents_Interface_Consumer_Common {
     // {{{ initStreamConsumer
     /**
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null);
-    // }}}
-    
-    // {{{ deinitConsumer
-    /**
-     * Callback: A source was removed from this consumer
-     * 
-     * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
-     * 
-     * @access public
-     * @return void
-     **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null);
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise;
     // }}}
     
     
@@ -94,38 +44,6 @@
      * @return void
      **/
     # protected function eventPipedStream (qcEvents_Interface_Stream $Source);
-    // }}}
-    
-    // {{{ eventUnpiped
-    /**
-     * Callback: A source was removed from this consumer
-     * 
-     * @param qcEvents_Interface_Source $Source
-     * 
-     * @access protected
-     * @return void
-     **/
-    # protected function eventUnpiped (qcEvents_Interface_Source $Source);
-    // }}}
-    
-    // {{{ eventReadable
-    /**
-     * Callback: A readable-event was received for this handler on the event-loop
-     * 
-     * @access protected
-     * @return void
-     **/
-    # protected function eventReadable ();
-    // }}}
-    
-    // {{{ eventClosed
-    /**
-     * Callback: The interface was closed
-     * 
-     * @access public
-     * @return void
-     **/
-    # protected function eventClosed ();
     // }}}
   }
 

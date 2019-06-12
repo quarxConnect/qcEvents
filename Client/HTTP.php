@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Socket.php');
+  require_once ('qcEvents/Socket/Pool.php');
   require_once ('qcEvents/Stream/HTTP/Request.php');
   require_once ('qcEvents/File.php');
   
@@ -27,17 +28,14 @@
     /* Our parented event-handler */
     private $eventBase = null;
     
-    /* Pending HTTP-Requests */
-    private $pendingRequests = array ();
+    /* All queued HTTP-Requests */
+    private $httpRequests = array ();
     
-    /* Active HTTP-Requests */
-    private $activeRequests = array ();
+    /* Socket-Pool */
+    private $socketPool = null;
     
-    /* Maximum concurrent requests */
-    private $activeRequestsMax = 5;
-    
-    /* Open/unused sockets */
-    private $Sockets = array ();
+    /* Session-Cookies (if enabled) */
+    private $sessionCookies = null;
     
     // {{{ __construct
     /**
@@ -50,6 +48,7 @@
      **/
     function __construct (qcEvents_Base $eventBase) {
       $this->eventBase = $eventBase;
+      $this->socketPool = new qcEvents_Socket_Pool ($eventBase);
     }
     // }}}
     
@@ -62,6 +61,305 @@
      **/
     public function getEventBase () {
       return $this->eventBase;
+    }
+    // }}}
+    
+    // {{{ getSessionCookies
+    /**
+     * Retrive all session-cookies from this client
+     * 
+     * @access public
+     * @return array
+     **/
+    public function getSessionCookies () : array {
+      if ($this->sessionCookies === null)
+        return array ();
+      
+      return $this->sessionCookies;
+    }
+    // }}}
+    
+    // {{{ setSessionCookies
+    /**
+     * Overwrite all session-cookies
+     *  
+     * @param array $Cookies
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setSessionCookies (array $Cookies) {
+      $this->sessionCookies = $Cookies;
+    }
+    // }}}
+    
+    // {{{ useSessionCookies
+    /**
+     * Get/Set wheter to use session-cookies
+     * 
+     * @param bool $Toggle (optional)
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function useSessionCookies ($Toggle = null) {
+      // Check wheter to return current state
+      if ($Toggle === null)
+        return ($this->sessionCookies !== null);
+      
+      // Check wheter to remove all session-cookies
+      if ($Toggle === false)
+        $this->sessionCookies = null;
+      elseif (($Toggle === true) && ($this->sessionCookies === null))
+        $this->sessionCookies = array ();
+      
+      return is_bool ($Toggle);
+    }
+    // }}}
+    
+    // {{{ request
+    /**
+     * Enqueue an HTTP-Request
+     * 
+     * @param qcEvents_Stream_HTTP_Request $Request
+     * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
+     * 
+     * - OR -
+     * 
+     * @param string $URL The requested URL
+     * @param enum $Method (optional) Method to use on the request
+     * @param array $Headers (optional) List of additional HTTP-Headers
+     * @param string $Body (optional) Additional body for the request
+     * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function request () : qcEvents_Promise {
+      // Process function-arguements
+      $argv = func_get_args ();
+      $argc = count ($argv);
+      
+      if ($argc < 1)
+        return qcEvents_Promise::reject ('Missing Request-Arguement');
+      
+      if ($argv [0] instanceof qcEvents_Stream_HTTP_Request) {
+        $Request = $argv [0];
+        $authenticationPreflight = (($argc < 2) || ($argv [1] === true));
+      } else {
+        $Request = new qcEvents_Stream_HTTP_Request ($argv [0]);
+        
+        // Set additional properties of the request
+        if (($argc > 1) && ($argv [1] !== null))
+          $Request->setMethod ($argv [1]);
+        
+        if (($argc > 2) && is_array ($argv [2]))
+          foreach ($argv [2] as $Key=>$Value)
+            $Request->setField ($Key, $Value);
+        
+        if (($argc > 3) && ($argv [3] !== null))
+          $Request->setBody ($argv [3]);
+        
+        $authenticationPreflight = (($argc < 5) || ($argv [4] === true));
+      }
+      
+      // Push to our request-queue
+      $this->httpRequests [] = $Request;
+      
+      // Remember some immutable parameters from request
+      $Index = array_search ($Request, $this->httpRequests, true);
+      $Method = $Request->getMethod ();
+      $Username = $Request->getUsername ();
+      $Password = $Request->getPassword ();
+      
+      if ($newCookies = $this->getSessionCookiesForRequest ($Request)) {
+        $orgCookies = $Request->getField ('Cookie', true);
+        $Cookies = $orgCookies;
+        
+        $Request->unsetField ('Cookie');
+        
+        if (count ($Cookies) < 1)
+          $Cookies [] = '';
+        
+        foreach ($newCookies as $Cookie)
+          $Cookies [0] .= (strlen ($Cookies [0]) > 0 ? ';' : '') . urlencode ($Cookie ['name']) . '=' . urlencode ($Cookie ['value']);
+        
+        foreach ($Cookies as $Cookie)
+          $Request->setField ('Cookie', $Cookie, false);
+      } else
+        $orgCookies = null;
+      
+      // Acquire a socket for this
+      return $this->socketPool->acquireSocket (
+        $Request->getHostname (),
+        $Request->getPort (),
+        qcEvents_Socket::TYPE_TCP,
+        $Request->useTLS ()
+      )->then (
+        function (qcEvents_Socket $Socket) use ($Request, $authenticationPreflight, $Username, $Password) {
+          // Handle authenticiation more special
+          if (!$Request->hasBody () && $authenticationPreflight && (($Username !== null) || ($Password !== null))) {
+            $Request->setMethod ('OPTIONS');
+            $Request->setCredentials (null, null);
+          }
+          
+          // Pipe the socket to our request
+          $Socket->pipe ($Request);
+          
+          // Watch events on the request
+          return $Request->once ('httpRequestResult');
+        }
+      )->then (
+        function (qcEvents_Stream_HTTP_Header $Header = null, $Body = null)
+        use ($Request, $authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies) {
+          // Remove from request-queue
+          unset ($this->httpRequests [$Index]);
+          
+          // Restore cookies on request
+          if ($orgCookies !== null) {
+            $Request->unsetField ('Cookie');
+            
+            foreach ($orgCookies as $Cookie)
+              $Request->setField ('Cookie', $Cookie, false);
+          }
+          
+          // Retrive the current socket for the request
+          if ($Socket = $Request->getPipeSource ()) {
+            // Check if we may reuse the socket
+            if (!$Header ||
+                (($Header->getVersion () < 1.1) && ($Header->getField ('Connection') != 'keep-alive')) ||
+                ($Header->getField ('Connection') == 'close'))
+              $Socket->close ();
+            
+            // Release the socket (allow to reuse it)
+            $Socket->unpipe ($Request);
+            $this->socketPool->releaseSocket ($Socket);
+          }
+          
+          // Abort here if no header was received
+          if (!$Header)
+            throw new exception ('No header was received');
+          
+          // Retrive the status of the response
+          $Status = $Header->getStatus ();
+          
+          // Check wheter to process cookies
+          if (($this->sessionCookies !== null) && $Header->hasField ('Set-Cookie'))
+            $this->updateSessionCookies ($Request, $Header);
+          
+          // Check for authentication
+          if ($authenticationPreflight &&
+              (($Username !== null) || ($Password !== null)) &&
+              (($Status == 401) || $Header->hasField ('WWW-Authenticate'))) {
+            // Retrive supported methods
+            $Methods = explode (',', $Header->getField ('WWW-Authenticate'));
+            $onMethod = false;
+            $aMethod = null;
+            
+            for ($i = 0; $i < count ($Methods); $i++) {
+              $Token = $Methods [$i];
+              $tToken = trim ($Token);
+              
+              if (($p = strpos ($tToken, ' ')) !== false) {
+                if ($aMethod !== null)
+                  $Request->addAuthenticationMethod ($aMethod, $mParams);
+                
+                $onMethod = true;
+                $aMethod = substr ($tToken, 0, $p);
+                $tToken = $Token = ltrim (substr (ltrim ($Token), $p + 1));
+                
+                $mParams = array ();
+              } elseif (!$onMethod) {
+                if ($aMethod !== null) {
+                  $Request->addAuthenticationMethod ($aMethod, $mParams);
+                  $aMethod = null;
+                }
+                
+                $Request->addAuthenticationMethod ($tToken);
+                
+                continue;
+              }
+              
+              if (($p = strpos ($tToken, '=')) !== false) {
+                $Name = substr ($tToken, 0, $p);
+                $Value = substr (ltrim ($Token), $p + 1);
+                
+                // Check for quotation
+                if ((strlen ($Value) > 0) && (($Value [0] == '"') || ($Value [0] == "'"))) {
+                  $Stop = $Value [0];
+                  $Value = substr ($Value, 1);
+                  
+                  if (($p = strpos ($Value, $Stop)) === false) {
+                    for ($j = $i + 1; $j < count ($Methods); $j++) {
+                      if (($p = strpos ($Methods [++$i], $Stop)) !== false) {
+                        $Value .= substr ($Methods [$i], 0, $p) . substr ($Methods [$i], $p + 1);
+                        
+                        break;
+                      } else
+                        $Value .= $Methods [$i];
+                    }
+                  } else
+                    $Value = substr ($Value, 0, $p) . substr ($Value, $p + 1);
+                }
+                
+                $mParams [$Name] = $Value;
+              } else
+                $mParams [] = $Token;
+            }
+            
+            if ($aMethod !== null)
+              $Request->addAuthenticationMethod ($aMethod, $mParams);
+            
+            // Restore the request's state
+            $Request->setMethod ($Method);
+            $Request->setCredentials ($Username, $Password);
+            
+            // Re-enqueue the request
+            return $this->request ($Request, false);
+          }
+          
+          // Check for redirects
+          if (($Location = $Header->getField ('Location')) &&
+              (($Status >= 300) && ($Status < 400)) &&
+              (($max = $Request->getMaxRedirects ()) > 0) &&
+              is_array ($URI = parse_url ($Location))) {
+            // Make sure the URL is fully qualified
+            // Make sure the URL is fully qualified
+            if ($rebuild = !isset ($URI ['scheme']))
+              $URI ['scheme'] = ($Request->useTLS () ? 'https' : 'http');
+            
+            if (!isset ($URI ['host'])) {
+              $URI ['host'] = $Request->getHostname ();
+              $rebuild = true;
+              
+              if ($Request->getPort () != ($Request->useTLS () ? 443 : 80))
+                $URI ['port'] = $Request->getPort ();
+              else
+                unset ($URI ['port']);
+            }
+            
+            if ($rebuild)
+              $Location = $URI ['scheme'] . '://' . $URI ['host'] . (isset ($URI ['port']) ? ':' . $URI ['port'] : '') . $URI ['path'] . (isset ($URI ['query']) ? '?' . $URI ['query'] : '');
+            
+            // Fire a callback first
+            $this->___callback ('httpRequestRediect', $Request, $Location, $Header, $Body);
+            
+            // Set the new location as destination
+            $Request->setURL ($Location);
+            
+            // Lower the number of max requests
+            $Request->setMaxRedirects ($max - 1);
+            
+            // Re-Enqueue the request
+            return $this->request ($Request);
+          }
+          
+          // Fire the callbacks
+          $this->___callback ('httpRequestResult', $Request, $Header, $Body);
+          
+          return new qcEvents_Promise_Solution (array ($Body, $Header));
+        }
+      );
     }
     // }}}
     
@@ -107,27 +405,33 @@
      * @param qcEvents_Stream_HTTP_Request $Request The HTTP-Request to enqueue
      * @param callback $Callback (optional) A callback to raise once the request was finished
      * @param mixed $Private (optional) Private data to pass to the callback
+     * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Response $Header = null, string $Body = null, mixed $Private = null) { }
+     *   function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, string $Body = null, mixed $Private = null) { }
      * 
      * @access public
      * @return qcEvents_Stream_HTTP_Request
      **/
-    public function addRequest (qcEvents_Stream_HTTP_Request $Request, callable $Callback = null, $Private = null, $Status = 0) {
-      // Generate a key for this
-      $Key = $Request->getHostname () . ':' . $Request->getPort () . ($Request->useTLS () ? '/s' : '');
+    public function addRequest (qcEvents_Stream_HTTP_Request $Request, callable $Callback = null, $Private = null, $authenticationPreflight = true) {
+      // Check if the request is already being processed
+      if (in_array ($Request, $this->httpRequests, true))
+        return $Request;
       
       // Enqueue the request
-      if (isset ($this->pendingRequests [$Key]))
-        $this->pendingRequests [$Key][] = array ($Request, $Status, $Request->getUsername (), $Request->getPassword (), $Callback, $Private);
-      else
-        $this->pendingRequests [$Key] = array (array ($Request, $Status, $Request->getUsername (), $Request->getPassword (), $Callback, $Private));
+      $this->request ($Request, $authenticationPreflight)->then (
+        function ($Body, qcEvents_Stream_HTTP_Header $Header = null) use ($Callback, $Request, $Private) {
+          // Forward socket-error to the callback
+          $this->___raiseCallback ($Callback, $Request, $Header, $Body, $Private);
+        },
+        function () use ($Callback, $Request, $Private) {
+          // Forward socket-error to the callback
+          $this->___raiseCallback ($Callback, $Request, null, null, $Private);
+        }
+      );
       
-      // Try to start pending requests
-      $this->startPendingRequests ();
-      
+      // Return the request again
       return $Request;
     }
     // }}}
@@ -195,9 +499,11 @@
         
         // Run the final callback
         if ($File)
-          return $File->close (function () use ($Callback, $Private, $URL, $Destination, $Header) {
-            $this->___raiseCallback ($Callback, $URL, $Destination, ($Header && !$Header->isError () ? ($Header->hasBody () ? true : null) : false), $Private);
-          });
+          return $File->close ()->finally (
+            function () use ($Callback, $Private, $URL, $Destination, $Header) {
+              $this->___raiseCallback ($Callback, $URL, $Destination, ($Header && !$Header->isError () ? ($Header->hasBody () ? true : null) : false), $Private);
+            }
+          );
         
         $this->___raiseCallback ($Callback, $URL, $Destination, ($Header && !$Header->isError () ? ($Header->hasBody () ? true : null) : false), $Private);
       });
@@ -216,376 +522,212 @@
      * @return bool
      **/
     public function setMaxRequests ($Maximum) {
-      // Make sure the new max is at least one (as we refuse to break ourself)
-      if ($Maximum < 1)
-        return false;
-      
-      $this->activeRequestsMax = (int)$Maximum;
-      $this->startPendingRequests ();
-      
-      return true;
+      // Just forward to our pool
+      return $this->socketPool->setMaximumSockets ($Maximum);
     }
     // }}}
     
-    // {{{ startPendingRequests
+    // {{{ getSessionCookiesForRequest
     /**
-     * Check if we may start a new client-connection
-     * 
-     * @access private
-     * @return void
-     **/
-    private function startPendingRequests () {
-      // Create new sockets while we have space for them and pending requests
-      while ((count ($this->activeRequests) < $this->activeRequestsMax) && (count ($this->pendingRequests) > 0))
-        // Peek the next request
-        foreach ($this->pendingRequests as $Key=>$Requests) {
-          $Request = array_shift ($this->pendingRequests [$Key]);
-          
-          if ($this->startRequest ($Request [0], $Request [1], $Request [2], $Request [3], $Request [4], $Request [5])) {
-            if (count ($this->pendingRequests [$Key]) == 0)
-              unset ($this->pendingRequests [$Key]);
-            
-            break;
-          }
-          
-          array_unshift ($this->pendingRequests [$Key], $Request);
-        }
-    }
-    // }}}
-    
-    // {{{ startRequest
-    /**
-     * Start a given request
+     * Retrive session-cookies for a given request
      * 
      * @param qcEvents_Stream_HTTP_Request $Request
-     * @param int $Status (optional)
-     * @param string $Username (optional)
-     * @param string $Password (optional)
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
      * 
      * @access private
-     * @return bool
+     * @return array
      **/
-    private function startRequest (qcEvents_Stream_HTTP_Request $Request, $Phase = 0, $Username = null, $Password = null, callable $Callback = null, $Private = null) {
-      // Try to acquire a socket for this request
-      if (!is_object ($Socket = $this->acquireSocket ($Request->getHostname (), $Request->getPort (), $Request->useTLS ())))
-        return false;
+    private function getSessionCookiesForRequest (qcEvents_Stream_HTTP_Request $Request) {
+      // Check if we use/have session-cookies
+      if ($this->sessionCookies === null)
+        return null;
       
-      // Handle authenticiation more special
-      $Method = $Request->getMethod ();
+      // Prepare search-attributes
+      $Time = time ();
+      $Hostname = $Request->getHostname ();
+      $Path = $Request->getURI ();
+      $Secure = $Request->useTLS ();
       
-      if (!$Request->hasBody () && ($Phase == 0) && (($Username !== null) || ($Password !== null))) {
-        $Request->setMethod ('OPTIONS');
-        $Request->setCredentials (null, null);
+      if (substr ($Path, -1, 1) != '/') {
+        $Path = dirname ($Path);
+        
+        if (strlen ($Path) > 1)
+          $Path .= '/';
       }
       
-      // Move the request to active requests
-      $this->activeRequests [] = array ($Request, $Callback, $Private, $Socket);
+      // Search matching cookies
+      $Cookies = array ();
       
-      // Pipe the stream to this request
-      $Socket->pipe ($Request);
+      foreach ($this->sessionCookies as $Index=>$Cookie) {
+        // Check expire-time
+        if (($Cookie ['expires'] !== null) && ($Cookie ['expires'] < $Time)) {
+          unset ($this->sessionCookies [$Index]);
+          continue;
+        }
+        
+        // Compare domain
+        if ((!$Cookie ['origin'] && (strcasecmp (substr ($Hostname, -strlen ($Cookie ['domain']), strlen ($Cookie ['domain'])), $Hostname) != 0)) ||
+            (strcasecmp ($Cookie ['domain'], $Hostname) != 0))
+          continue;
+        
+        // Compare path
+        if (strncmp ($Cookie ['path'], $Path, strlen ($Cookie ['path'])) != 0)
+          continue;
+        
+        // Check secure-attribute
+        if ($Cookie ['secure'] && !$Secure)
+          continue;
+        
+        // Push to cookies
+        if (isset ($Cookies ['name']))
+          # TODO
+          trigger_error ('Duplicate cookie, please fix');
+        
+        $Cookies [$Cookie ['name']] = $Cookie;
+      }
       
-      // Watch events on the request
-      $Request->addHook (
-        'httpRequestResult',
-        function (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, $Body = null) use ($Phase, $Username, $Password, $Method) {
-          // Make sure the request is one of our active ones
-          $Key = null;
-          
-          foreach ($this->activeRequests as $ID=>$Req)
-            if ($Req [0] === $Request) {
-              $Key = $ID;
-              break;
-            }
-          
-          if ($Key === null)
-            return;
-          
-          // Remove from active-queue
-          unset ($this->activeRequests [$Key]);
-          
-          // Check if we may reuse the socket
-          if (!$Header ||
-              (($Header->getVersion () < 1.1) && ($Header->getField ('Connection') != 'keep-alive')) ||
-              ($Header->getField ('Connection') == 'close'))
-            $Req [3]->close ();
-          
-          // Release the socket (allow to reuse it)
-          $Req [3]->unpipe ($Req [0]);
-          $this->releaseSocket ($Req [3]);
-          
-          // Retrive the status of the response
-          if ($Header)
-            $Status = $Header->getStatus ();
-          else
-            $Status = 200;
-          
-          // Check for authentication
-          if (($Phase == 0) &&
-              (($Username !== null) || ($Password !== null)) &&
-              (($Status == 401) || ($Header && ($Header->hasField ('WWW-Authenticate'))))) {
-            // Retrive supported methods
-            $Methods = explode (',', $Header->getField ('WWW-Authenticate'));
-            $onMethod = false;
-            $aMethod = null;
-            
-            for ($i = 0; $i < count ($Methods); $i++) {
-              $Token = $Methods [$i];
-              $tToken = trim ($Token);
-              
-              if (($p = strpos ($tToken, ' ')) !== false) {
-                if ($aMethod !== null)
-                  $Request->addAuthenticationMethod ($aMethod, $mParams);
-                
-                $onMethod = true;
-                $aMethod = substr ($tToken, 0, $p);
-                $tToken = $Token = ltrim (substr (ltrim ($Token), $p + 1));
-                
-                $mParams = array ();
-              } elseif (!$onMethod) {
-                if ($aMethod !== null) {
-                  $Request->addAuthenticationMethod ($aMethod, $mParams);
-                  $aMethod = null;
-                }
-                
-                $Request->addAuthenticationMethod ($tToken);
-                
-                continue;
-              }
-              
-              if (($p = strpos ($tToken, '=')) !== false) {
-                $Name = substr ($tToken, 0, $p);
-                $Value = substr (ltrim ($Token), $p + 1);
-                
-                // Check for quotation
-                if ((strlen ($Value) > 0) && (($Value [0] == '"') || ($Value [0] == "'"))) {
-                  $Stop = $Value [0];
-                  $Value = substr ($Value, 1);
-                  
-                  if (($p = strpos ($Value, $Stop)) === false) {
-                    for ($j = $i + 1; $j < count ($Methods); $j++) {
-                      if (($p = strpos ($Methods [++$i], $Stop)) !== false) {
-                        $Value .= substr ($Methods [$i], 0, $p) . substr ($Methods [$i], $p + 1);
-                        
-                        break;
-                      } else
-                        $Value .= $Methods [$i];
-                    }
-                  } else
-                    $Value = substr ($Value, 0, $p) . substr ($Value, $p + 1);
-                }
-                
-                $mParams [$Name] = $Value;
-              } else
-                $mParams [] = $Token;
-            }
-            
-            if ($aMethod !== null)
-              $Request->addAuthenticationMethod ($aMethod, $mParams);
-            
-            // Restore the request's state
-            $Request->setMethod ($Method);
-            $Request->setCredentials ($Username, $Password);
-            
-            // Re-enqueue the request
-            $this->addRequest ($Request, $Req [1], $Req [2], 1);
-            
-            // Check if we can start waiting requests (as we can not trus that releaseSocket() did this for us)
-            return $this->startPendingRequests ();
-          }
-          
-          // Check for redirects
-          if ($Header &&
-              ($Location = $Header->getField ('Location')) &&
-              (($Status >= 300) && ($Status < 400)) &&
-              (($max = $Request->getMaxRedirects ()) > 0) &&
-              is_array ($URI = parse_url ($Location))) {
-            // Make sure the URL is fully qualified
-            if ($rebuild = !isset ($URI ['scheme']))
-              $URI ['scheme'] = ($Request->useTLS () ? 'https' : 'http');
-            
-            if (!isset ($URI ['host'])) {
-              $URI ['host'] = $Request->getHostname ();
-              $rebuild = true;
-              
-              if ($Request->getPort () != ($Request->useTLS () ? 443 : 80))
-                $URI ['port'] = $Request->getPort ();
-              else
-                unset ($URI ['port']);
-            }
-            
-            if ($rebuild)
-              $Location = $URI ['scheme'] . '://' . $URI ['host'] . (isset ($URI ['port']) ? ':' . $URI ['port'] : '') . $URI ['path'] . (isset ($URI ['query']) ? '?' . $URI ['query'] : '');
-            
-            // Fire a callback first
-            $this->___callback ('httpRequestRediect', $Request, $Location, $Header, $Body);
-            
-            // Set the new location as destination
-            $Request->setURL ($Location);
-            
-            // Lower the number of max requests
-            $Request->setMaxRedirects ($max - 1);
-            
-            // Re-Enqueue the request
-            return $this->addRequest ($Request, $Req [1], $Req [2]);
-          }
-          
-          // Fire the callbacks
-          if ($Req [1])
-            $this->___raiseCallback ($Req [1], $Request, $Header, $Body, $Req [2]);
-          
-          $this->___callback ('httpRequestResult', $Request, $Header, $Body);
-          
-          // Check if we can start waiting requests (as we can not trus that releaseSocket() did this for us)
-          $this->startPendingRequests ();
-          
-          // Clean up sockets on pool
-          # $this->releaseSockets ();
-        }, null, true
-      );
-      
-      return true;
+      return $Cookies;
     }
     // }}}
     
-    // {{{ acquireSocket
+    // {{{ updateSessionCookies
     /**
-     * Retrive a socket to a given host/port
+     * Inject cookies from a request-result into our session
      * 
-     * @param string $Hostname
-     * @param int $Port
-     * @param bool $TLS
-     * 
-     * @access private
-     * @return qcEvents_Socket
-     **/
-    private function acquireSocket ($Hostname, $Port, $TLS) {
-      // Generate a key for this socket-request
-      $Key = $Hostname . ':' . $Port . ($TLS ? '/s' : '');
-      
-      // Check if there are cached sockets
-      if (!isset ($this->Sockets [$Key])) {
-        $Socket = new qcEvents_Socket ($this->eventBase, $Hostname, $Port, qcEvents_Socket::TYPE_TCP, $TLS);
-        $Socket->addHook ('socketDisconnected', function (qcEvents_Socket $Socket) use ($Key) {
-          // Check if the socket may be on pool
-          if (!isset ($this->Sockets [$Key]))
-            return;
-          
-          // Try to find the socket
-          if (($Index = array_search ($Socket, $this->Sockets [$Key], true)) === false)
-            return;
-          
-          // Remove the socket from pool
-          unset ($this->Sockets [$Key][$Index]);
-          
-          // Check if this pool is now empty
-          if (count ($this->Sockets [$Key]) == 0)
-            unset ($this->Sockets [$Key]);
-        });
-        
-        $Socket->addHook ('socketConnectionFailed', function (qcEvents_Socket $Socket) use ($Key) {
-          // Try to find the socket
-          if (isset ($this->Sockets [$Key]) && (($Index = array_search ($Socket, $this->Sockets [$Key], true)) !== false))
-            // Remove the socket from pool
-            unset ($this->Sockets [$Key][$Index]);
-          
-          // Check if this pool is now empty
-          if (!isset ($this->Sockets [$Key]) || (count ($this->Sockets [$Key]) == 0)) {
-            unset ($this->Sockets [$Key]);
-            
-            // Check active requests
-            foreach ($this->activeRequests as $Request)
-              if ($Request [3] === $Socket) {
-                if ($Request [1])
-                  $this->___raiseCallback ($Request [1], $Request [0], null, null, $Request [2]);
-                
-                $this->___callback ('httpRequestResult', $Request [0], null, null);
-                break;
-              }
-            
-            // Check pending requests
-            if (isset ($this->pendingRequests [$Key])) {
-              foreach ($this->pendingRequests [$Key] as $Request) {
-                if ($Request [4])
-                  $this->___raiseCallback ($Request [4], $Request [0], null, null, $Request [5]);
-                
-                $this->___callback ('httpRequestResult', $Request [0], null, null);
-              }
-              
-              unset ($this->pendingRequests [$Key]);
-            }
-          }
-        });
-        
-        return $Socket;
-      }
-      
-      // Peek a socket
-      $Socket = array_shift ($this->Sockets [$Key]);
-      
-      // Check if there are sockets left
-      if (count ($this->Sockets [$Key]) == 0)
-        unset ($this->Sockets [$Key]);
-      
-      // Return the socket
-      return $Socket;
-    }
-    // }}}
-    
-    // {{{ releaseSocket
-    /**
-     * Return a free socket to our pool
-     * 
-     * @param qcEvents_Socket $Socket
+     * @param qcEvents_Stream_HTTP_Request $Request
+     * @param qcEvents_Stream_HTTP_Header $Header
      * 
      * @access private
      * @return void
      **/
-    private function releaseSocket (qcEvents_Socket $Socket) {
-      // Generate a key for this socket
-      $Key = $Socket->getRemoteHost () . ':' . $Socket->getRemotePort () . ($Socket->tlsEnable () ? '/s' : '');
-      
-      // Check if the socket is still connected
-      if (!$Socket->isConnected ())
+    private function updateSessionCookies (qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header) {
+      // Make sure we store session-cookies at all
+      if ($this->sessionCookies === null)
         return;
       
-      // Push the socket to pool
-      if (isset ($this->Sockets [$Key]))
-        $this->Sockets [$Key][] = $Socket;
-      else
-        $this->Sockets [$Key] = array ($Socket);
+      // Prepare the origin
+      $Origin = $Request->getHostname ();
+      $OriginA = array_reverse (explode ('.', $Origin));
+      $OriginL = count ($OriginA);
       
-      // Check if there are pending requests for this socket
-      if (isset ($this->pendingRequests [$Key]))
-        while (count ($this->activeRequests) < $this->activeRequestsMax) {
-          $Request = array_shift ($this->pendingRequests [$Key]);
-          
-          if ($this->startRequest ($Request [0], $Request [1], $Request [2], $Request [3], $Request [4], $Request [5])) {
-            if (count ($this->pendingRequests [$Key]) == 0)
-              unset ($this->pendingRequests [$Key]);
+      $Path = $Request->getURI ();
+      
+      if (substr ($Path, -1, 1) != '/') {
+        $Path = dirname ($Path);
+        
+        if (strlen ($Path) > 1)
+          $Path .= '/';
+      }
+      
+      // Process all newly set cookies
+      foreach ($Header->getField ('Set-Cookie', true) as $setCookie) {
+        // Prepare cookie
+        $Cookie = array (
+          'name' => null,
+          'value' => null,
+          'expires' => null,
+          'domain' => $Origin,
+          'origin' => true,
+          'path' => $Path,
+          'secure' => null,
+        );
+        
+        // Parse the cookie
+        foreach (explode (';', $setCookie) as $i=>$Value) {
+          // Get name and value of current pair
+          if (($p = strpos ($Value, '=')) === false) {
+            if ($i == 0)
+              continue (2);
             
-            break;
+            $Name = trim ($Value);
+            $Value = true;
+          } else {
+            $Name = ltrim (substr ($Value, 0, $p));
+            $Value = substr ($Value, $p + 1);
+            
+            if ($Value [0] == '"')
+              $Value = substr ($Value, 1, -1);
           }
           
-          array_unshift ($this->pendingRequests [$Key], $Request);
+          // First pair is name and value of the cookie itself
+          if ($i == 0) {
+            $Cookie ['name'] = $Name;
+            $Cookie ['value'] = $Value;
+            
+            continue;
+          }
+          
+          // We treat all attributes in lower-case
+          $Name = strtolower ($Name);
+          
+          // Sanatize attributes
+          if ($Name == 'max-age') {
+            // Make sure the age is valid
+            if ((strval ((int)$Value) != $Value) || ((int)$Value == 0))
+              continue;
+            
+            // Rewrite to expires-cookie
+            $Name = 'expires';
+            $Value = time () + (int)$Value;
+          
+          } elseif ($Name == 'domain') {
+            // Make sure the value is on scope of origin
+            $Domain = array_reverse (explode ('.', $Value));
+            $Length = count ($Domain);
+            
+            if (($Length > $OriginL) || ($Length < 2))
+              continue;
+            
+            for ($i = 0; $i < $Length; $i++)
+              if (strcasecmp ($Domain [$i], $OriginA [$i]) != 0)
+                continue (2);
+            
+            // Allow domain-matching on the cookie
+            $Cookie ['origin'] = false;
+            
+          } elseif ($Name == 'expires') {
+            // Make sure the value is a valid timestamp
+            if (($Value = strtotime ($Value)) === false)
+              continue;
+          
+          } elseif ($Name == 'secure') {
+            // Make sure the value is a boolean
+            if (!is_bool ($Value))
+              continue;
+          
+          } elseif ($Name == 'path') {
+            if (substr ($Value, -1, 1) != '/')
+              $Value .= '/';
+            
+          } else
+            continue;
+          
+          $Cookie [$Name] = $Value;
         }
-    }
-    // }}}
-    
-    // {{{ releaseSockets
-    /**
-     * Release all unused sockets from our pool
-     * 
-     * @access private
-     * @return void
-     **/
-    private function releaseSockets () {
-      foreach ($this->Sockets as $Key=>$Sockets)
-        foreach ($Sockets as $Socket)
-          $Socket->close ();
-      
-      $this->Sockets = array ();
+        
+        // Inject into our collection
+        foreach ($this->sessionCookies as $Index=>$sCookie) {
+          // Compare the name
+          if (strcmp ($sCookie ['name'], $Cookie ['name']) != 0)
+            continue;
+          
+          // Compare the path
+          if (strcmp ($sCookie ['path'], $Cookie ['path']) != 0)
+            continue;
+          
+          // Compare domain
+          if ((strcasecmp ($sCookie ['domain'], $Cookie ['domain']) != 0) ||
+              ($sCookie ['origin'] != $Cookie ['origin']))
+            continue;
+          
+          // Replace the cookie
+          $this->sessionCookies [$Index] = $Cookie;
+          
+          continue (2);
+        }
+        
+        // Push as new cookie to session
+        $this->sessionCookies [] = $Cookie;
+      }
     }
     // }}}
     

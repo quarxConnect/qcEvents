@@ -210,6 +210,18 @@
     }
     // }}}
     
+    // {{{ getURL
+    /**
+     * Retrive the URL from this header (only if it is a request)
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getURL () {
+      return 'http' . ($this->useTLS ? 's' : '') . '://' . $this->getField ('Host') . $this->getURI ();
+    }
+    // }}}
+    
     // {{{ setURL
     /**
      * Set a URL for this request
@@ -386,18 +398,20 @@
      * @return bool
      **/
     public function setBody ($Body, $Mime = null) {
-      // Store the body
-      $this->Body = $Body;
-      
-      // Set fields on header
+      // Check wheter to remove the body from request
       if ($Body === null) {
         $this->unsetField ('Content-Length');
         $this->unsetField ('Content-Type');
+        $this->Body = null;
         
-        return;
+        return true;
       }
       
-      $this->setField ('Content-Length', strlen ($Body));
+      // Set the body
+      $this->Body = strval ($Body);
+      
+      // Set headers
+      $this->setField ('Content-Length', strlen ($this->Body));
       
       if ($Mime !== null)
         $this->setField ('Content-Type', $Mime);
@@ -558,6 +572,43 @@
       
       // Raise the callback
       $this->___callback ('httpRequestResult', $Header, $Body);
+    }
+    // }}}
+    
+    // {{{ initStreamConsumer
+    /**
+     * Setup ourself to consume data from a stream
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+      // Inherit to our parent
+      return parent::initStreamConsumer ($Source)->then (
+        function () use ($Source) {
+          // Make sure source-socket is connected
+          if (($Source instanceof qcEvents_Socket) &&
+              !$Source->isConnected ())
+            return qcEvents_Promise::race (array (
+              $Source->once ('socketConnected')->then (
+                function () {
+                  // Write out the request
+                  $this->httpHeaderWrite ($this);
+                }
+              ),
+              $Source->once ('socketDisconnected')->then (
+                function () {
+                  throw new exception ('Source-Socket was disconnected');
+                }
+              )
+            ));
+          
+          // Write out the request
+          $this->httpHeaderWrite ($this);
+        }
+      );
     }
     // }}}
     

@@ -1,8 +1,27 @@
 <?PHP
 
+  /**
+   * qcEvents - FTP-Client
+   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * 
+   * This program is free software: you can redistribute it and/or modify
+   * it under the terms of the GNU General Public License as published by
+   * the Free Software Foundation, either version 3 of the License, or
+   * (at your option) any later version.
+   * 
+   * This program is distributed in the hope that it will be useful,
+   * but WITHOUT ANY WARRANTY; without even the implied warranty of
+   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   * GNU General Public License for more details.
+   * 
+   * You should have received a copy of the GNU General Public License
+   * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   **/
+  
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/Stream/FTP/Client.php');
+  require_once ('qcEvents/Promise.php');
   
   class qcEvents_Client_FTP extends qcEvents_Hookable {
     /* The eventbase we are assigned to */
@@ -204,24 +223,21 @@
      * @access public
      * @return void
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Collect all active streams
       $Streams = array_merge ($this->pendingStreams, $this->availableStreams, $this->blockedStreams);
-      $StreamCount = count ($Streams);
       
       // Reset all streams
       $this->pendingStreams = $this->availableStreams = $this->blockedStreams = array ();
       $this->Ready = false;
       
       // Enqueue close
-      if ($StreamCount == 0)
-        return $this->___raiseCallback ($Callback, $Private);
+      $Promises = array ();
       
       foreach ($Streams as $Stream)
-        $Stream->close (function () use (&$StreamCount, $Callback, $Private) {
-          if (--$StreamCount == 0)
-            $this->___raiseCallback ($Callback, $Private);
-        });
+        $Promises [] = $Stream->close ();
+      
+      return qcEvents_Promise::all ($Promises)->then (function () { });
     }
     // }}}
     
@@ -254,56 +270,59 @@
       // Create and connect socket
       $Socket = new qcEvents_Socket ($this->eventBase);
       
-      return $Socket->connect ($this->Hostname, $this->Port, $Socket::TYPE_TCP, false, function (qcEvents_Socket $Socket, $Status) use ($Key, $Stream, $Callback) {
-        // Check if the connection was established
-        if (!$Status) {
-          unset ($this->pendingStreams [$Key]);
-          
-          return call_user_func ($Callback, null);
-        }
-        
-        // Connect Stream with socket
-        $Socket->pipeStream ($Stream, true, function (qcEvents_Socket $Socket, $Status) use ($Stream, $Callback, $Key) {
-          // Check if FTP could be negotiated
-          if (!$Status) {
-            $Socket->close ();
-            
-            unset ($this->pendingStreams [$Key]);
-            return call_user_func ($Callback, null);
-          }
-          
-          // Try to authenticate
-          return $Stream->authenticate ($this->Username, $this->Password, $this->Account, function (qcEvents_Stream_FTP_Client $Stream, $Status) use ($Callback, $Key, $Socket) {
-            // Check if FTP could be authenticated
-            if (!$Status) {
+      return $Socket->connect ($this->Hostname, $this->Port, $Socket::TYPE_TCP)->then (
+        function () use ($Socket, $Key, $Stream, $Callback) {
+          // Connect Stream with socket
+          return $Socket->pipeStream ($Stream, true)->then (
+            function () use ($Stream, $Callback, $Key) {
+              // Try to authenticate
+              return $Stream->authenticate ($this->Username, $this->Password, $this->Account, function (qcEvents_Stream_FTP_Client $Stream, $Status) use ($Callback, $Key, $Socket) {
+                // Check if FTP could be authenticated
+                if (!$Status) {
+                  $Socket->close ();
+                  
+                  unset ($this->pendingStreams [$Key]);
+                  return call_user_func ($Callback, null);
+                }
+                
+                // Clearify that we are ready
+                $this->Ready = true;
+                
+                // Move from pending to blocked
+                unset ($this->pendingStreams [$Key]);
+                $this->blockedStreams [] = $Stream;
+                
+                // Install event-hooks
+                $Stream->addHook ('eventClosed', function (qcEvents_Stream_FTP_Client $Stream) {
+                  if (($Key = array_search ($Stream, $this->availableStreams, true)) !== false)
+                    unset ($this->availableStreams [$Key]);
+                  elseif (($Key = array_search ($Stream, $this->blockedStreams, true)) !== false)
+                    unset ($this->blockedStreams [$Key]);
+                  elseif (($Key = array_search ($Stream, $this->pendingStreams, true)) !== false)
+                    unset ($this->pendingStreams [$Key]);
+                });
+                
+                // Forward the stream
+                return call_user_func ($Callback, $Stream);
+              });
+            }
+          )->catch (
+            function () use ($Socket, $Callback) {
               $Socket->close ();
               
-              unset ($this->pendingStreams [$Key]);
-              return call_user_func ($Callback, null);
+              call_user_func ($Callback, null);
+              
+              throw new qcEvents_Promise_Solution (func_get_args ());
             }
-            
-            // Clearify that we are ready
-            $this->Ready = true;
-            
-            // Move from pending to blocked
-            unset ($this->pendingStreams [$Key]);
-            $this->blockedStreams [] = $Stream;
-            
-            // Install event-hooks
-            $Stream->addHook ('eventClosed', function (qcEvents_Stream_FTP_Client $Stream) {
-              if (($Key = array_search ($Stream, $this->availableStreams, true)) !== false)
-                unset ($this->availableStreams [$Key]);
-              elseif (($Key = array_search ($Stream, $this->blockedStreams, true)) !== false)
-                unset ($this->blockedStreams [$Key]);
-              elseif (($Key = array_search ($Stream, $this->pendingStreams, true)) !== false)
-                unset ($this->pendingStreams [$Key]);
-            });
-            
-            // Forward the stream
-            return call_user_func ($Callback, $Stream);
-          });
-        });
-      });
+          );
+        },
+        function () use ($Key, $Callback) {
+          unset ($this->pendingStreams [$Key]);
+          call_user_func ($Callback, null);
+          
+          throw new qcEvents_Promise_Solution (func_get_args ());
+        }
+      );
     }
     // }}}
     

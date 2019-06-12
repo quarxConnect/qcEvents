@@ -69,55 +69,69 @@
         $Client = new qcEvents_Stream_SMTP_Client;
         
         // Connect ourself with that socket
-        return $Socket->pipeStream ($Client, true, function (qcEvents_Socket $Socket, $Status) use ($Client) {
-          // Check if SMTP was setup correctly
-          if (!$Status)
-            return $this->Pool->releaseSocket ($Socket);
-          
-          // Check wheter to enable TLS
-          if (($this->remoteTLS === true) && !$Client->hasFeature ('STARTTLS') && !$Socket->tlsEnable ())
-            return $this->Pool->releaseSocket ($Socket);
-          
-          // Try to enable TLS
-          if (($this->remoteTLS !== false) && $Client->hasFeature ('STARTTLS') && !$Socket->tlsEnable ())
-            return $Client->startTLS (function (qcEvents_Stream_SMTP_Client $Client, $Status) use ($Socket) {
-              // Check if TLS was enabled (and is required)
-              if (!$Status && ($this->remoteTLS !== null))
-                return $this->Pool->releaseSocket ($Socket);
-              
-              // Check wheter to perform authentication
-              if ($this->remoteUser === null)
-                return $this->Pool->enableSocket ($Socket, $Client);
-              
-              // Try to authenticate
-              return $Client->authenticate (
-                $this->remoteUser,
-                $this->remotePassword,
-                function (qcEvents_Stream_SMTP_Client $Client, $Username, $Status) use ($Socket) {
-                  if (!$Status)
-                    return $this->Pool->releaseSocket ($Socket);
+        return $Socket->pipeStream ($Client, true)->then (
+          function (qcEvents_Socket $Socket, $Status) use ($Client) {
+            // Check wheter to enable TLS
+            if (($this->remoteTLS === true) && !$Client->hasFeature ('STARTTLS') && !$Socket->tlsEnable ())
+              return $this->Pool->releaseSocket ($Socket);
+            
+            // Try to enable TLS
+            if (($this->remoteTLS !== false) && $Client->hasFeature ('STARTTLS') && !$Socket->tlsEnable ())
+              return $Client->startTLS ()->catch (
+                function () use ($Socket) {
+                  // Check if TLS was required
+                  if ($this->remoteTLS === null)
+                    return;
                   
-                  return $this->Pool->enableSocket ($Socket, $Client);
+                  // Release the socket
+                  $this->Pool->releaseSocket ($Socket);
+                  
+                  // Forward the error
+                  throw new qcEvents_Promise_Solution (func_get_args ());
+                }
+              )->then (
+                function () use ($Socket, $Client) {
+                  // Check wheter to perform authentication
+                  if ($this->remoteUser === null)
+                    return $this->Pool->enableSocket ($Socket, $Client);
+                  
+                  // Try to authenticate
+                  return $Client->authenticate (
+                    $this->remoteUser,
+                    $this->remotePassword
+                  )->then (
+                    function () use ($Socket, $Client) {
+                      $this->Pool->enableSocket ($Socket, $Client);
+                    },
+                    function () use ($Socket) {
+                      $this->Pool->releaseSocket ($Socket);
+                      
+                      throw new qcEvents_Promise_Solution (func_get_args ());
+                    }
+                  );
                 }
               );
-            });
-          
-          // Check wheter to perform authentication
-          if ($this->remoteUser === null)
-            return $this->Pool->enableSocket ($Socket, $Client);
-          
-          // Try to authenticate
-          return $Client->authenticate (
-            $this->remoteUser,
-            $this->remotePassword,
-            function (qcEvents_Stream_SMTP_Client $Client, $Username, $Status) use ($Socket) {
-              if (!$Status)
-                return $this->Pool->releaseSocket ($Socket);
             
+            // Check wheter to perform authentication
+            if ($this->remoteUser === null)
               return $this->Pool->enableSocket ($Socket, $Client);
-            }
-          );
-        });
+            
+            // Try to authenticate
+            return $Client->authenticate (
+              $this->remoteUser,
+              $this->remotePassword,
+              function (qcEvents_Stream_SMTP_Client $Client, $Username, $Status) use ($Socket) {
+                if (!$Status)
+                  return $this->Pool->releaseSocket ($Socket);
+              
+                return $this->Pool->enableSocket ($Socket, $Client);
+              }
+            );
+          },
+          function () use ($Socket) {
+            $this->Pool->releaseSocket ($Socket)
+          }
+        );
       });
       
       // Setup ourself
@@ -168,46 +182,41 @@
      * @param string $Originator
      * @param array $Receivers
      * @param string $Mail
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_SMTP $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function sendMail ($Originator, array $Receivers, $Mail, callable $Callback = null, $Private = null) {
+    public function sendMail ($Originator, array $Receivers, $Mail) : qcEvents_Promise {
       return $this->Pool->acquireSocket (
         $this->remoteHost,
         ($this->remotePort === null ? 25 : $this->remotePort),
         qcEvents_Socket::TYPE_TCP,
-        ($this->remotePort == 465),
-        function (qcEvents_Socket_Pool $Pool, qcEvents_Socket $Socket = null, qcEvents_Interface_Stream_Consumer $Client = null)
-        use ($Originator, $Receivers, $Mail, $Callback, $Private) {
-          // Check if a socket was aquired
-          if (!$Socket || !$Client || !($Client instanceof qcEvents_Stream_SMTP_Client)) {
+        ($this->remotePort == 465)
+      )->then (
+        function (qcEvents_Socket $Socket, qcEvents_Interface_Stream_Consumer $Client = null)
+        use ($Originator, $Receivers, $Mail) {
+          // Make sure we got our SMTP-Stream
+          if (!$Client || !($Client instanceof qcEvents_Stream_SMTP_Client)) {
             // Release the socket
             if ($Socket)
-              $Pool->releaseSocket ($Socket);
+              $this->Pool->releaseSocket ($Socket);
             
             // Indicate an error
-            return $this->___raiseCallback ($Callback, false, $Private);
+            throw new exception ('No SMTP-Client was acquired');
           }
           
           // Try to send the mail
-          return $Client->sendMail (
-            $Originator,
-            $Receivers,
-            $Mail,
-            function (qcEvents_Stream_SMTP_Client $Client, $Originator, $Receivers, $Mail, $Status)
-            use ($Pool, $Socket, $Callback, $Private) {
+          return $Client->sendMail ($Originator, $Receivers, $Mail)->then (
+            function () use ($Socket) {
               // Release the socket
-              $Pool->releaseSocket ($Socket);
+              $this->Pool->releaseSocket ($Socket);
+            },
+            function () use ($Socket) {
+              // Release the socket
+              $this->Pool->releaseSocket ($Socket);
               
-              // Forward the result
-              return $this->___raiseCallback ($Callback, $Status, $Private);
+              // Forward the error
+              throw new qcEvents_Promise_Solution (func_get_args ());
             }
           );
         }

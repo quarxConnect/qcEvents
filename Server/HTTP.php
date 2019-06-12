@@ -18,6 +18,7 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
+  require_once ('qcEvents/Promise.php');
   require_once ('qcEvents/Stream/HTTP.php');
   require_once ('qcEvents/Stream/HTTP/Request.php');
   
@@ -51,6 +52,12 @@
     
     /* Timeout of this connection */
     private $keepAliveTimeout = 5;
+    
+    /* Timer for keep-alive */
+    private $keepAliveTimer = null;
+    
+    /* Time of last event */
+    private $lastEvent = 0;
     
     // {{{ __construct   
     /**
@@ -149,13 +156,17 @@
           $Path .= 'index.html';
       }
       
+      // Try to find an event-base
+      $Source = $Server->getPipeSource ();
+      
+      if (!method_exists ($Source, 'getEventBase') ||
+          !is_object ($Base = $Source->getEventBase ()))
+        $Base = qcEvents_Base::singleton ();
+      
       // Try to read the file
       require_once ('qcEvents/File.php');
       
-      return qcEvents_File::readFileContents (
-        qcEvents_Base::singleton (),
-        $Path
-      )->then (
+      return qcEvents_File::readFileContents ($Base, $Path)->then (
         function ($Content) use ($Path, $Request, $Response) {
           // Set a proper status
           $Response->setStatus (200);
@@ -209,29 +220,40 @@
      * @param string $Body (optional)
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function httpdSetResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response, $Body = null) {
+    public function httpdSetResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response, $Body = null) : qcEvents_Promise {
       // Check if the given request matches the current one
-      if ($Request !== $this->Request) {
-        trigger_error ('Request is not active');
-        
-        return false;
-      }
+      if ($Request !== $this->Request)
+        return qcEvents_Promise::reject ('Request is not active');
       
       // Set length of content
-      $Response->setField ('Content-Length', strlen ($Body));
+      if ($Body !== null)
+        $Response->setField ('Content-Length', strlen ($Body));
       
       // Write out the response
-      $this->httpHeaderWrite ($Response);
-      
-      if (($Source = $this->getPipeSource ()) && ($Source instanceof qcEvents_Interface_Sink))
-        $Source->write ($Body);
-      
-      // Reset the current state
-      $this->httpdFinish ();
-      
-      return true;
+      return $this->httpHeaderWrite ($Response)->then (
+        function () use ($Body) {
+          // Make sure we may write to our source (should never fail)
+          if (!is_object ($Source = $this->getPipeSource ()) ||
+              !($Source instanceof qcEvents_Interface_Sink))
+            throw new exception ('Source is not writeable');
+          
+          // Write out the body
+          if ($Body !== null)
+            return $Source->write ($Body);
+          
+          return true;
+        }
+      )->then (
+        function () {
+          // Reset the current state
+          $this->httpdFinish ();
+          
+          // Forward success
+          return true;
+        }
+      );
     }
     // }}}
     
@@ -243,16 +265,16 @@
      * @param qcEvents_Stream_HTTP_Header $Response
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function httpdStartResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response) {
+    public function httpdStartResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response) : qcEvents_Promise {
       // Check if the given request matches the current one
       if ($Request !== $this->Request)
-        return false;
+        return qcEvents_Promise::reject ('Request is not active');
       
       // Check if headers are already sent
       if ($this->Response)
-        return false;
+        return qcEvents_Promise::reject ('Response-Headers already been sent');
       
       // Make sure the response-header is correct for this response
       if ($Response->getVersion () < 1.1) {
@@ -264,9 +286,7 @@
       $Response->unsetField ('Content-Length');
       
       // Write out the response  
-      $this->httpHeaderWrite ($Response);
-      
-      return true;
+      return $this->httpHeaderWrite ($Response);
     }
     // }}}
     
@@ -278,23 +298,24 @@
      * @param string $Body
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function httpdWriteResponse (qcEvents_Stream_HTTP_Header $Request, $Body) {
+    public function httpdWriteResponse (qcEvents_Stream_HTTP_Header $Request, $Body) : qcEvents_Promise {
       // Check if the given request matches the current one
-      if (($Request !== $this->Request) || !$this->Response)
-        return false;
+      if ($Request !== $this->Request)
+        return qcEvents_Promise::reject ('Request is not active');
+      
+      if (!$this->Response)
+        return qcEvents_Promise::reject ('Request-Headers have not been sent yet');
       
       // Write out the chunk
       if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Sink))
-        return;
+        return qcEvents_Promise::reject ('Source is not writable');
       
       if ($this->Response->getVersion () < 1.1)
-        $Source->write ($Body);
+        return $Source->write ($Body);
       else
-        $Source->mwrite (dechex (strlen ($Body)), "\r\n", $Body, "\r\n");
-      
-      return true;
+        return $Source->mwrite (dechex (strlen ($Body)), "\r\n", $Body, "\r\n");
     }
     // }}}
     
@@ -306,30 +327,40 @@
      * @param qcEvents_Stream_HTTP_Header $Trailer (optional)
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function httpdFinishResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Trailer = null) {
+    public function httpdFinishResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Trailer = null) : qcEvents_Promise {
       // Check if the given request matches the current one
-      if (($Request !== $this->Request) || !$this->Response)
-        return false;
+      if ($Request !== $this->Request)
+        return qcEvents_Promise::reject ('Request is not active');
+      
+      if (!$this->Response)
+        return qcEvents_Promise::reject ('Request-Headers have not been sent yet');
       
       if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Sink))
-        return;
-      
-      // Write out last chunk
-      $Source->write ("0\r\n");
+        return qcEvents_Promise::reject ('Source is not writable');
       
       // Check for tailing header
       if (is_object ($Trailer)) {
-        $Header = strval ($Trailer);
-        $Source->write (substr ($Header, strpos ($Header, "\r\n") + 2));
+        // Make sure Trailer is a string
+        $Trailer = strval ($Trailer);
+        
+        // Write out last chunk + trailer
+        $Promise = $Source->write ("0\r\n" . substr ($Trailer, strpos ($Trailer, "\r\n") + 2));
+      
+      // Write out last chunk
       } else
-        $Source->write ("\r\n");
+        $Promise = $Source->write ("0\r\n\r\n");
       
-      // Reset ourself
-      $this->httpdFinish ();
-      
-      return true;
+      // Wait for the write() to finish
+      return $Promise->then (
+        function () {
+          // Reset ourself
+          $this->httpdFinish ();
+          
+          return true;
+        }
+      );
     }
     // }}}
     
@@ -342,13 +373,11 @@
      **/
     private function httpdFinish () {
       // Handle response-headers
-      if ($this->Response && $this->Response->hasField ('Connection')) {
-        if ($this->Response->getField ('Connection') == 'close') {
-          if ($Source = $this->getPipeSource ())
-            $Source->close ();
-        } elseif (($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Timer)
-          $Source->addTimer ($this->keepAliveTimeout, false, array ($this, 'httpdCheckKeepAlive'));
-      }
+      if ($this->Response &&
+          $this->Response->hasField ('Connection') &&
+          ($this->Response->getField ('Connection') == 'close') &&
+          ($Source = $this->getPipeSource ()))
+        $Source->close ();
       
       // Reset ourself
       $this->reset ();
@@ -366,13 +395,14 @@
      * @return void
      **/
     protected function reset () {
-      #$t = debug_backtrace (DEBUG_BACKTRACE_IGNORE_ARGS, 1);
-      #echo 'RESET from ', $t [0]['file'], ' ', $t [0]['line'], "\n";
-      
       // Reset ourself
       $this->Request = null;
       $this->RequestBody = null;
       $this->Response = null;
+      $this->lastEvent = time ();
+      
+      if ($this->keepAliveTimer)
+        $this->keepAliveTimer->restart ();
       
       // Reset our parent, too
       parent::reset ();
@@ -384,13 +414,14 @@
      * Write out a HTTP-Header
      * 
      * @param qcEvents_Stream_HTTP_Header $Header
+     * 
      * @access protected
-     * @return void
+     * @return qcEvents_Promise
      **/
-    protected function httpHeaderWrite (qcEvents_Stream_HTTP_Header $Header) {
+    protected function httpHeaderWrite (qcEvents_Stream_HTTP_Header $Header) : qcEvents_Promise {
       // Check if headers have been written already
       if ($this->Response)
-        return false;
+        return qcEvents_Promise::reject ('Response-Header was already sent');
       
       // Check for some hard-coded headers
       if (!$Header->hasField ('Server'))
@@ -477,6 +508,10 @@
       if ($this->Request !== null)
         return;
       
+      // Stop keep-alive-timer for the moment
+      if ($this->keepAliveTimer)
+        $this->keepAliveTimer->cancel ();
+      
       // Activate the next request
       $Request = array_shift ($this->Requests);
       $this->Request = $Request [0];
@@ -490,29 +525,66 @@
     }
     // }}}
     
-    // {{{ httpdCheckKeepAlive
+    // {{{ httpdSetKeepAlive
     /**
-     * Check wheter to timeout this connection
+     * Setup timer to check the liveness of our connection
      * 
-     * @access protected
+     * @access private
      * @return void
      **/
-    public final function httpdCheckKeepAlive () {
-      // Ignore the check if a request is beeing processed
-      if ($this->Request)
+    private function httpdSetKeepAlive ($Force = false) {
+      // Just restart the timer if we already have one
+      if ($this->keepAliveTimer) {
+        if (!$Force)
+          return $this->keepAliveTimer->restart ();
+        
+        $this->keepAliveTimer->cancel ();
+      }
+      
+      // Make sure we have a source
+      if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Common))
         return;
       
-      if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Socket))
+      // Make sure we have an event-base
+      if (!($eventBase = $Source->getEventBase ()))
         return;
       
-      // Check if the timeout was reached
-      $Duration = time () - $Source->getLastEvent ();
+      // Setup the timer
+      $this->keepAliveTimer = $eventBase->addTimeout ($this->keepAliveTimeout);
+      $this->keepAliveTimer->then (
+        function () use ($Source) {
+          $Source->close ();
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ initStreamConsumer
+    /**
+     * Setup ourself to consume data from a stream
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+      // Setup our parent first
+      return parent::initStreamConsumer ($Source)->then (
+        function () use ($Source) {
+          // Setup keep-alive
+          $this->httpdSetKeepAlive (true);
+          
+          // Remember current time as last action
+          $this->lastEvent = time ();
       
-      if ($Duration >= $this->keepAliveTimeout)
-        return $Source->close ();
-      
-      // Requeue the timeout
-      $Source->addTimer (max (1, $this->keepAliveTimeout - $Duration), false, array ($this, 'httpdCheckKeepAlive'));
+          // Register our hooks
+          $this->addHook ('httpFinished', array ($this, 'httpdRequestReady'));
+          $this->addHook ('httpHeaderReady', array ($this, 'httpdHeaderReady'));
+          
+          return new qcEvents_Promise_Solution (func_get_args ());
+        }
+      );
     }
     // }}}
     
@@ -534,7 +606,9 @@
     public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
       // Make sure the source is a socket and close the connection if it misses to send the first request
       if (($rc = parent::initConsumer ($Source, $Callback, $Private)) && ($Source instanceof qcEvents_Socket))
-        $Source->addTimer ($this->keepAliveTimeout, false, array ($this, 'httpdCheckKeepAlive'));
+        $this->httpdSetKeepAlive (true);
+      
+      $this->lastEvent = time ();
       
       // Register our hooks
       if ($rc) {
@@ -551,23 +625,21 @@
      * Callback: A source was removed from this consumer
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/  
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       // Remove our hooks again
       $this->removeHook ('httpFinished', array ($this, 'httpdRequestReady'));
       $this->removeHook ('httpHeaderReady', array ($this, 'httpdHeaderReady'));
       
+      // Stop our timer
+      if ($this->keepAliveTimer)
+        $this->keepAliveTimer->cancel ();
+      
       // Forward to our parent
-      return parent::deinitConsumer ($Source, $Callback, $Private);
+      return parent::deinitConsumer ($Source);
     }
     // }}}
     

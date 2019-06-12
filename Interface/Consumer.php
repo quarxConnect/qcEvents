@@ -18,35 +18,9 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Interface/Hookable.php');
+  require_once ('qcEvents/Interface/Consumer/Common.php');
   
-  interface qcEvents_Interface_Consumer extends qcEvents_Interface_Hookable {
-    // {{{ consume
-    /**
-     * Consume a set of data
-     * 
-     * @param mixed $Data
-     * @param qcEvents_Interface_Source $Source
-     * 
-     * @access public
-     * @return void
-     **/
-    public function consume ($Data, qcEvents_Interface_Source $Source);
-    // }}}
-    
-    // {{{ close
-    /**
-     * Close this event-interface
-     * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * @access public
-     * @return void
-     **/
-    public function close (callable $Callback = null, $Private = null);
-    // }}}
-    
+  interface qcEvents_Interface_Consumer extends qcEvents_Interface_Consumer_Common {
     // {{{ initConsumer
     /**
      * Setup ourself to consume data from a source
@@ -65,24 +39,6 @@
     public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null);
     // }}}
     
-    // {{{ deinitConsumer
-    /**
-     * Callback: A source was removed from this consumer
-     * 
-     * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
-     * 
-     * @access public
-     * @return void
-     **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null);
-    // }}}
-    
     
     // {{{ eventPiped
     /**
@@ -94,18 +50,6 @@
      * @return void
      **/
     # protected function eventPiped (qcEvents_Interface_Source $Source);
-    // }}}
-    
-    // {{{ eventUnpiped
-    /**
-     * Callback: A source was removed from this consumer
-     * 
-     * @param qcEvents_Interface_Source $Source
-     * 
-     * @access protected
-     * @return void
-     **/
-    # protected function eventUnpiped (qcEvents_Interface_Source $Source);
     // }}}
   }
 

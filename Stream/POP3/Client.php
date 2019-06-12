@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Hookable.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * POP3 Client (Stream)
@@ -750,34 +751,29 @@
     /**
      * Close the POP3-Connection
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Check if our stream is already closed
       if (!is_object ($this->Stream)) {
-        // Fire the callback directly
-        $this->___raiseCallback ($Callback, true, $Private);
-        
         // Check if we are in disconnected state
-        if ($this->State == self::POP3_STATE_DISCONNECTED)
-          return;
-
-        // Set disconnected state
-        $this->popSetState (self::POP3_STATE_DISCONNECTED);
-        $this->___callback ('popDisconnected');
+        if ($this->State != self::POP3_STATE_DISCONNECTED) {
+          $this->popSetState (self::POP3_STATE_DISCONNECTED);
+          $this->___callback ('popDisconnected');
+        }
+        
+        return qcEvents_Promise::resolve ();
       }
       
       // Query a stream-close on server-side
-      return $this->popCommand ('QUIT', null, false, function (qcEvents_Stream_POP3_Client $Self, $Success) use ($Callback, $Private) {
-        $this->___raiseCallback ($Callback, $Success, $Private);
+      return new qcEvents_Promise (function ($resolve, $reject) {
+        return $this->popCommand ('QUIT', null, false, function (qcEvents_Stream_POP3_Client $Self, $Success) use ($resolve, $reject) {
+          if ($Success)
+            $resolve ();
+          else
+            $reject ('Command failed');
+        });
       });
     }
     // }}}
@@ -877,39 +873,40 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Check if this is really a new stream
       if ($this->Stream === $Source)
-        return;
+        return qcEvents_Promise::resolve ();
       
       // Check if we have a stream assigned
       if (is_object ($this->Stream))
-        $this->Stream->unpipe ($this);
+        $Promise = $this->Stream->unpipe ($this)->catch (function () { });
+      else
+        $Promise = qcEvents_Promise::resolve ();
       
-      // Reset our state
-      $this->Stream = $Source;
-      $this->Buffer = '';
-      $this->Command = null;
-      $this->Commands = array ();
-      $this->Response = array ();
-      $this->Capabilities = null;
-      
-      $this->popSetState (self::POP3_STATE_CONNECTING);
-      
-      // Raise callbacks
-      $this->___callback ('eventPipedStream', $Source);
-      $this->___callback ('popConnecting');
-      $this->___raiseCallback ($Callback, true, $Private);
+      return $Promise->then (
+        function () use ($Source) {
+          // Reset our state
+          $this->Stream = $Source;
+          $this->Buffer = '';
+          $this->Command = null;
+          $this->Commands = array ();
+          $this->Response = array ();
+          $this->Capabilities = null;
+          
+          $this->popSetState (self::POP3_STATE_CONNECTING);
+          
+          // Raise callbacks
+          $this->___callback ('eventPipedStream', $Source);
+          $this->___callback ('popConnecting');
+          
+          return true;
+        }
+      );
     }
     // }}}
     
@@ -918,32 +915,20 @@
      * Callback: A source was removed from this consumer
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       // Check if the source is authentic
-      if ($this->Stream !== $Source) {
-        $this->___raiseCallback ($Callback, false, $Private);
-        
-        return;
-      }
+      if ($this->Stream !== $Source)
+        return qcEvents_Promise::reject ('Invalid source');
       
       // Remove the stream
       $this->Stream = null;
       
       // Reset our state
-      $this->close ();
-      
-      // Raise the callback
-      $this->___raiseCallback ($Callback, true, $Private);
+      return $this->close ();
     }
     // }}}
     

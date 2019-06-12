@@ -20,9 +20,9 @@
   
   require_once ('qcEvents/Interface/Consumer.php');
   require_once ('qcEvents/Trait/Hookable.php');
+  require_once ('qcEvents/Promise.php');
   require_once ('ASN1/Coder/DER.php');
   require_once ('SNMP/Message.php');
-  require_once ('dump.php');
   
   class qcEvents_Stream_SNMP implements qcEvents_Interface_Consumer {
     use qcEvents_Trait_Hookable;
@@ -71,16 +71,14 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Just raise callbacks
-      $this->___raiseCallback ($Callback, $Private);
       $this->___callback ('eventClosed');
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -111,20 +109,16 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Raise an event for this
       $this->___callback ('eventPipedStream', $Source);
-      $this->___raiseCallback ($Callback, true, $Private);
+      
+      // Return resolevd promise
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -133,20 +127,15 @@
      * Callback: A source was removed from this sink
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       // Raise an event for this
-      $this->___raiseCallback ($Callback, true, $Private);
       $this->___callback ('eventUnpiped', $Source);
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

@@ -266,6 +266,29 @@
     }
     // }}}
     
+    // {{{ once
+    /**
+     * Register a hook that is triggered once when a given event raises for the first time
+     * 
+     * @param string $Name Name of the hookable function
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function once ($Name) : qcEvents_Promise {
+      return new qcEvents_Promise (
+        function ($resolve, $reject) use ($Name) {
+          $Callback = function () use ($resolve) {
+            call_user_func_array ($resolve, array_slice (func_get_args (), 1, -1));
+          };
+          
+          if (!$this->addHook ($Name, $Callback, null, true))
+            $reject ('Could not register hook');
+        }
+      );
+    }
+    // }}}
+    
     // {{{ ___callback
     /**
      * Fire a callback

@@ -19,14 +19,14 @@
    **/
   
   // Make sure the inotify-extension was loaded
-  if (!extension_loaded ('inotify')) {
-    trigger_error (E_USER_ERROR, 'inotify-extension not loaded');
+  if (!extension_loaded ('inotify') && (!function_exists ('dl') || !@dl ('inotify.so'))) {
+    trigger_error ('inotify-extension not loaded', E_USER_WARNING);
     
     return;
   }
   
   require_once ('qcEvents/Interface/Loop.php');
-  require_once ('qcEvents/Trait/Parented.php');
+  require_once ('qcEvents/Hookable.php');
   
   /**
    * inotify
@@ -37,9 +37,7 @@
    * @package qcEvents
    * @revision 02
    **/
-  class qcEvents_inotify implements qcEvents_Interface_Loop {
-    use qcEvents_Trait_Parented;
-    
+  class qcEvents_inotify extends qcEvents_Hookable implements qcEvents_Interface_Loop {
     /* File-Operations */
     const MASK_ACCESS = 1; // File was accessed (read)
     const MASK_MODIFY = 2; // File was modified
@@ -68,6 +66,9 @@
     private static $inotifyGenerations = 0;
     private static $inotifyEvents = array ();
     
+    /* Our event-base */
+    private $eventBase = null;
+    
     // Internal inotify-handle
     private $inotify = null;
     private $inotifyGeneration = 0;
@@ -85,15 +86,22 @@
     /**
      * Create a new inotify-Handler for a given path
      * 
+     * @param qcEvents_Base $Base
      * @param string $Path
      * @param int $Mask (optional) Type of events to watch
      * 
      * @access friendly
      * @return void
      **/
-    function __construct ($Path, $Mask = self::MASK_ALL) {
-      $this->inotifyPath = $Path;
+    function __construct (qcEvents_Base $Base, $Path, $Mask = self::MASK_ALL) {
+      // Store the mask
       $this->inotifyMask = $Mask;
+      
+      // Assign the event-base
+      $this->setEventBase ($Base);
+      
+      // Set path
+      $this->setWatchedPath ($Path);
     }
     // }}}
     
@@ -124,15 +132,20 @@
         return false;
       
       // Unregister any current watcher
-      if ($this->inotifyDescriptor !== null)
+      if ($this->inotifyDescriptor !== null) {
         inotify_rm_watch ($this->inotify, $this->inotifyDescriptor);
+        unset (self::$inotifyEvents [$this->inotifyGeneration][$this->inotifyDescriptor]);
+      }
       
       // Change the path
       $this->inotifyPath = $Path;
       
       // Register again (if possible)
-      if (is_resource ($this->inotify))
+      if (is_resource ($inotify = $this->getInotify ())) {
         $this->inotifyDescriptor = inotify_add_watch ($this->inotify, $this->inotifyPath, $this->inotifyMask);
+        self::$inotifyEvents [$this->inotifyGeneration][$this->inotifyDescriptor] = $this;
+      } else
+        trigger_error ('Could not fetch inotify', E_USER_WARNING);
       
       return true;
     }
@@ -162,6 +175,51 @@
     }
     // }}}
     
+    // {{{ getErrorFD
+    /**
+     * Retrive an additional stream-resource to watch for errors
+     * @remark Read-/Write-FDs are always monitored for errors
+     * 
+     * @access public
+     * @return resource May return NULL if no additional stream-resource should be watched
+     **/
+    public function getErrorFD () {
+      return null;
+    }
+    // }}}
+    
+    private function getInotify () {
+      // Make sure we have an event-base
+      if (!$this->eventBase)
+        return null;
+      
+      // Check if we already have a source
+      if ($this->inotify)
+        return $this->inotify;
+      
+      // Scan existing events for inotify
+      foreach ($this->eventBase->getEvents () as $Event)
+        if (($Event instanceof qcEvents_inotify) && is_resource ($Event->inotify)) {
+          $this->inotify = $Event->inotify;
+          $this->inotifyGeneration = $Event->inotifyGeneration;
+          
+          break;
+        }
+      
+      // Create a new inotify
+      if (!is_resource ($this->inotify)) {
+        $this->inotify = inotify_init ();
+        $this->inotifyGeneration = self::$inotifyGenerations++;
+        
+        self::$inotifyEvents [$this->inotifyGeneration] = array ();
+        
+        $this->eventBase->addEvent ($this);
+      }
+      
+      // Return the source
+      return $this->inotify;
+    }
+    
     // {{{ scanCreated
     /**
      * Scan a watched directory for dirs and files and fake callback-events
@@ -190,6 +248,20 @@
     }
     // }}}
     
+    // {{{ getEventBase
+    /**
+     * Retrive the handle of the current event-loop-handler
+     * 
+     * @access public
+     * @return qcEvents_Base May be NULL if none is assigned
+     * 
+     * @remark This is implemented by qcEvents_Trait_Parented
+     **/
+    public function getEventBase () {
+      return $this->eventBase;
+    }
+    // }}}
+    
     // {{{ setEventBase
     /**
      * Set a new event-loop-handler
@@ -200,18 +272,41 @@
      * @return void  
      **/
     public function setEventBase (qcEvents_Base $Base) {
-      // Save our event-base
-      $oEventBase = $this->getEventBase ();
-      
-      // Call our parent first
-      if (!($rc = parent::setEventBase ($Base)))
-        return $rc;
-      
       // Don't do anything if the handler didn't change
-      if ($oEventBase === $Handler)
-        return $rc;
+      if ($this->eventBase === $Base)
+        return null;
       
-      // Unbind from the old inotify
+      // Unbind from the event-base
+      $this->unsetEventBase ();
+      
+      // Assign the new event-base
+      $this->eventBase = $Base;
+      
+      // Check if our target exists
+      if (!file_exists ($this->inotifyPath))
+        return;
+      
+      // Find a new inotify
+      $this->getInotify ();
+      
+      // Register our watch
+      if ($this->inotifyPath) {
+        $this->inotifyDescriptor = inotify_add_watch ($this->inotify, $this->inotifyPath, $this->inotifyMask);
+        self::$inotifyEvents [$this->inotifyGeneration][$this->inotifyDescriptor] = $this;
+      }
+    }
+    // }}}
+    
+    // {{{ unsetEventBase
+    /**
+     * Remove any assigned event-loop-handler
+     * 
+     * @access public
+     * @return void
+     * 
+     * @remark This is implemented by qcEvents_Trait_Parented
+     **/
+    public function unsetEventBase () {
       if ($this->inotifyDescriptor !== null) {
         inotify_rm_watch ($this->inotify, $this->inotifyDescriptor);
         unset (self::$inotifyEvents [$this->inotifyGeneration][$this->inotifyDescriptor]);
@@ -222,35 +317,7 @@
       
       $this->inotifyDescriptor = null;
       $this->inotify = null;
-      
-      // Check if our target exists
-      if (!file_exists ($this->inotifyPath)) {
-        trigger_error ('Watched filesystem-object does not exist: ' . $this->inotifyPath);
-        
-        return $rc;
-      }
-      
-      // Find a new inotify
-      foreach ($Base->getEvents () as $Event)
-        if (($Event instanceof qcEvents_inotify) && is_resource ($Event->inotify)) {
-          $this->inotify = $Event->inotify;
-          $this->inotifyGeneration = $Event->inotifyGeneration;
-          
-          break;
-        }
-      
-      if (!is_resource ($this->inotify)) {
-        $this->inotify = inotify_init ();
-        $this->inotifyGeneration = self::$inotifyGenerations++;
-        
-        self::$inotifyEvents [$this->inotifyGeneration] = array ();
-      }
-      
-      // Register our watch
-      $this->inotifyDescriptor = inotify_add_watch ($this->inotify, $this->inotifyPath, $this->inotifyMask);
-      self::$inotifyEvents [$this->inotifyGeneration][$this->inotifyDescriptor] = $this;
-      
-      return $Base->updateEvent ($this);
+      $this->eventBase = null;
     }
     // }}}
     
@@ -327,10 +394,12 @@
     /**
      * Callback: The Event-Loop detected an error-event
      * 
+     * @param resource $fd
+     * 
      * @access public
      * @return void  
      **/
-    public function raiseError () { }
+    public function raiseError ($fd) { }
     // }}}
     
     

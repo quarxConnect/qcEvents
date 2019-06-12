@@ -27,17 +27,11 @@
      * Write data to this sink
      * 
      * @param string $Data The data to write to this sink
-     * @param callable $Callback (optional) The callback to raise once the data was written
-     * @param mixed $Private (optional) A private parameter to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Sink $Self, bool $Status, mixed $Private) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function write ($Data, callable $Callback = null, $Private = null);
+    public function write ($Data) : qcEvents_Promise;
     // }}}
     
     // {{{ watchWrite

@@ -20,8 +20,12 @@
   
   require_once ('qcEvents/Abstract/Pipe.php');
   require_once ('qcEvents/Interface/Source.php');
+  require_once ('qcEvents/Promise.php');
   
   class qcEvents_Abstract_Source extends qcEvents_Abstract_Pipe implements qcEvents_Interface_Source {
+    /* Assigned event-base */
+    private $eventBase = null;
+    
     /* Local buffer of abstract source */
     private $Buffer = '';
     
@@ -31,16 +35,34 @@
     /* Closed state */
     private $closed = false;
     
+    /* Close stream on drain */
+    private $closeOnDrain = false;
+    
+    // {{{ __construct
+    /**
+     * Create a new abstract source
+     * 
+     * @param  qcEvents_Base $eventBase (optional)
+     * 
+     * @access friendly
+     * @return void
+     **/
+    function __construct (qcEvents_Base $eventBase = null) {
+      $this->eventBase = $eventBase;
+    }
+    // }}}
+    
     // {{{ sourceInsert
     /**
      * Insert some data into the abstract source
      * 
      * @param string $Data
+     * @param bool $closeOnDrain (optional)
      * 
      * @access public
      * @return void
      **/
-    public function sourceInsert ($Data) {
+    public function sourceInsert ($Data, $closeOnDrain = null) {
       // Check if we are closed
       if ($this->closed)
         return;
@@ -49,8 +71,15 @@
       $this->Buffer .= $Data;
       
       // Check wheter to raise an event
-      if ($this->raiseEvents)
-        $this->___callback ('eventReadable');
+      if ($this->raiseEvents) {
+        if ($this->eventBase)
+          $this->eventBase->forceCallback (array ($this, 'raiseRead'));
+        else
+          $this->___callback ('eventReadable');
+      }
+      
+      if ($closeOnDrain !== null)
+        $this->closeOnDrain = !!$closeOnDrain;
     }
     // }}}
     
@@ -76,12 +105,21 @@
      * @return string
      **/
     public function read ($Size = null) {
+      // Get the requested bytes from buffer
       if ($Size === null) {
         $Buffer = $this->Buffer;
         $this->Buffer = '';
       } else {
         $Buffer = substr ($this->Buffer, 0, $Size);
         $this->Buffer = substr ($this->Buffer, $Size);
+      }
+      
+      // Check if we shall close
+      if ($this->closeOnDrain && (strlen ($this->Buffer) == 0)) {
+        if ($this->eventBase)
+          $this->eventBase->forceCallback (array ($this, 'close'));
+        else
+          $this->close ();
       }
       
       return $Buffer;  
@@ -99,13 +137,29 @@
      **/
     public function watchRead ($Set = null) {
       if ($Set !== null) {
-        if ($this->raiseEvents = !!$Set)
-          $this->___callback ('eventReadable');
+        if ($this->raiseEvents = !!$Set) {
+          if ($this->eventBase)
+            $this->eventBase->forceCallback (array ($this, 'raiseRead'));
+          else
+            $this->___callback ('eventReadable');
+        }
         
         return true;
       }
       
       return $this->raiseEvents;
+    }
+    // }}}
+    
+    // {{{ getEventBase
+    /**
+     * Retrive the assigned event-base
+     * 
+     * @access public
+     * @return qcEvents_Base
+     **/
+    public function getEventBase () {
+      return $this->eventBase;
     }
     // }}}
     
@@ -119,7 +173,7 @@
      * @return void
      **/
     public function setEventBase (qcEvents_Base $Base) {
-      # Unused
+      $this->eventBase = $Base;
     }
     // }}}
     
@@ -153,20 +207,35 @@
     /**   
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void  
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       if (!$this->closed) {
         $this->closed = true;
         $this->___callback ('eventClosed');
         $this->Buffer = '';
       }
       
-      $this->___raiseCallback ($Callback, $Private);
+      return qcEvents_Promise::resolve ();
+    }
+    // }}}
+    
+    // {{{ raiseRead
+    /**
+     * Callback: The Event-Loop detected a read-event
+     * 
+     * @access public
+     * @return void
+     **/
+    public function raiseRead () {
+      if (strlen ($this->Buffer) == 0)
+        return;
+      
+      $this->___callback ('eventReadable');
+      
+      if ($this->eventBase)
+        $this->eventBase->forceCallback (array ($this, 'raiseRead'));
     }
     // }}}
     

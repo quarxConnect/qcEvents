@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Interface/Consumer.php');
   require_once ('qcEvents/Abstract/Source.php');
+  require_once ('qcEvents/Promise.php');
   
   // Make sure MBString is available
   if (!extension_loaded ('mbstring') && (!function_exists ('dl') || !dl ('mbstring.so')))
@@ -321,19 +322,13 @@
      * Callback: A source was removed from this consumer
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void  
+     * @return qcEvents_Promise 
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       # TODO
-      $this->___raiseCallback ($Callback, true, $Private);
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

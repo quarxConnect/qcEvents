@@ -1768,7 +1768,7 @@
     }
     // }}}
     
-    // {{{ close
+    // {{{ closeMailbox
     /**
      * Close the currently selected mailbox
      * 
@@ -1778,7 +1778,7 @@
      * @access public
      * @return void
      **/
-    public function close ($Callback = null, $Private = null) {
+    public function closeMailbox ($Callback = null, $Private = null) {
       // Check our state
       if ($this->State != self::IMAP_STATE_ONMAILBOX)  
         return false;

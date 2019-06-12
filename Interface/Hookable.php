@@ -100,6 +100,18 @@
      **/
     public function removeHook ($Name, callable $Callback);
     // }}}
+    
+    // {{{ once
+    /**
+     * Register a hook that is triggered once when a given event raises for the first time
+     * 
+     * @param string $Name Name of the hookable function
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function once ($Name) : qcEvents_Promise;
+    // }}}
   }
 
 ?>

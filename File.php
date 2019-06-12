@@ -1,6 +1,25 @@
 <?PHP
 
+  /**
+   * qcEvents - File
+   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * 
+   * This program is free software: you can redistribute it and/or modify
+   * it under the terms of the GNU General Public License as published by
+   * the Free Software Foundation, either version 3 of the License, or
+   * (at your option) any later version.
+   * 
+   * This program is distributed in the hope that it will be useful,
+   * but WITHOUT ANY WARRANTY; without even the implied warranty of
+   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   * GNU General Public License for more details.
+   * 
+   * You should have received a copy of the GNU General Public License
+   * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   **/
+  
   require_once ('qcEvents/IOStream.php');
+  require_once ('qcEvents/Promise.php');
   
   class qcEvents_File extends qcEvents_IOStream {
     /* The filename of this stream */
@@ -15,42 +34,39 @@
      * 
      * @param qcEvents_Base $Base Event-Base to use
      * @param string $Filename Path to file
-     * @param callable $Callback Callback to raise when all contents were read
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * Once completed the callback will be raised in the form of
-     * 
-     *   function (string $Content = null, mixed $Private = null) { }
      * 
      * @access public
-     * @return qcEvents_File
+     * @return qcEvents_Promise
      **/
-    public static function readFileContents (qcEvents_Base $Base, $Filename, callable $Callback, $Private = null) {
+    public static function readFileContents (qcEvents_Base $Base, $Filename) : qcEvents_Promise {
       // Try to create a file-stream
       try {
         $File = new static ($Base, $Filename, true, false, false);
-      } catch (Exception $E) {
-        return call_user_func ($Callback, null, $Private);
+      } catch (exception $e) {
+        return qcEvents_Promise::reject ($e);
       }
       
-      // Bind Event-Handlers
+      // Read all contents of the file
       $Buffer = '';
       
-      $File->addHook ('eventReadable', function ($File) use (&$Buffer) {
-        // Try to read from stream
-        if (($Data = $File->read ()) === false)
-          return;
-        
-        // Push to our buffer
-        $Buffer .= $Data;
-      });
+      $File->addHook (
+        'eventReadable',
+        function ($File) use (&$Buffer) {
+          // Try to read from stream
+          if (($Data = $File->read ()) === false)
+            return;
+          
+          // Push to our buffer
+          $Buffer .= $Data;
+        }
+      );
       
-      $File->addHook ('eventClosed', function ($File) use ($Callback, $Private, &$Buffer) {
-        // Forward the callback
-        return call_user_func ($Callback, $Buffer, $Private);
-      });
-      
-      return $File;
+      // Wait for end-of-file
+      return $File->once ('eventClosed')->then (
+        function () use (&$Buffer) {
+          return $Buffer;
+        }
+      );
     }
     // }}}
     
@@ -61,36 +77,24 @@
      * @param qcEvents_Base $Base Event-Base to use
      * @param string $Filename Path to file
      * @param string $Content Bytes to write to that file
-     * @param callable $Callback Callback to raise when all contents were written
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * Once completed the callback will be raised in the form of
-     * 
-     *   function (bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return qcEvents_File
+     * @return qcEvents_Promise
      **/
-    public static function writeFileContents (qcEvents_Base $Base, $Filename, $Content, callable $Callback, $Private = null) {
+    public static function writeFileContents (qcEvents_Base $Base, $Filename, $Content) : qcEvents_Promise {
       // Try to create a file-stream
       try {
         $File = new static ($Base, $Filename, false, true, true);
-      } catch (Exception $E) {
-        trigger_error ('Failed to create file-resource: ' . $E->getMessage ());
-        
-        return call_user_func ($Callback, false, $Private);
+      } catch (exception $e) {
+        return qcEvents_Promise::reject ($e);
       }
       
       // Enqueue the write
-      $File->write ($Content, function (qcEvents_File $File, $Status) use ($Callback, $Private) {
-        // Close the file when finished
-        $File->close (function () use ($Status, $Callback, $Private) {
-          // Forward the callback
-          call_user_func ($Callback, $Status, $Private);
-        });
-      });
-      
-      return $File;
+      return $File->write ($Content)->then (
+        function () use ($File) {
+          return $File->close ();
+        }
+      );
     }
     // }}}
     

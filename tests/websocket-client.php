@@ -20,22 +20,25 @@
   $Websocket = new qcEvents_Stream_Websocket (qcEvents_Stream_Websocket::TYPE_CLIENT, null, '/app/de504dc5763aeef9ff52?protocol=7&client=qc', 'https://www.bitstamp.net');
   $Socket = new qcEvents_Socket ($Base);
   $Socket->connect ('ws.pusherapp.com', 443, $Socket::TYPE_TCP, true);
-  $Socket->pipeStream ($Websocket, true, function (qcEvents_Socket $Socket, $Status) use ($Websocket) {
-    if (!$Status)
+  $Socket->pipeStream ($Websocket, true)->then (
+    function () use ($Websocket) {
+      // Subscribe to live-trades-channel
+      $JSON = array (
+        'event' => 'pusher:subscribe',
+        'data' => array (
+          'auth' => null,
+          'channel_data' => null,
+          'channel' => 'live_trades',
+        ),
+      );
+      
+      $Websocket->sendMessage (new qcEvents_Stream_Websocket_Message ($Websocket, 0x01, json_encode ($JSON)));
+    },
+    function () {
       die ('Websocket-Connection failed' . "\n");
-    
-    // Subscribe to live-trades-channel
-    $JSON = array (
-      'event' => 'pusher:subscribe',
-      'data' => array (
-        'auth' => null,
-        'channel_data' => null,
-        'channel' => 'live_trades',
-      ),
-    );
-    
-    $Websocket->sendMessage (new qcEvents_Stream_Websocket_Message ($Websocket, 0x01, json_encode ($JSON)));
-  });
+    }
+  );
+  
   $Websocket->addHook ('websocketMessage', function (qcEvents_Stream_Websocket $Websocket, qcEvents_Stream_Websocket_Message $Message) {
     // Check if it's a text-message
     if ($Message->getOpcode () != 0x01)

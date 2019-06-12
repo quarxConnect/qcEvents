@@ -21,6 +21,7 @@
   require_once ('qcEvents/Interface/Consumer.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Hookable.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * CSV-Stream
@@ -57,13 +58,20 @@
      * 
      * @param string $Separator (optional) Separator-Character on stream
      * @param string $Enclosure (optional) Enclosure-Character on stream
+     * @param string $LineEnd (optional) Line-Ending-Character on stream
      * 
      * @access friendly
      * @return void
      **/
-    function __construct ($Separator = ',', $Enclosure = '"') {
-      $this->csvSeparator = $Separator;
-      $this->csvEnclosure = $Enclosure;
+    function __construct ($Separator = null, $Enclosure = null, $LineEnd = null) {
+      if ($Separator !== null)
+        $this->csvSeparator = $Separator;
+      
+      if ($Enclosure !== null)
+        $this->csvEnclosure = $Enclosure;
+      
+      if ($LineEnd !== null)
+        $this->csvLineEnding = $LineEnd;
     }
     // }}}
     
@@ -222,22 +230,16 @@
      * Setup ourself to consume data from a stream
      *    
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     *  
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Assign the source
       $this->Source = $Source;
       
-      // Run the callback
-      $this->___raiseCallback ($Callback, true, $Private);
+      // Return solved promise
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -246,17 +248,11 @@
      * Callback: A source was removed from this consumer
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void  
+     * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       // Remove the source
       $this->Source = null;
       
@@ -268,7 +264,7 @@
         $this->csvHeader = true;
       
       // Run the callback
-      $this->___raiseCallback ($Callback, true, $Private);
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -276,18 +272,16 @@
     /**   
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * @access public   
-     * @return void  
+     * @access public
+     * @return qcEvents_Promise
      **/  
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       if ($this->csvBufferLength > 0)
         $this->consume ($this->csvLineEnding, $this->Source);
       
-      $this->___raiseCallback ($Callback, $Private);
       $this->___callback ('eventClosed');
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

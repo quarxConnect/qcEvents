@@ -22,6 +22,7 @@
   require_once ('qcEvents/Interface/Stream.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Abstract/Pipe.php');
+  require_once ('qcEvents/Promise.php');
   
   abstract class qcEvents_IOStream extends qcEvents_Abstract_Pipe implements qcEvents_Interface_Loop, qcEvents_Interface_Stream, qcEvents_Interface_Stream_Consumer {
     const DEFAULT_READ_LENGTH = 4096;
@@ -288,29 +289,19 @@
      * Write data to this sink
      * 
      * @param string $Data The data to write to this sink
-     * @param callable $Callback (optional) The callback to raise once the data was written
-     * @param mixed $Private (optional) A private parameter to pass to the callback
-     * 
-     * The Callback will be raised in the form of
-     * 
-     *   function (qcEvents_IOStream $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function write ($Data, callable $Callback = null, $Private = null) {
-      // Clear private if there is no callback
-      if ($Callback === null)
-        $Private = null;
-      
-      // Enqueue the packet
-      $this->writeBuffer [] = array ($Data, $Callback, $Private);
-      
-      // Make sure we catch write-events
-      if (!$this->watchWrites && $this->eventLoop)
-        $this->eventLoop->updateEvent ($this);
-      
-      return true;
+    public function write ($Data) : qcEvents_Promise {
+      return new qcEvents_Promise (function ($resolve, $reject) use ($Data) {
+        // Enqueue the packet
+        $this->writeBuffer [] = array ($Data, $resolve, $reject);
+        
+        // Make sure we catch write-events
+        if (!$this->watchWrites && $this->eventLoop)
+          $this->eventLoop->updateEvent ($this);
+      });
     }
     // }}}
     
@@ -393,40 +384,60 @@
     /**
      * Close this I/O-Stream
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
      * @param bool $Force (optional) Force close even if there is data on the write-buffer
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null, $Force = false) {
-      // Mark ourself as closing
-      $this->isClosing = array ($Callback, $Private);
+    public function close ($Force = false) : qcEvents_Promise {
+      // Check if there is a pending close
+      if ($this->isClosing instanceof qcEvents_Promise)
+        return $this->isClosing;
       
       // Check if there are writes pending
-      if (count ($this->writeBuffer) > 0) {
-        if (!$Force)
-          return;
-        
-        foreach ($this->writeBuffer as $writeBuffer)
-          $this->___raiseCallback ($writeBuffer [1], false, $writeBuffer [2]);
-        
-        $this->writeBuffer = array ();
-      }
+      if (!$Force && (count ($this->writeBuffer) > 0))
+        return ($this->isClosing = new qcEvents_Promise (function ($resolve, $reject) {
+          $this->addHook (
+            'eventDrained',
+            function () use ($resolve) {
+              // Do the low-level-close
+              $this->___close ();
+              $this->isWatching (false);
+              
+              // Remove closing-state
+              $this->isClosing = false;
+              
+              // Raise callbacks
+              $this->___callback ('eventClosed');
+              
+              $resolve ();
+            },
+            null,
+            true
+          );
+          # $this->isClosing = array ($resolve, $reject);
+        }));
+      
+      // Mark ourself as closing
+      $this->isClosing = true;
+      
+      // Force the write-buffer to be cleared
+      foreach ($this->writeBuffer as $writeBuffer)
+        call_user_func ($writeBuffer [2], 'Close was forced');
+      
+      $this->writeBuffer = array ();
       
       // Do the low-level-close
       $this->___close ();
       $this->isWatching (false);
       
-      // Fire callbacks
-      if ($Callback !== null) {
-        $this->isClosing = false;
-        
-        call_user_func ($Callback, $Private);
-      }
+      // Remove closing-state
+      $this->isClosing = false;
       
+      // Raise callbacks
       $this->___callback ('eventClosed');
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -495,17 +506,12 @@
         // Remove the chunk from the buffer
         $Finished = array_shift ($this->writeBuffer);
         
-        // Raise a callback if requested
-        if ($Finished [1] !== null)
-          $this->___raiseCallback ($Finished [1], true, $Finished [2]);
+        // Resolve promise
+        call_user_func ($Finished [1]);
       }
       
       // Fire the event when
       $this->___callback ('eventDrained');
-      
-      if ($this->isClosing)
-        return $this->close ($this->isClosing [0], $this->isClosing [1]);
-      
       $this->___callback ('eventWritable');
     }
     // }}}
@@ -536,19 +542,16 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Stream $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     *    
-     * The callback will be raised in the form of
-     *  
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
-      $this->___raiseCallback ($Callback, true, $Private);
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+      // Raise a callback for this
       $this->___callback ('eventPipedStream', $Source);
+      
+      // Return a resolve promise
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -557,19 +560,14 @@
      * Callback: A source was removed from this sink
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
-      $this->___raiseCallback ($Callback, true, $Private);
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       $this->___callback ('eventUnpiped', $Source);
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

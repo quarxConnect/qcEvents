@@ -1,9 +1,28 @@
 <?PHP
 
+  /**
+   * qcEvents - Compressed Stream
+   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * 
+   * This program is free software: you can redistribute it and/or modify
+   * it under the terms of the GNU General Public License as published by
+   * the Free Software Foundation, either version 3 of the License, or
+   * (at your option) any later version.
+   * 
+   * This program is distributed in the hope that it will be useful,
+   * but WITHOUT ANY WARRANTY; without even the implied warranty of
+   * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   * GNU General Public License for more details.
+   * 
+   * You should have received a copy of the GNU General Public License
+   * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   **/
+  
   require_once ('qcEvents/Abstract/Pipe.php');
   require_once ('qcEvents/Interface/Source.php');
   require_once ('qcEvents/Interface/Consumer.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
+  require_once ('qcEvents/Promise.php');
 
   class qcEvents_Stream_Compressed extends qcEvents_Abstract_Pipe implements qcEvents_Interface_Consumer, qcEvents_Interface_Stream_Consumer, qcEvents_Interface_Source {
     /* Our internal stream-state */
@@ -1184,20 +1203,18 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       $this->State = self::STATE_DETECT;
       $this->compressedBuffer = '';
       $this->compressedBufferLength = 0;
       $this->cleanBufferedBits ();
       
       $this->___callback ('eventClosed');
-      $this->___raiseCallback ($Callback, $Private);
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -1230,22 +1247,16 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Store the source
       $this->Source = $Source;
       
-      // Raise the callback
-      $this->___raiseCallback ($Callback, true, $Private);
+      // Return resolved promise
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -1254,18 +1265,12 @@
      * Callback: A source was removed from this consumer
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
-      $this->___raiseCallback ($Callback, true, $Private);
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

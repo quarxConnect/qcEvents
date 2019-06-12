@@ -19,6 +19,7 @@
    **/
   
   require_once ('qcEvents/Promise.php');
+  require_once ('qcEvents/Timer.php');
   
   class qcEvents_Base {
     /* Event-Types */
@@ -152,21 +153,6 @@
       
       unset ($this->Events [$Index]);
       unset ($this->readFDs [$Index], $this->writeFDs [$Index]);
-      
-      // Check timers
-      foreach ($this->Timers as $s=>$Timers) {
-        foreach ($Timers as $m=>$Callbacks) {
-          foreach ($Callbacks as $i=>$Callback)
-            if (is_array ($Callback) && ($Callback [0] === $Event))
-              unset ($this->Timers [$s][$m][$i]);
-          
-          if (count ($this->Timers [$s][$m]) == 0)
-            unset ($this->Timers [$s][$m]);
-        }
-        
-        if (count ($this->Timers [$s]) == 0)
-          unset ($this->Timers [$s]);
-      }
     }
     // }}}
     
@@ -196,6 +182,34 @@
     }
     // }}}
     
+    // {{{ getDataPath
+    /**
+     * Retrive path to our data-directory
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getDataPath () {
+      // Check if we can get user-settings
+      if (function_exists ('posix_getpwuid')) {
+        $pw = posix_getpwuid (posix_geteuid ());
+        $Path = $pw ['dir'];
+      
+      // Have a look at our environment as fallback
+      } elseif (isset ($_ENV ['HOME']))
+        $Path = $_ENV ['HOME'];
+      else
+        return null;
+      
+      // Append ourself to path
+      $Path .= '/.qcEvents';
+      
+      // Make sure our path exists
+      if (is_dir ($Path) || mkdir ($Path, 0700))
+        return $Path;
+    }
+    // }}}
+    
     // {{{ forceEventRaise
     /**
      * Force the raise of a given event on next iteration of event-loop
@@ -213,8 +227,6 @@
         $this->forcedEvents [] = array ($Event, 'raiseWrite');
       elseif ($evType == self::EVENT_ERROR)
         $this->forcedEvents [] = array ($Event, 'raiseError');
-      elseif (($evType == self::EVENT_TIMER) && ($Event instanceof qcEvents_Interface_Timer))
-        $this->forcedEvents [] = array ($Event, 'raiseTimer');
       else
         return false;
       
@@ -241,17 +253,13 @@
      * Enqueue a timeout
      * 
      * @param mixed $Timeout The timeout to wait (may be in seconds or array (seconds, microseconds))
+     * @param bool $Repeat (optional)
      * 
      * @access public
-     * @return qcEvents_Promise Promise is fullfilled once the timeout was reached and never rejected
+     * @return qcEvents_Timer Timer-Promise is fullfilled once the timeout was reached and never rejected
      **/
-    public function addTimeout ($Timeout) : qcEvents_Promise {
-      return new qcEvents_Promise (
-        function ($resolve) use ($Timeout) {
-          $this->setupTimeout ($Timeout, $resolve);
-        },
-        $this
-      );
+    public function addTimeout ($Timeout, $Repeat = false) : qcEvents_Timer {
+      return new qcEvents_Timer ($this, $Timeout, $Repeat);
     }
     // }}}
     
@@ -259,70 +267,28 @@
     /**
      * Setup a new timer
      * 
-     * @param qcEvents_Interface_Timer $Event
-     * @param mixed $Timeout The timeout to wait (may be in seconds or array (seconds, microseconds))
-     * @param bool $Repeat (optional) Repeat this event
-     * @param callable $Callback (optional) Don't run raiseTimer() but the given callback
-     * @param mixed $Private (optional) Pass this parameter to the given callback
+     * @param qcEvents_Timer $Timer
      * 
      * @access public
-     * @return void
+     * @return bool TRUE if the timer was added, FALSE if Timer is already on queue
      **/
-    public function addTimer (qcEvents_Interface_Timer $Event, $Timeout, $Repeat = false, callable $Callback = null, $Private = null) {
-      // Make sure we don't wast space if no callback is given
-      if ($Callback === null) {
-        $Private = null;
-        $Callback = array ($Event, 'raiseTimer');
-      }
+    public function addTimer (qcEvents_Timer $Timer) {
+      // Check if the timer is already enqueue
+      foreach ($this->Timers as $sTime=>$Timers)
+        foreach ($Timers as $uTime=>$Instances)
+          if (in_array ($Timer, $Instances, true))
+            return false;
       
-      // Check wheter to repeat
-      if ($Repeat) {
-        $orgCallback = $Callback;
-        
-        $Callback = function () use (&$Callback, $orgCallback, $Private, $Timeout) {
-          // Invoke the original callback
-          $this->invoke ($orgCallback, $Private);
-          
-          // Enqueue again
-          $this->setupTimeout ($Timeout, $Callback);
-        };
-        
-        unset ($orgCallback);
+      // Get interval the timer
+      $Interval = $Timer->getInterval ();
       
-      // Apply fix for private parameter
-      } elseif ($Private !== null) {
-        $orgCallback = $Callback;
-        
-        $Callback = function () use (&$Callback, $orgCallback, $Private) {
-          $this->invoke ($orgCallback, $Private);
-        };
-        
-        unset ($orgCallback);
-      }
+      $Seconds = floor ($Interval);
+      $uSeconds = $Interval - $Seconds;
       
-      // Setup the timeout
-      return $this->setupTimeout ($Timeout, $Callback);
-    }
-    // }}}
-    
-    // {{{ setupTimeout
-    /**
-     * Setup a new timeout
-     * 
-     * @param mixed $Timeout The time to wait (may be in seconds or array (seconds, microseconds))
-     * @param callable $Callback Callback to run upon timeout
-     * 
-     * @access private
-     * @return void
-     **/
-    private function setupTimeout ($Timeout, callable $Callback) {
-      // Get the current time
-      $Now = $this->getTimer ();
-      
-      // Calculate the time of the event
-      $Then = $Now;
-      $Then [0] += (is_array ($Timeout) ? $Timeout [0] : $Timeout);
-      $Then [1] += (is_array ($Timeout) ? $Timeout [1] : 0);
+      // Enqueue the timer
+      $Then = $this->getTimer ();
+      $Then [0] += $Seconds;
+      $Then [1] += $uSeconds;
       
       while ($Then [1] > 1000000) {
         $Then [0]++;
@@ -331,21 +297,23 @@
       
       // Enqueue the event
       if (!isset ($this->Timers [$Then [0]])) {
-        $this->Timers [$Then [0]] = array ($Then [1] => array ($Callback));
+        $this->Timers [$Then [0]] = array ($Then [1] => array ($Timer));
         
         ksort ($this->Timers, SORT_NUMERIC);
       } elseif (!isset ($this->Timers [$Then [0]][$Then [1]])) {
-        $this->Timers [$Then [0]][$Then [1]] = array ($Callback);
+        $this->Timers [$Then [0]][$Then [1]] = array ($Timer);
         
         ksort ($this->Timers [$Then [0]], SORT_NUMERIC);
       } else
-        $this->Timers [$Then [0]][$Then [1]][] = $Callback;
+        $this->Timers [$Then [0]][$Then [1]][] = $Timer;
       
       // Set the next timer
       if (($this->TimerNext === null) ||
           ($this->TimerNext [0] > $Then [0]) ||
           (($this->TimerNext [0] == $Then [0]) && ($this->TimerNext [1] > $Then [1])))
         $this->TimerNext = $Then;
+      
+      return true;
     }
     // }}}
     
@@ -353,42 +321,42 @@
     /**
      * Remove a pending timer
      * 
-     * @param qcEvents_Interface_Timer $Event
-     * @param mixed $Timeout The timeout to wait (may be in seconds or array (seconds, microseconds))
-     * @param bool $Repeat (optional) Repeat this event
-     * @param callable $Callback (optional) Don't run raiseTimer() but the given callback
-     * @param mixed $Private (optional) Pass this parameter to the given callback
+     * @param qcEvents_Timer $Timer
      * 
      * @access public
-     * @return void
+     * @return bool True if the timer was really removed
      **/
-    public function clearTimer (qcEvents_Interface_Timer $Event, $Timeout, $Repeat = false, callable $Callback = null, $Private = null) {
-      // Override callback if not given
-      if ($Callback === null) {
-        $Private = null;
-        $Callback = array ($Event, 'raiseTimer');
-      }
+    public function clearTimer (qcEvents_Timer $Timer) {
+      $Found = false;
       
-      // Bail out a warning for unsupported stuff
-      if ($Repeat || $Private) {
-        trigger_error ('clearTimer() for repeating timers and/or callbacks with private parameter is BROKEN', E_USER_WARNING);
-        
-        return;
-      }
-      
-      foreach ($this->Timers as $Sec=>$Timers) {
-        foreach ($Timers as $Usec=>$Events) {
-          foreach ($Events as $ID=>$Spec)
-            if ($Spec === $Callback)
-              unset ($this->Timers [$Sec][$Usec][$ID]);
+      foreach ($this->Timers as $Second=>$Timers) {
+        foreach ($Timers as $uSecond=>$Events) {
+          foreach ($Events as $ID=>$pTimer)
+            if ($pTimer === $Timer) {
+              $Found = true;
+              
+              unset ($this->Timers [$Second][$uSecond][$ID]);
+              break;
+            }
           
-          if (count ($this->Timers [$Sec][$Usec]) == 0)
-            unset ($this->Timers [$Sec][$Usec]);
+          if (count ($this->Timers [$Second][$uSecond]) == 0)
+            unset ($this->Timers [$Second][$uSecond]);
+          
+          if ($Found)
+            break;
         }
         
-        if (count ($this->Timers [$Sec]) == 0)
-          unset ($this->Timers [$Sec]);
+        if (count ($this->Timers [$Second]) == 0)
+          unset ($this->Timers [$Second]);
+        
+        if ($Found)
+          break;
       }
+      
+      if ($Found)
+        $Timer->cancel ();
+      
+      return $Found;
     }
     // }}}
     
@@ -427,8 +395,12 @@
         }
         
         // Check if there are queued event-handlers
-        if ((count ($this->fdOwner) == 0) && (count ($this->Timers) == 0))
+        if ((count ($this->fdOwner) == 0) && (count ($this->Timers) == 0)) {
+          if (count ($this->forcedEvents) > 0)
+            continue;
+          
           break;
+        }
         
         // Copy the fdSets (We do the copy because the arrays will be modified)
         $readFDs = $this->readFDs;
@@ -575,43 +547,44 @@
       // Run all timers
       $Current = $this->TimerNext;
       
-      foreach ($this->Timers as $Sec=>$Timers) {
+      foreach ($this->Timers as $Second=>$Timers) {
         // Check if we have moved too far
-        if ($Sec > $Now [0]) {
-          if (($this->TimerNext !== null) && (($this->TimerNext [0] == $Current [0]) || ($this->TimerNext [0] > $Sec))) {
+        if ($Second > $Now [0]) {
+          if (($this->TimerNext !== null) &&
+              (($this->TimerNext [0] == $Current [0]) || ($this->TimerNext [0] > $Second))) {
             reset ($this->Timers);
+            
             $this->TimerNext = array (key ($this->Timers), key ($Timers));
           }
           
           break;
         }
         
-        foreach ($Timers as $USec=>$Callbacks) {
-          // Check if we are dealing with realy present events
-          if ($Sec == $Now [0]) {
-            // Check if we have moved too far
-            if ($USec > $Now [1]) {
-              $this->TimerNext [1] = $USec;
-              
-              break (2);
-            }
+        foreach ($Timers as $uSecond=>$pTimers) {
+          // Check if we are dealing with realy present events and would move too far
+          if (($Second == $Now [0]) && ($uSecond > $Now [1])) {
+            $this->TimerNext [1] = $uSecond;
             
-            // Remove this distinct usec from queue
-            unset ($this->Timers [$Sec][$USec]);
+            break (2);
           }
+            
+          // Remove this distinct usec from queue
+          // We do this already here because $Timer->run() might re-enqueue timers
+          // so they have to be removed before
+          unset ($this->Timers [$Second][$uSecond]);
           
           // Run all events
-          foreach ($Callbacks as $Callback)
-            // Run the callback
-            $this->invoke ($Callback);
+          foreach ($pTimers as $Timer)
+            // Run the timer
+            $Timer->run ();
           
           // Get the current time
           $Now = $this->getTimer ();
         }
         
         // Remove the second if all timers were fired
-        if (($Sec < $Now [0]) || (isset ($this->Timers [$Sec]) && (count ($this->Timers [$Sec]) == 0)))
-          unset ($this->Timers [$Sec]);
+        if (($Second < $Now [0]) || (isset ($this->Timers [$Second]) && (count ($this->Timers [$Second]) == 0)))
+          unset ($this->Timers [$Second]);
       }
       
       // Check wheter to dequeue the timer

@@ -1,8 +1,8 @@
 <?PHP
 
   /**
-   * qcEvents - Timed Events
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * qcEvents - Timer Promise
+   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,10 +18,7 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Interface/Timer.php');
-  require_once ('qcEvents/Trait/Timer.php');
-  require_once ('qcEvents/Trait/Hookable.php');
-  require_once ('qcEvents/Trait/Parented.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * Timer Event
@@ -32,46 +29,147 @@
    * @package qcEvents
    * @revision 02
    **/
-  class qcEvents_Timer implements qcEvents_Interface_Timer {
-    use qcEvents_Trait_Timer, qcEvents_Trait_Hookable, qcEvents_Trait_Parented;
-    private $Queued = false;
+  class qcEvents_Timer extends qcEvents_Promise {
+    /* Instance of our event-base */
+    private $eventBase = null;
+    
+    /* Interval for this timer */
+    private $Interval = 1.00;
+    
+    /* Repeat the timer */
+    private $Repeat = false;
+    
+    /* Callback to fullfill the promise */
+    private $fullfill = null;
+    
+    /* Callback to reject the promise */
+    private $reject = null;
     
     // {{{ __construct
     /**
-     * Create a new Timer
+     * Create a new timer
      * 
-     * @param qcEvents_Base $Base (optional)
+     * @param qcEvents_Base $eventBase
+     * @param float $Interval
+     * @param bool $Repeat
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Base $Base = null) {
-      if ($Base)
-        $this->setEventBase ($Base);
+    function __construct (qcEvents_Base $eventBase, $Interval, $Repeat = false) {
+      // Store our settings
+      $this->Interval = (float)$Interval;
+      $this->Repeat = !!$Repeat;
+      $this->resetCallbacks = false;
+      
+      // Inherit to our parent
+      parent::__construct (
+        function ($resolve, $reject) use ($eventBase) {
+          // Store our promise-functions
+          $this->fullfill = $resolve;
+          $this->reject = $reject;
+          
+          // Arm the timer
+          $eventBase->addTimer ($this);
+        },
+        $eventBase
+      );
     }
     // }}}
     
-    // {{{ raiseTimer
+    // {{{ getInterval
     /**
-     * Callback: A timer-event was raised
+     * Retrive the interval of this timer
+     * 
+     * @access public
+     * @return float
+     **/
+    public function getInterval () {
+      return $this->Interval;
+    }
+    // }}}
+    
+    // {{{ setInterval
+    /**
+     * Set a new interval for this timer
+     * 
+     * @param float $Interval
      * 
      * @access public
      * @return void
      **/
-    public function raiseTimer () {
-      $this->___callback ('eventTimer');
+    public function setInterval ($Interval) {
+      // Store the new interval
+      $this->Interval = (float)$Interval;
+      
+      // Try to restart the timer
+      if ($this->getEventBase ()->clearTimer ($this))
+        $this->getEventBase ()->addTimer ($this);
     }
     // }}}
     
-    // {{{ eventTimer
+    // {{{ run
     /**
-     * Callback: A timer-event was raised
+     * Run the timer
+     * This function is intended to be executed exclusively by qcEvents_Base.
      * 
-     * @access protected
+     * @access public
      * @return void
      **/
-    protected function eventTimer () { }
+    public function run () {
+      // Store our repeat-setting
+      $Repeat = $this->Repeat;
+      
+      // Fullfill the promise
+      if ($this->fullfill)
+        call_user_func ($this->fullfill);
+      
+      // Re-Arm the timer
+      if ($this->Repeat) {
+        $this->reset ();
+        $this->getEventBase ()->addTimer ($this);
+      } elseif ($Repeat)
+        $this->Repeat = true;
+    }
     // }}}
-  }    
+    
+    // {{{ restart
+    /**
+     * Restart this timer
+     * 
+     * @access public
+     * @return void
+     **/
+    public function restart () {
+      $this->cancel ();
+      $this->getEventBase ()->addTimer ($this);
+    }
+    // }}}
+    
+    // {{{ cancel
+    /**
+     * Cancel the timer
+     * 
+     * @access public
+     * @return void
+     **/
+    public function cancel () {
+      // Signal that we were canceled
+      if ($this->getDone () != $this::DONE_NONE)
+        $this->Repeat = false;
+      
+      // Try to remove at our parent
+      if ($this->getEventBase ()->clearTimer ($this))
+        return;
+      
+      // Reject the promise
+      if ($this->reject)
+        call_user_func ($this->reject, 'canceled');
+      
+      // Reset our state
+      $this->reset ();
+    }
+    // }}}
+  }
 
 ?>

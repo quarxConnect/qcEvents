@@ -21,6 +21,18 @@
   require_once ('qcEvents/Interface/Hookable.php');
   
   interface qcEvents_Interface_Common extends qcEvents_Interface_Hookable {
+    // {{{ getEventBase
+    /**
+     * Retrive the handle of the current event-loop-handler
+     * 
+     * @access public
+     * @return qcEvents_Base May be NULL if none is assigned
+     * 
+     * @remark This is implemented by qcEvents_Trait_Parented
+     **/
+    public function getEventBase ();
+    // }}}
+    
     // {{{ setEventBase
     /**
      * Set the Event-Base of this source
@@ -49,13 +61,10 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null);
+    public function close () : qcEvents_Promise;
     // }}}
     
     

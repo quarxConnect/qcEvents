@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Hookable.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * MySQL Client
@@ -165,28 +166,22 @@
      * @param string $Username
      * @param string $Password
      * @param string $Database (optional)
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_MySQL $Self, string $Username, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function authenticate ($Username, $Password, $Database = null, callable $Callback = null, $Private = null) {
+    public function authenticate ($Username, $Password, $Database = null) : qcEvents_Promise {
       // Make sure the state is right
-      if ($this->mysqlState >= $this::MYSQL_STATE_AUTHENTICATING) {
+      if ($this->mysqlState != $this::MYSQL_STATE_CONNECTED)
+        return qcEvents_Promise::reject ('Not in connected state');
+      
+      if ($this->mysqlState >= $this::MYSQL_STATE_AUTHENTICATING)
         # TODO: Implement support for COM_CHANGE_USER
-        $this->___raiseCallback ($Callback, $Username, false, $Private);
-        
-        return false;
-      }
+        return qcEvents_Promise::reject ('Already authenticated');
       
       if ((($this->Username != $Username) || ($this->Password != $Password)) && (count ($this->authCallbacks) > 0)) {
         foreach ($this->authCallbacks as $CB)
-          $this->___raiseCallback ($CB [0], $this->Username, null, $CB [1]);
+          call_user_func ($CB [1], 'authentication-attempt aborted by username-change');
         
         $this->authCallbacks = array ();
       }
@@ -195,102 +190,100 @@
       $this->Username = $Username;
       $this->Password = $Password;
       $this->Database = $Database;
-      $this->authCallbacks [] = array ($Callback, $Private);
-      
-      // Check if we may begin the authentication
-      if ($this->mysqlState != $this::MYSQL_STATE_CONNECTED)
-        return;
-      
-      // Setup capabilities (if not already done)
-      if ($this->mysqlClientCapabilities === null)
-        $this->mysqlClientCapabilities =
-          self::CAPA_LONG_PASSWORD |
-          self::CAPA_FOUND_ROWS |
-          self::CAPA_IGNORE_SPACE |
-          self::CAPA_TRANSACTIONS |
-          self::CAPA_SECURE_CONNECTION |
-          self::CAPA_PLUGIN_AUTH |
-          self::CAPA_PLUGIN_AUTH_LENC |
-          self::CAPA_EXPIRED_PASSWORDS |
-          self::CAPA_SESSION_TRACK |
-          self::CAPA_DEPRECATE_EOF |
-          self::CAPA_MULTI_STATEMENTS |
-          self::CAPA_MULTI_RESULTS |
-          ($this->Database !== null ? self::CAPA_CONNECT_WITH_DB : 0) |
-          (extension_loaded ('zlib') && false ? self::CAPA_COMPRESS : 0);
-      
-      // Make sure we do not use more capabilties than supported by the server
-      $this->mysqlClientCapabilities = $this->mysqlClientCapabilities & $this->mysqlServerCapabilities;
-      
-      // Generate Password for authentication
-      if (($authData = $this->mysqlAuthenticate ($this->mysqlAuthScramble, true)) === false)
-        return $this->mysqlReceiveAuthentication (0, "\xFF");
-      
-      // Write out the handshake-response
-      if ($this->mysqlServerCapabilities & self::CAPA_PROTOCOL_41) {
-        $this->mysqlClientCapabilities = $this->mysqlClientCapabilities | self::CAPA_PROTOCOL_41;
-        $mysqlClientCapabilities = $this->mysqlClientCapabilities;
-        $this->mysqlClientCapabilities = (($this->mysqlClientCapabilities & ~self::CAPA_COMPRESS));
-        $attrs = '';
-        
-        $this->mysqlWritePacket (
-          // Capabiltites
-          $this->mysqlWriteInteger ($mysqlClientCapabilities, 4) .
+      return new qcEvents_Promise (
+        function ($resolve, $reject) {
+          $this->authCallbacks [] = array ($resolve, $reject);
           
-          // Max Packet Size
-          $this->mysqlWriteInteger (0x01000000, 4) .
+          // Setup capabilities (if not already done)
+          if ($this->mysqlClientCapabilities === null)
+            $this->mysqlClientCapabilities =
+              self::CAPA_LONG_PASSWORD |
+              self::CAPA_FOUND_ROWS |
+              self::CAPA_IGNORE_SPACE |
+              self::CAPA_TRANSACTIONS |
+              self::CAPA_SECURE_CONNECTION |
+              self::CAPA_PLUGIN_AUTH |
+              self::CAPA_PLUGIN_AUTH_LENC |
+              self::CAPA_EXPIRED_PASSWORDS |
+              self::CAPA_SESSION_TRACK |
+              self::CAPA_DEPRECATE_EOF |
+              self::CAPA_MULTI_STATEMENTS |
+              self::CAPA_MULTI_RESULTS |
+              ($this->Database !== null ? self::CAPA_CONNECT_WITH_DB : 0) |
+              (extension_loaded ('zlib') && false ? self::CAPA_COMPRESS : 0);
           
-          // Characterset of this client (UTF-8 by default)
-          $this->mysqlWriteInteger (0x21, 1) .
+          // Make sure we do not use more capabilties than supported by the server
+          $this->mysqlClientCapabilities = $this->mysqlClientCapabilities & $this->mysqlServerCapabilities;
           
-          // Some wasted space =)
-          "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" .
+          // Generate Password for authentication
+          if (($authData = $this->mysqlAuthenticate ($this->mysqlAuthScramble, true)) === false)
+            return $this->mysqlReceiveAuthentication (0, "\xFF");
           
-          // Username for this connection
-          $this->mysqlWriteStringNUL ($this->Username) .
+          // Write out the handshake-response
+          if ($this->mysqlServerCapabilities & self::CAPA_PROTOCOL_41) {
+            $this->mysqlClientCapabilities = $this->mysqlClientCapabilities | self::CAPA_PROTOCOL_41;
+            $mysqlClientCapabilities = $this->mysqlClientCapabilities;
+            $this->mysqlClientCapabilities = (($this->mysqlClientCapabilities & ~self::CAPA_COMPRESS));
+            $attrs = '';
+            
+            $this->mysqlWritePacket (
+              // Capabiltites
+              $this->mysqlWriteInteger ($mysqlClientCapabilities, 4) .
+              
+              // Max Packet Size
+              $this->mysqlWriteInteger (0x01000000, 4) .
+              
+              // Characterset of this client (UTF-8 by default)
+              $this->mysqlWriteInteger (0x21, 1) .
+              
+              // Some wasted space =)
+              "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" .
+              
+              // Username for this connection
+              $this->mysqlWriteStringNUL ($this->Username) .
+              
+              // Write out authentication-data
+              ($this->mysqlClientCapabilities & self::CAPA_PLUGIN_AUTH_LENC ?
+                $this->mysqlWriteStringLenc ($authData, true) :
+                ($this->mysqlClientCapabilities & self::CAPA_SECURE_CONNECTION ?
+                  $this->mysqlWriteStringLenc ($authData) :
+                  $this->mysqlWriteStringNUL ($authData)
+                )
+              ) .
+              
+              // Select database
+              ($this->mysqlClientCapabilities & self::CAPA_CONNECT_WITH_DB ? $this->mysqlWriteStringNUL ($this->Database) : '') .
+              
+              // Write out plugin-name for authenticateion
+              ($this->mysqlClientCapabilities & self::CAPA_PLUGIN_AUTH ? $this->mysqlWriteStringNUL ($this->mysqlAuthMethod) : '') .
+              
+              // Write out connection-attributes
+              ($this->mysqlClientCapabilities & self::CAPA_CONNECT_ATTRS ? $attrs : '')
+            );
+            
+            $this->mysqlClientCapabilities = $mysqlClientCapabilities;
+          } else
+            $this->mysqlWritePacket (
+              // Capabiltites
+              $this->mysqlWriteInteger ($this->mysqlClientCapabilities, 2) .
+              
+              // Max Packet Size
+              $this->mysqlWriteInteger (0xFF0000, 3) .
+              
+              // Username for this connection
+              $this->mysqlWriteStringNUL ($this->Username) .
+              
+              ($this->mysqlClientCapabilities & self::CAPA_CONNECT_WITH_DB ?
+                $this->mysqlWriteStringNUL ($authData) .   
+                $this->mysqlWriteStringNUL ($this->Database) :
+                $authData
+              )
+            );
           
-          // Write out authentication-data
-          ($this->mysqlClientCapabilities & self::CAPA_PLUGIN_AUTH_LENC ?
-            $this->mysqlWriteStringLenc ($authData, true) :
-            ($this->mysqlClientCapabilities & self::CAPA_SECURE_CONNECTION ?
-              $this->mysqlWriteStringLenc ($authData) :
-              $this->mysqlWriteStringNUL ($authData)
-            )
-          ) .
-          
-          // Select database
-          ($this->mysqlClientCapabilities & self::CAPA_CONNECT_WITH_DB ? $this->mysqlWriteStringNUL ($this->Database) : '') .
-          
-          // Write out plugin-name for authenticateion
-          ($this->mysqlClientCapabilities & self::CAPA_PLUGIN_AUTH ? $this->mysqlWriteStringNUL ($this->mysqlAuthMethod) : '') .
-          
-          // Write out connection-attributes
-          ($this->mysqlClientCapabilities & self::CAPA_CONNECT_ATTRS ? $attrs : '')
-        );
-        
-        $this->mysqlClientCapabilities = $mysqlClientCapabilities;
-      } else
-        $this->mysqlWritePacket (
-          // Capabiltites
-          $this->mysqlWriteInteger ($this->mysqlClientCapabilities, 2) .
-          
-          // Max Packet Size
-          $this->mysqlWriteInteger (0xFF0000, 3) .
-          
-          // Username for this connection
-          $this->mysqlWriteStringNUL ($this->Username) .
-          
-          ($this->mysqlClientCapabilities & self::CAPA_CONNECT_WITH_DB ?
-            $this->mysqlWriteStringNUL ($authData) .   
-            $this->mysqlWriteStringNUL ($this->Database) :
-            $authData
-          )
-        );
-      
-      // Change the state
-      $this->mysqlSetProtocolState (self::MYSQL_STATE_AUTHENTICATING);
-      
-      return true;
+          // Change the state
+          $this->mysqlSetProtocolState (self::MYSQL_STATE_AUTHENTICATING);
+        }
+      );
     }
     // }}}
     
@@ -366,18 +359,21 @@
      * Execute a MySQL-Query and retrive the result at once
      * 
      * @param string $Query
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_MySQL $Self, string $Query, bool $Status, array $Fields, array $Rows, int $Flags, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool  
+     * @return qcEvents_Promise
      **/
-    public function query ($Query, callable $Callback, $Private = null) {
-      return $this->dispatchQuery ($Query, 0x01, $Callback, $Private);
+    public function query ($Query) : qcEvents_Promise {
+      return new qcEvents_Promise (
+        function ($resolve, $reject) use ($Query) {
+          $this->dispatchQuery ($Query, 0x01, function ($Self, $Query, $Status, $Fields, $Rows, $Flags) use ($resolve, $reject) {
+            if (!$Status)
+              $reject ('Query failed');
+            else
+              $resolve ($Rows, $Fields, $Flags);
+          });
+        }
+      );
     }
     // }}}
     
@@ -663,38 +659,41 @@
     /**
      * Initiate a server-disconnect
      * 
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_MySQL $Self, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Check if our stream is already closed
       if (!is_object ($this->Stream) || !$this->Stream->isWatching ()) {
-        // Fire the callback directly
-        $this->___raiseCallback ($Callback, true, $Private);
+        // Make sure we are in disconnected state
+        if ($this->mysqlState != $this::MYSQL_STATE_DISCONNECTED) {
+          $this->mysqlSetProtocolState ($this::MYSQL_STATE_DISCONNECTED);
+          $this->___callback ('mysqlDisconnected');
+        }
         
-        // Check if we are in disconnected state
-        if ($this->mysqlState == $this::MYSQL_STATE_DISCONNECTED)
-          return;
-        
-        // Set disconnected state
-        $this->mysqlSetProtocolState ($this::MYSQL_STATE_DISCONNECTED);
-        $this->___callback ('mysqlDisconnected');
+        // Return resolved promise
+        return qcEvents_Promise::resolve ();
       }
       
       // Check if we are in command-state
       if (is_object ($this->Stream) && ($this->mysqlState < $this::MYSQL_STATE_AUTHENTICATED))
-        return $this->Stream->close (function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, true, $Private);
-        });
+        return $this->Stream->close ();
       
-      return $this->mysqlEnqueueCommand (0x01, null, self::MYSQL_STATE_DISCONNECTING, $Callback, $Private, self::CALLBACK_STATUS);
+      return new qcEvents_Promise (function ($resolve, $reject) {
+        return $this->mysqlEnqueueCommand (
+          0x01,
+          null,
+          self::MYSQL_STATE_DISCONNECTING,
+          function ($Self, $Status) use ($resolve, $reject) {
+            if ($Status)
+              $resolve ();
+            else
+              $reject ('Command failed');
+          },
+          null,
+          self::CALLBACK_STATUS
+        );
+      });
     } 
     // }}}
     
@@ -776,50 +775,53 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Check if this is really a new stream
       if ($this->Stream === $Source)
-        return $this->___raiseCallback ($Callback, false, $Private);
+        return qcEvents_Promise::resolve ();
       
       // Check if we have a stream assigned
       if (is_object ($this->Stream))
-        $this->Stream->unpipe ($this);
+        $Promise = $this->Stream->unpipe ($this)->catch (function () { });
+      else
+        $Promise = qcEvents_Promise::resolve ();
       
-      // Reset our state
-      $this->Username = null;
-      $this->Password = null;
-      $this->Database = null;
-      
-      $this->mysqlBuffer = '';
-      $this->mysqlCompressedBuffer = '';
-      $this->mysqlSequence = 0;
-      $this->mysqlCommand = null;
-      $this->mysqlCommands = array ();
-      $this->mysqlClientCapabilities = null;
-      
-      $this->mysqlSetProtocolState ($this::MYSQL_STATE_CONNECTING);
-      
-      // Register the callback
-      $this->initCallbacks [] = array ($Callback, $Private);
-      
-      // Assign the new stream
-      $this->Stream = $Source;
-      
-      # if (!$Finishing)
-      #   $Source->addHook ('eventClosed', function () { });
-      
-      // Raise an event for this
-      $this->___callback ('mysqlConnecting', $Source);
+      return $Promise->then (
+        function () use ($Source, $Callback, $Private) {
+          // Reset our state
+          $this->Username = null;
+          $this->Password = null;
+          $this->Database = null;
+          
+          $this->mysqlBuffer = '';
+          $this->mysqlCompressedBuffer = '';
+          $this->mysqlSequence = 0;
+          $this->mysqlCommand = null;
+          $this->mysqlCommands = array ();
+          $this->mysqlClientCapabilities = null;
+          
+          $this->mysqlSetProtocolState ($this::MYSQL_STATE_CONNECTING);
+          
+          // Assign the new stream
+          $this->Stream = $Source;
+          
+          # if (!$Finishing)
+          #   $Source->addHook ('eventClosed', function () { });
+          
+          // Raise an event for this
+          $this->___callback ('mysqlConnecting', $Source);
+          
+          return new qcEvents_Promise (
+            function () {
+              $this->initCallbacks [] = array (func_get_args ());
+            }
+          );
+        }
+      );
     }
     // }}}
     
@@ -828,20 +830,14 @@
      * Callback: A source was removed from this consumer
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       // Check if the source is authentic
       if ($this->Stream !== $Source)
-        return $this->___raiseCallback ($Callback, false, $Private);
+        return qcEvents_Promise::reject ('Invalid source');
       
       // Remove the stream
       $this->Stream = null;
@@ -850,7 +846,7 @@
       $this->close ();
       
       // Raise the custom callback
-      $this->___raiseCallback ($Callback, true, $Private);
+      return qcEvents_Promsie::resolve ();
     }
     // }}}
     
@@ -1073,7 +1069,7 @@
           $this->mysqlProtocolError ('Unsupported MySQL-Version');
         
         foreach ($this->initCallbacks as $Callback)
-          $this->___raiseCallback ($Callback [0], false, $Callback [1]);
+          call_user_func ($Callback [1], 'Handshake failed');
         
         $this->initCallbacks = array ();
         
@@ -1093,7 +1089,10 @@
       if ($this->Username !== null)
         return $this->authenticate ($this->Username, $this->Password, $this->Database, function (qcEvents_Stream_MySQL $Self, $Username, $Status) {
           foreach ($this->initCallbacks as $Callback)
-            $this->___raiseCallback ($Callback [0], $Status, $Callback [1]);
+            if ($Status)
+              call_user_func ($Callback [0]);
+            else
+              call_user_func ($Callback [1], 'Authentication failed');
           
           $this->initCallbacks = array ();
           
@@ -1105,7 +1104,7 @@
       
       // Fire initial callbacks
       foreach ($this->initCallbacks as $Callback)
-        $this->___raiseCallback ($Callback [0], true, $Callback [1]);
+        call_user_func ($Callback [0]);
       
       $this->initCallbacks = array ();
       $this->___callback ('eventPipedStream', $this->Stream);
@@ -1134,7 +1133,7 @@
         
         // Fire all registered callbacks
         foreach ($this->authCallbacks as $CB)
-          $this->___raiseCallback ($CB [0], $this->Username, true, $CB [1]);
+          call_user_func ($CB [0]);
         
         $this->authCallbacks = array ();
         
@@ -1165,7 +1164,7 @@
       
       // Fire all registered callbacks
       foreach ($this->authCallbacks as $CB)
-        $this->___raiseCallback ($CB [0], $this->Username, false, $CB [1]);
+        call_user_func ($CB [1], 'authentication failed');
       
       $this->authCallbacks = array ();
       

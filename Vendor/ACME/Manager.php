@@ -75,7 +75,7 @@
       );
       
       // Check if we know the certificate already
-      if (($Path = $this::getDataPath ()) && is_file ($Path . '/acme-' . $Key . '.crt'))
+      if (($Path = $this->getEventBase ()->getDataPath ()) && is_file ($Path . '/acme-' . $Key . '.crt'))
         return $this->activateCertificate ($Key);
       
       if (!$Path) {
@@ -168,7 +168,7 @@
             )->then (
               // Refresh the order after timeout
               function () use ($Order) {
-                return $Order->refresh ();
+                return $Order->fetch ();
               }
             )->then (
               // Try to process again
@@ -215,7 +215,7 @@
         return $Order->getCertificateChain (true)->then (
           function (array $Chain) use ($Order) {
             // Try to get out data-path
-            if (!($Path = $this::getDataPath ())) {
+            if (!($Path = $this->getEventBase ()->getDataPath ())) {
               trigger_error ('Failed to get data-path', E_USER_WARNING);
               
               return;
@@ -276,7 +276,7 @@
       if ($Order->isProcessing ())
         $this->getEventBase ()->addTimeout ($this::ORDER_PROCESSING_TIMEOUT)->then (
           function () use ($Order) {
-            return $Order->refresh ();
+            return $Order->fetch ();
           }
         )->then (
           function ($Order) {
@@ -339,7 +339,7 @@
      **/
     private function activateCertificate ($Key) {
       // Try to get out data-path
-      if (!($Path = $this::getDataPath ())) {
+      if (!($Path = $this->getEventBase ()->getDataPath ())) {
         trigger_error ('Failed to get data-path', E_USER_WARNING);
         
         return;

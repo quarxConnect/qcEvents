@@ -18,6 +18,8 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
+  require_once ('qcEvents/Promise.php');
+  
   trait qcEvents_Trait_Pipe {
     public static $pipeBlockSize = 40960;
     
@@ -106,29 +108,32 @@
      * 
      * @param qcEvents_Interface_Consumer $Handler
      * @param bool $Finish (optional) Raise close on the handler if we are finished (default)
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream $Source, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function pipeStream (qcEvents_Interface_Stream_Consumer $Handler, $Finish = true, callable $Callback = null, $Private = null) {
+    public function pipeStream (qcEvents_Interface_Stream_Consumer $Handler, $Finish = true) : qcEvents_Promise {
       // Check if there is already such pipe
       if (($key = $this->getPipeHandlerKey ($Handler)) !== false) {
         $this->Pipes [$key][1] = $Finish;
         
-        return true;
+        return qcEvents_Promise::resolve ();
       }
       
       // Raise an event at the handler
-      if (($rc = $Handler->initStreamConsumer ($this, function (qcEvents_Interface_Stream_Consumer $Handler, qcEvents_Interface_Stream $Source, $Status) use ($Callback, $Private) {
-        $this->___raiseCallback ($Callback, $Status, $Private);
-      })) === false)
-        return false;
+      $Promise = $Handler->initStreamConsumer ($this)->catch (
+        function () use ($Handler) {
+          // Clean up
+          $this->removeHook ('eventReadable', array ($this, '___pipeDo'));
+          $this->removeHook ('eventClosed', array ($this, '___pipeClose'));
+          
+          $Handler->removeHook ('eventReadable', array ($this, '___pipeHandlerDo'));
+          $Handler->removeHook ('eventClosed', array ($this, '___pipeHandlerClose'));
+          
+          // Forward the error
+          throw new qcEvents_Promise_Solution (func_get_args ());
+        }
+      );
       
       // Make sure we are receiving data
       $this->addHook ('eventReadable', array ($this, '___pipeDo'));
@@ -139,9 +144,9 @@
       $Handler->addHook ('eventClosed', array ($this, '___pipeHandlerClose'));
       
       // Register a new pipe
-      $this->Pipes [] = array ($Handler, $Finish, is_callable ($rc) ? $rc : null);
+      $this->Pipes [] = array ($Handler, $Finish, null);
       
-      return true;
+      return $Promise;
     }
     // }}}
     
@@ -149,27 +154,21 @@
     /**
      * Remove a handler that is currently being piped
      * 
-     * @param qcEvents_Interface_Sink $Handler
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Source $Source, qcEvents_Interface_Consumer $Destination, bool $Status, mixed $Private = null) { }
+     * @param qcEvents_Interface_Consumer_Common $Handler
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function unpipe (qcEvents_Interface_Consumer $Handler, callable $Callback = null, $Private = null) {
+    public function unpipe (qcEvents_Interface_Consumer_Common $Handler) : qcEvents_Promise {
       // Check if there is already such pipe
       if (($key = $this->getPipeHandlerKey ($Handler)) === false)
-        return;
+        return qcEvents_Promise::reject ('Consumer not found');
       
       // Remove the pipe-reference
       unset ($this->Pipes [$key]);
       
       // Raise an event at the handler
-      $Handler->deinitConsumer ($this, $Callback, $Private);
+      return $Handler->deinitConsumer ($this);
     }
     // }}}
     

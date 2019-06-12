@@ -20,10 +20,9 @@
   
   require_once ('qcEvents/Interface/Loop.php');
   require_once ('qcEvents/Interface/Hookable.php');
-  require_once ('qcEvents/Interface/Timer.php');
   require_once ('qcEvents/Trait/Hookable.php');
-  require_once ('qcEvents/Trait/Timer.php');
   require_once ('qcEvents/Socket.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * Server-Socket
@@ -34,8 +33,8 @@
    * @package qcEvents
    * @revision 03
    **/
-  class qcEvents_Socket_Server implements qcEvents_Interface_Loop, qcEvents_Interface_Hookable, qcEvents_Interface_Timer {
-    use qcEvents_Trait_Hookable, qcEvents_Trait_Timer;
+  class qcEvents_Socket_Server implements qcEvents_Interface_Loop, qcEvents_Interface_Hookable {
+    use qcEvents_Trait_Hookable;
     
     /* Base-Class for Child-Connections */
     const CHILD_CLASS_BASE = 'qcEvents_Socket';
@@ -71,8 +70,8 @@
     // All connections we handle (only in UDP-Mode)
     private $Clients = array ();
     
-    // Do we have an Timer set to timeout UDP-Children
-    private $haveUDPTimer = false;
+    /* Timer to time-out UDP-Connections */
+    private $udpTimer = null;
     
     /* Preset of TLS-Options */
     private $tlsOptions = array (
@@ -296,6 +295,23 @@
     }
     // }}}
     
+    // {{{ getLocalPort
+    /**
+     * Retrive the local port of this server
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getLocalPort () {
+      $Local = stream_socket_get_name ($this->Socket, false);
+      
+      if (($p = strrpos ($Local, ':')) === false)
+        return false;
+      
+      return (int)substr ($Local, $p + 1);
+    }
+    // }}}
+    
     // {{{ tlsCiphers
     /**
      * Set a list of supported TLS-Ciphers
@@ -387,14 +403,14 @@
      * Create a the server-process
      * 
      * @param enum $Type
-     * @param int $Port
+     * @param int $Port (optional)
      * @param string $Host (optional)
      * @param int $Backlog (optional)
      * 
      * @access public
      * @return bool
      **/
-    public function listen ($Type, $Port, $Host = null, $Backlog = null) {
+    public function listen ($Type, $Port = null, $Host = null, $Backlog = null) {
       // Handle Context
       if ($Backlog !== null)
         $Context = stream_context_create (array ('backlog' => $Backlog));
@@ -413,6 +429,9 @@
         $Flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
       } else
         return false;
+      
+      if ($Port === null)
+        $Port = 0;
       
       if (!is_resource ($Socket = stream_socket_server ($Proto . '://' . $Host . ':' . $Port, $ErrNo, $ErrStr, $Flags, $Context)))
         return false;
@@ -453,13 +472,10 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void  
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Check wheter to really close the server
       if ($Open = $this->Socket) {
         fclose ($this->Socket);
@@ -468,11 +484,10 @@
       }
       
       // Raise Callbacks
-      if ($Callback !== null)
-        call_user_func ($Callback, $Private);
-      
       if ($Open)
         $this->___callback ('serverOffline');
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -503,9 +518,19 @@
           $this->Clients [$Remote] = $Client = $this->serverCreateChild ($Remote);
           
           // Make sure we have a timer
-          if (!$this->haveUDPTimer) {
-            $this->addTimer (max (2, intval (self::CHILD_UDP_TIMEOUT / 4)), true, array ($this, 'checkUDPChildren'));
-            $this->haveUDPTimer = true;
+          if (!$this->udpTimer && $this->eventLoop) {
+            $this->udpTimer = $this->eventLoop->addTimeout (max (2, intval (self::CHILD_UDP_TIMEOUT / 4)), true);
+            $this->udpTimer->then (
+              function () {
+                // Retrive the actual time
+                $Now = time ();
+                
+                // Check all clients
+                foreach ($this->Clients as $Client)
+                  if ($Now - $Client->getLastEvent () > self::CHILD_UDP_TIMEOUT)
+                    $Client->close ();
+              }
+            );
           }
         
         // Peek the client from storage
@@ -633,23 +658,6 @@
       $this->___callback ('serverClientClosed', $Peer, $Client);
       
       return true;
-    }
-    // }}}
-    
-    // {{{ checkUDPChildren
-    /**
-     * Check if one of our children timed out
-     * 
-     * @access public
-     * @return void
-     **/
-    public function checkUDPChildren () {
-      // Retrive the actual time
-      $t = time ();
-      
-      foreach ($this->Clients as $C)
-        if ($t - $C->getLastEvent () > self::CHILD_UDP_TIMEOUT)
-          $C->close ();
     }
     // }}}
     

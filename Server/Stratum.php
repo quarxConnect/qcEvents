@@ -26,12 +26,8 @@
   }
   
   require_once ('qcEvents/Stream/Stratum.php');
-  require_once ('qcEvents/Interface/Timer.php');
-  require_once ('qcEvents/Trait/Timer.php');
   
-  class qcEvents_Server_Stratum extends qcEvents_Stream_Stratum implements qcEvents_Interface_Timer {
-    use qcEvents_Trait_Timer;
-    
+  class qcEvents_Server_Stratum extends qcEvents_Stream_Stratum {
     // Used nonces
     private static $Nonces = array ();
     private static $nextNonce = 0;
@@ -53,6 +49,9 @@
     
     // Latest mining-job
     private $jobLatest = null;
+    
+    /* Pending work-requests */
+    private $workRequests = array ();
     
     // Work done for unknown jobs
     private $workUnknown = 0;
@@ -243,6 +242,19 @@
       $this->___callback ('stratumWorkNew', $Job, $Reset);
       
       // Forward the job
+      foreach ($this->workRequests as $Key=>$Message)
+        $this->sendMessage (array (
+          'id' => $Message->id,
+          'error' => null,
+          'result' => array (
+            $this->Jobs [$this->jobLatest][0],
+            $this->Jobs [$this->jobLatest][1],
+            $this->Jobs [$this->jobLatest][2],
+          ),
+        ));
+      
+      $this->workRequests = array ();
+      
       if ($isEthereumGetWork)
         return $this->sendMessage (array (
           'id' => 0,
@@ -429,28 +441,51 @@
           $this->setProtocolVersion ($this::PROTOCOL_ETH_GETWORK);
           
           // Check if we have a job ready
-          if (($this->jobLatest === null) || !isset ($this->Jobs [$this->jobLatest]))
-            return $this->addTimer (3, false, function () use ($Message) {
-              if (($this->jobLatest === null) || !isset ($this->Jobs [$this->jobLatest]))
+          if (($this->jobLatest === null) || !isset ($this->Jobs [$this->jobLatest])) {
+            // Push to queue
+            $this->workRequests [] = $Message;
+            
+            // Notify upper layer
+            $this->___callback ('stratumWorkRequest');
+            
+            // Enqueue timeout
+            return $this->getStream ()->getEventBase ()->addTimeout (20)->then (
+              function () use ($Message) {
+                // Check if the job was already done
+                $Key = array_search ($Message, $this->workRequests, true);
+                
+                if ($Key === false)
+                  return;
+                
+                unset ($this->workRequests [$Key]);
+                
+                // Check if we have work available now
+                if (($this->jobLatest === null) || !isset ($this->Jobs [$this->jobLatest])) {
+                  $this->bailOut (':: Rejecting getWork due to timeout');
+                  
+                  return $this->sendMessage (array (
+                    'id' => $Message->id,
+                    'error' => array (
+                      0,
+                      'Work not ready',
+                    ),
+                    'result' => null,
+                  ));
+                }
+                
+                // Forward the work
                 return $this->sendMessage (array (
                   'id' => $Message->id,
-                  'error' => array (
-                    0,
-                    'Work not ready',
+                  'error' => null,
+                  'result' => array (
+                    $this->Jobs [$this->jobLatest][0],
+                    $this->Jobs [$this->jobLatest][1],
+                    $this->Jobs [$this->jobLatest][2],
                   ),
-                  'result' => null,
                 ));
-              
-              return $this->sendMessage (array (
-                'id' => $Message->id,
-                'error' => null,
-                'result' => array (
-                  $this->Jobs [$this->jobLatest][0],
-                  $this->Jobs [$this->jobLatest][1],
-                  $this->Jobs [$this->jobLatest][2],
-                ),
-              ));
-            });
+              }
+            );
+          }
           
           // Push back the latest job
           return $this->sendMessage (array (
@@ -881,6 +916,16 @@
      * @return void
      **/
     protected function stratumExtraNonceChanged ($ExtraNonce1, $ExtraNonce2Length) { }
+    // }}}
+    
+    // {{{ stratumWorkRequest
+    /**
+     * Callback: A request for work was received
+     * 
+     * @access protected
+     * @returtn void
+     **/
+    protected function stratumWorkRequest () { }
     // }}}
     
     // {{{ stratumWork

@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Interface/Consumer.php');
   require_once ('qcEvents/Trait/Hookable.php');
+  require_once ('qcEvents/Promise.php');
   
   /** 
    * Ogg Streams
@@ -90,7 +91,7 @@
         
         // Raise the initial callback
         if ($Status)
-          $this->___raiseCallback ($this->initCallback [0], $Status, $this->initCallback [1]);
+          call_user_func ($this->initCallback [0]);
         else
           $this->deinitConsumer ($Source);
         
@@ -273,13 +274,10 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       # TODO: Unpipe from our parent source/stream
       
       // Raise a callback for this
@@ -287,6 +285,8 @@
       
       // Reset our state
       $this->resetState ();
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -400,7 +400,7 @@
       $this->___callback ('eventPiped', $Source);
       
       // Store the requested callback
-      $this->initCallback = array ($Callback, $Private);
+      $this->initCallback = array ($Callback, $Callback);
     }
     // }}}
     
@@ -409,25 +409,23 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Reset ourself first
       $this->resetState ();
       
       // Raise a callback for this
       $this->___callback ('eventPipedStream', $Source);
       
-      // Store the requested callback
-      $this->initCallback = array ($Callback, $Private);
+      // Return a fresh proise
+      return new qcEvents_Promise (
+        function () {
+         $this->initCallback = func_get_args ();
+        }
+      );
     }
     // }}}
     
@@ -436,23 +434,18 @@
      * Callback: A source was removed from this sink
      *    
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     *  
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/  
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       // Reset our state   
       $this->resetState ();
       
       // Raise a callback for this
       $this->___callback ('eventUnpiped', $Source);
-      $this->___raiseCallback ($Callback, true, $Private);
+      
+      return qcEvents_Promise::resolve ();
     } 
     // }}}
     
@@ -465,7 +458,7 @@
      **/
     private function resetState () {
       if ($this->initCallback)
-        $this->___raiseCallback ($this->initCallback [0], false, $this->initCallback [1]);
+        call_user_func ($this->initCallback [1], 'Resetting state');
       
       $this->initCallback = null;
       $this->Buffer = '';

@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Stratum-Stream Implementation
-   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018-2019 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
+  require_once ('qcEvents/Promise.php');
   
   class qcEvents_Stream_Stratum extends qcEvents_Hookable implements qcEvents_Interface_Stream_Consumer {
     // Mining-Algorithm of our client
@@ -125,13 +126,12 @@
      * 
      * @param string $Request
      * @param array $Parameters
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
+     * @param array $Extra (optional)
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function sendRequest ($Request, array $Parameters = null, callable $Callback = null, $Private = null, array $Extra = null) {
+    public function sendRequest ($Request, array $Parameters = null, array $Extra = null) : qcEvents_Promise {
       // Make sure parameters are an array
       if ($Parameters === null)
         $Parameters = array ();
@@ -139,18 +139,22 @@
       // Get a message-id
       $MessageID = $this->nextRequest++;
       
-      // Store the request-callback
-      if ($Callback)
-        $this->Requests [$MessageID] = array ($Callback, $Private);
+      // Prepare the request
+      $Message = array (
+        'id' => $MessageID,
+        'method' => $Request,
+        'params' => $Parameters,
+      );
       
-      // Write out the request
-      $this->sendMessage (
-        array (
-          'id' => $MessageID,
-          'method' => $Request,
-          'params' => $Parameters,
-        ),
-        $Extra
+      return new qcEvents_Promise (
+        function ($Resolve, $Reject)
+        use ($Message, $Extra) {
+          // Store the callback
+          $this->Requests [$Message ['id']] = array ($Resolve, $Reject);
+          
+          // Send the request
+          return $this->sendMessage ($Message, $Extra);
+        }
       );
     }
     // }}}
@@ -322,11 +326,16 @@
       // Check if there is a request pending
       if (isset ($this->Requests [$Message->id])) {
         // Get the callback
-        $CallbackSpec = $this->Requests [$Message->id];
+        $Callbacks = $this->Requests [$Message->id];
         unset ($this->Requests [$Message->id]);
         
         // Run the callback
-        return $this->___raiseCallback ($CallbackSpec [0], $Message->result, $Message->error, $CallbackSpec [1]);
+        if ($Message->error)
+          call_user_func ($Callbacks [1], $Message->error);
+        else
+          call_user_func ($Callbacks [0], $Message->result, $Message);
+        
+        return;
       }
       
       // Raise generic callback for this
@@ -352,29 +361,27 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Cancel pending requests
-      foreach ($this->Requests as $CallbackSpec)
-        $this->___raiseCallback ($CallbackSpec [0], null, null, $CallbackSpec [1]);
+      foreach ($this->Requests as $Callbacks)
+        call_user_func ($Callbacks [1], 'Stream closing');
       
       $this->Requests = array ();
       
       // Make sure we have a stream assigned ...
-      if (!$this->Stream || !$this->Stream->isConnected ()) {
-        $this->___raiseCallback ($Callback, true, $Private);
-        
-        return;
-      }
+      if (!$this->Stream || !$this->Stream->isConnected ())
+        return qcEvents_Promise::resolve ();
       
       // ... and forward the call
-      $this->Stream->close ($Callback, $Private);
       $this->___callback ('eventClosed');
+      
+      $Stream = $this->Stream;
+      $this->Stream = null;
+      
+      return $Stream->close ();
     }
     // }}}
     
@@ -383,40 +390,41 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Store the stream
       $this->Stream = $Source;
       
       // Indicate success
-      if (($Source instanceof qcEvents_Socket) && !$Source->isConnected ()) {
-        $Source->addHook ('socketConnected', function () use ($Callback, $Private, $Source) {
-          if ($Source !== $this->Stream)
-            return;
-          
-          $this->___raiseCallback ($Callback, $Source, true, $Private);
-          $this->___callback ('eventPipedStream', $this->Stream);
-          
-          foreach ($this->Queue as $Q)
-            $this->sendMessage ($Q);
-          
-          $this->Queue = array ();
-        });
-        
-        return;
-      }
+      if (($Source instanceof qcEvents_Socket) && !$Source->isConnected ())
+        return $Source->once ('socketConnected')->then (
+          function () use ($Source) {
+            // Sanity-Check stream and source
+            if ($this->Stream !== $Source)
+              throw new exception ('Stream was changed');
+            
+            // Raise callback
+            $this->___callback ('eventPipedStream', $this->Stream);
+            
+            // Push queue to the wire
+            foreach ($this->Queue as $Q)
+              $this->sendMessage ($Q);
+                                  
+            $this->Queue = array ();
+                        
+            // Forward success
+            return true;
+          }
+        );
       
-      $this->___raiseCallback ($Callback, $Source, true, $Private);
+      // Raise a callback for this
       $this->___callback ('eventPipedStream', $Source);
+      
+      // Return resolved promise
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -425,34 +433,29 @@
      * Callback: A source was removed from this consumer
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       // Check if the stream is ours
       if ($this->Stream !== $Source)
-        return $this->___raiseCallback ($Callback, true, $Private);
+        return qcEvents_Promise::reject ('Invalid source');
       
       // Remove the stream
       $this->Stream = null;
       $this->Buffer = '';
       
       // Cancel pending requests
-      foreach ($this->Requests as $CallbackSpec)
-        $this->___raiseCallback ($CallbackSpec [0], null, null, $CallbackSpec [1]);
+      foreach ($this->Requests as $Callbacks)
+        call_user_func ($Callbacks [1], 'Removing pipe from consumer');
       
       $this->Requests = array ();
       
       // Indicate success
-      $this->___raiseCallback ($Callback, true, $Private);
       $this->___callback ('eventUnpiped', $Source);
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

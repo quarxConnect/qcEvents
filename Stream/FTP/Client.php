@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * FTP Client Stream
@@ -411,31 +412,32 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Try to close gracefully
       if (!$this->StreamCallback && $this->Stream && ($this->State != self::STATE_CONNECTING))
-        return $this->runFTPCommand ('QUIT', null, function () use ($Callback, $Private) {
-          if ($this->Stream)
-            return $this->Stream->close (function () use ($Callback, $Private) {
-              $this->___callback ('eventClosed');
-              $this->___raiseCallback ($Callback, $Private);
-            });
-          
-          $this->___callback ('eventClosed');
-          $this->___raiseCallback ($Callback, $Private);
+        return new qcEvents_Promise (function ($resolve, $reject) {
+          $this->runFTPCommand ('QUIT', null, function () use ($resolve, $reject) {
+            if ($this->Stream) {
+              $Stream = $this->Stream;
+              $this->Stream = null;
+              
+              $Stream->close ()->then ($resolve, $reject);
+            } else
+              $resolve ();
+            
+            $this->___callback ('eventClosed');
+          });
         });
       
-      $this->___raiseCallback ($this->StreamCallback [0], false, $this->StreamCallback [1]);
+      call_user_func ($this->StreamCallback [1], 'Stream closed');
       $this->StreamCallback = null;
       
       $this->___callback ('eventClosed');
-      $this->___raiseCallback ($Callback, $Private);
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -510,7 +512,11 @@
 
         // Fire the callback
         if ($this->StreamCallback) {
-          $this->___raiseCallback ($this->StreamCallback [0], ($Code < 400), $this->StreamCallback [1]);
+          if ($Code < 400)
+            call_user_func ($this->StreamCallback [0]);
+          else
+            call_user_func ($this->StreamCallback [1], 'Received ' . $Code);
+          
           $this->StreamCallback = null;
         }
 
@@ -715,12 +721,14 @@
               $Socket = new qcEvents_Socket ($this->Stream->getEventBase ());
               
               // Try to connect to destination and forward the handle to our caller upon completion
-              $Socket->connect ($IP, $Port, $Socket::TYPE_TCP, false, function (qcEvents_Socket $Socket, $Status) use ($intermediateCallback, $intermediatePrivate) {
-                if (!$Status)
-                  $Socket = null;
-                
-                $this->___raiseCallback ($intermediateCallback, $Socket, $intermediatePrivate);
-              });
+              $Socket->connect ($IP, $Port, $Socket::TYPE_TCP)->then (
+                function () use ($Socket, $intermediateCallback, $intermediatePrivate) {
+                  $this->___raiseCallback ($intermediateCallback, $Socket, $intermediatePrivate);
+                },
+                function () use ($intermediateCallback, $intermediatePrivate) {
+                  $this->___raiseCallback ($intermediateCallback, null, $intermediatePrivate);
+                }
+              );
               
               // Issue the original command
               array_unshift (
@@ -857,19 +865,13 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     *  
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       if ($this->StreamCallback)
-        $this->___raiseCallback ($this->StreamCallback [0], false, $this->StreamCallback [1]);
+        call_user_func ($this->StreamCallback [1], 'Replaced by new source');
       
       // Update our internal state
       $this->State = self::STATE_CONNECTING;
@@ -879,10 +881,11 @@
       $this->CommandQueue = array ();
       $this->Stream = $Source;
       
-      if ($Callback)
-        $this->StreamCallback = array ($Callback, $Private);
-      else
-        $this->StreamCallback = null;
+      return new qcEvents_Promise (
+        function () {
+          $this->StreamCallback = func_get_args ();
+        }
+      );
     }
     // }}}
     
@@ -891,23 +894,17 @@
      * Callback: A source was removed from this consumer
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void  
+     * @return qcEvents_Promise 
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       if ($this->StreamCallback) {
-        $this->___raiseCallback ($this->StreamCallback [0], false, $this->StreamCallback [1]);
+        call_user_func ($this->StreamCallback [1], 'Removed as source');
         $this->StreamCallback = null;
       }
       
-      $this->___raiseCallback ($Callback, true, $Private);
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

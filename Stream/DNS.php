@@ -22,6 +22,7 @@
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Trait/Hookable.php');
   require_once ('qcEvents/Stream/DNS/Message.php');
+  require_once ('qcEvents/Promise.php');
   
   class qcEvents_Stream_DNS implements qcEvents_Interface_Consumer, qcEvents_Interface_Stream_Consumer {
     use qcEvents_Trait_Hookable;
@@ -34,6 +35,9 @@
     
     /* Active queries */
     private $dnsQueries = array ();
+    
+    /* Timeouts of queries */
+    private $dnsTimeouts = array ();
     
     /* Timeout for queries */
     private $dnsTimeout = 4;
@@ -135,10 +139,10 @@
         $Data = chr ((strlen ($Data) & 0xFF00) >> 8) . chr (strlen ($Data) & 0xFF) . $Data;
       
       // Add to local storage if it is a query
-      if ($Query && ($this->Source instanceof qcEvents_Interface_Timer)) {
+      if ($Query && ($this->Source instanceof qcEvents_Interface_Common)) {
         $this->dnsQueries [$Message->getID ()] = $Message;
-        $this->Source->addTimer ($this->dnsTimeout, false, array ($this, 'dnsStreamTimeout'), $Message);
-      
+        $this->dnsAddTimeout ($Message);
+        
       // Or remove from queue if this is a response
       } elseif (!$Query)
         unset ($this->dnsQueries [$Message->getID ()]);
@@ -169,43 +173,64 @@
       
       // Process depending on message-type
       if (!$Message->isQuestion ()) {
+        $mID = $Message->getID ();
+        
         // Check if we have the corresponding query saved
-        unset ($this->dnsQueries [$Message->getID ()]);
+        unset ($this->dnsQueries [$mID]);
+        
+        // Make sure our timeout is removed
+        if (isset ($this->dnsTimeouts [$mID])) {
+          $this->dnsTimeouts [$mID]->cancel ();
+          
+          unset ($this->dnsTimeouts [$mID]);
+        }
         
         return $this->___callback ('dnsResponseReceived', $Message);
       }
       
-      if ($this->Source instanceof qcEvents_Interface_Timer) {
-        $this->dnsQueries [$Message->getID ()] = $Message;
-        $this->Source->addTimer ($this->dnsTimeout, false, array ($this, 'dnsStreamTimeout'), $Message);
-      }
+      $this->dnsQueries [$Message->getID ()] = $Message;
+      $this->dnsAddTimeout ($Message);
       
       return $this->___callback ('dnsQuestionReceived', $Message);
     }
     // }}}
     
-    // {{{ dnsStreamTimeout
+    // {{{ dnsAddTimeout
     /**
-     * Timeout a localy queued query
+     * Setup a timeout for a given message
      * 
      * @param qcEvents_Stream_DNS_Message $Message
      * 
-     * @access public
+     * @access private
      * @return void
      **/
-    public function dnsStreamTimeout (qcEvents_Stream_DNS_Message $Message) {
-      // Retrive the ID of the message
-      $ID = $Message->getID ();
-      
-      // Sanatize the call
-      if (!isset ($this->dnsQueries [$ID]) || ($this->dnsQueries [$ID] !== $Message))
+    private function dnsAddTimeout (qcEvents_Stream_DNS_Message $Message) {
+      // Check if we can setup timeouts at all
+      if (!$this->Source || !($eventBase = $this->Source->getEventBase ()))
         return;
       
-      // Remove from the queue
-      unset ($this->dnsQueries [$ID]);
+      $mID = $Message->getID ();
       
-      // Fire a callback
-      $this->___callback ('dnsQuestionTimeout', $Message);
+      // Check wheter just to restart an old timeout
+      if (isset ($this->dnsTimeouts [$mID]))
+        return $this->dnsTimeouts [$mID]->restart ();
+      
+      // Create a new timeout
+      $this->dnsTimeouts [$mID] = $eventBase->addTimeout ($this->dnsTimeout);
+      $this->dnsTimeouts [$mID]->then (
+        function () use ($Message, $mID) {
+          // Check if the query already vanished
+          if (!isset ($this->dnsQueries [$mID]))
+            return;
+          
+          // Remove from the queue
+          unset ($this->dnsQueries [$mID]);
+          unset ($this->dnsTimeouts [$mID]);
+          
+          // Fire a callback
+          $this->___callback ('dnsQuestionTimeout', $Message);
+        }
+      );
     }
     // }}}
     
@@ -268,16 +293,14 @@
     /**
      * Close this event-interface
      * 
-     * @param callable $Callback (optional) Callback to raise once the interface is closed
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function close (callable $Callback = null, $Private = null) {
+    public function close () : qcEvents_Promise {
       // Just raise callbacks
-      $this->___raiseCallback ($Callback, $Private);
       $this->___callback ('eventClosed');
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -320,17 +343,23 @@
       
       // Check if there is an existing source
       if ($this->Source)
-        $this->deinitConsumer ($this->Source);
+        $Promise = $this->deinitConsumer ($this->Source);
+      else
+        $Promise = qcEvents_Promise::resolve ();
       
-      // Reset ourself
-      $this->reset ();
-      
-      // Set the new source
-      $this->Source = $Source;
-      
-      // Raise an event for this
-      $this->___raiseCallback ($Callback, true, $Private);
-      $this->___callback ('eventPiped', $Source);
+      $Promise->finally (
+        function () use ($Source, $Callback, $Private) {
+          // Reset ourself
+          $this->reset ();
+          
+         // Set the new source
+         $this->Source = $Source;
+         
+          // Raise an event for this
+          $this->___raiseCallback ($Callback, true, $Private);
+          $this->___callback ('eventPiped', $Source);
+        }
+      );
     }
     // }}}
     
@@ -339,37 +368,35 @@
      * Setup ourself to consume data from a stream
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Interface_Stream_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source, callable $Callback = null, $Private = null) {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
       // Check if this source is already set
-      if ($this->Source === $Source) {
-        $this->___raiseCallback ($Callback, true, $Private);
-        
-        return;
-      }
+      if ($this->Source === $Source)
+        return qcEvents_Promise::resolve ();
       
       // Check if there is an existing source
       if ($this->Source)
-        $this->deinitConsumer ($this->Source);
+        $Promise = $this->deinitConsumer ($this->Source)->catch (function () { });
+      else
+        $Promise = qcEvents_Promise::resolve ();
       
-      // Reset ourself
-      $this->reset ();
-      
-      // Set the new source
-      $this->Source = $Source;
-      
-      // Raise an event for this
-      $this->___callback ('eventPipedStream', $Source);
-      $this->___raiseCallback ($Callback, true, $Private);
+      return $Promise->then (
+        function () use ($Source) {
+          // Reset ourself
+          $this->reset ();
+          
+          // Set the new source
+          $this->Source = $Source;
+          
+          // Raise an event for this
+          $this->___callback ('eventPipedStream', $Source);
+          
+          return true;
+        }
+      );
     }
     // }}}
     
@@ -378,27 +405,22 @@
      * Callback: A source was removed from this sink
      * 
      * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of 
-     * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void  
+     * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       // Check if this is the right source
       if ($this->Source !== $Source)
-        return $this->___raiseCallback ($Callback, false, $Private);
+        return qcEvents_Promise::reject ('Invalid source');
       
       // Unset the source
       $this->Source = null;
       
       // Raise an event for this
-      $this->___raiseCallback ($Callback, true, $Private);
       $this->___callback ('eventUnpiped', $Source);
+      
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     

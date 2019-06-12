@@ -1,7 +1,7 @@
 <?PHP
 
   /**
-   * qcEvents - Interface for event-handlers that may capture timer-events
+   * qcEvents - Interface for Source-Consumers
    * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
@@ -20,45 +20,53 @@
   
   require_once ('qcEvents/Interface/Hookable.php');
   
-  interface qcEvents_Interface_Timer extends qcEvents_Interface_Hookable {
-    // {{{ addTimer
+  interface qcEvents_Interface_Consumer_Common extends qcEvents_Interface_Hookable {
+    // {{{ consume
     /**
-     * Register a timer for this event-handle
+     * Consume a set of data
      * 
-     * @param mixed $Timeout
-     * @param bool $Repeat (optional)
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
+     * @param mixed $Data
+     * @param qcEvents_Interface_Source $Source
      * 
      * @access public
      * @return void
      **/
-    public function addTimer ($Timeout, $Repeat = false, callable $Callback = null, $Private = null);
+    public function consume ($Data, qcEvents_Interface_Source $Source);
     // }}}
     
-    // {{{ clearTimer
+    // {{{ close
     /**
-     * Try to unregister a previous declared timer for this event-handle
-     * 
-     * @param mixed $Timeout
-     * @param bool $Repeat (optional)
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
+     * Close this event-interface
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function clearTimer ($Timeout, $Repeat = false, callable $Callback = null, $Private = null);
+    public function close () : qcEvents_Promise;
     // }}}
     
-    // {{{ raiseTimer
+    // {{{ deinitConsumer
     /**
-     * Callback: A timer-event was raised
+     * Callback: A source was removed from this consumer
+     * 
+     * @param qcEvents_Interface_Source $Source
      * 
      * @access public
+     * @return qcEvents_Promise
+     **/
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise;
+    // }}}
+    
+    
+    // {{{ eventUnpiped
+    /**
+     * Callback: A source was removed from this consumer
+     * 
+     * @param qcEvents_Interface_Source $Source
+     * 
+     * @access protected
      * @return void
      **/
-    public function raiseTimer ();
+    # protected function eventUnpiped (qcEvents_Interface_Source $Source);
     // }}}
   }
 
