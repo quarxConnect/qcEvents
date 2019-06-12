@@ -495,6 +495,10 @@
       $this->removeHook ('httpFinished', array ($this, 'httpdRequestReady'));
       $this->removeHook ('httpHeaderReady', array ($this, 'httpdHeaderReady'));
       
+      // Stop our timer
+      if ($this->keepAliveTimer)
+        $this->keepAliveTimer->cancel ();
+      
       // Forward to our parent
       return parent::deinitConsumer ($Source);
     }
