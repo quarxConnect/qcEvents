@@ -19,8 +19,10 @@
    **/
   
   require_once ('qcEvents/Promise.php');
+  require_once ('qcEvents/File.php');
   require_once ('qcEvents/Stream/HTTP.php');
   require_once ('qcEvents/Stream/HTTP/Request.php');
+  require_once ('qcEvents/Stream/Websocket.php');
   
   /**
    * HTTP-Server
@@ -157,15 +159,13 @@
       }
       
       // Try to find an event-base
-      $Source = $Server->getPipeSource ();
+      $Source = $this->getPipeSource ();
       
       if (!method_exists ($Source, 'getEventBase') ||
           !is_object ($Base = $Source->getEventBase ()))
         $Base = qcEvents_Base::singleton ();
       
       // Try to read the file
-      require_once ('qcEvents/File.php');
-      
       return qcEvents_File::readFileContents ($Base, $Path)->then (
         function ($Content) use ($Path, $Request, $Response) {
           // Set a proper status
@@ -206,6 +206,65 @@
           
           // Forward the result
           return $this->httpdSetResponse ($Request, $Response, 'File could not be read');
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ upgradeToWebsocket
+    /**
+     * Upgrade a pending request to a websocket-connection
+     * 
+     * @param qcEvents_Stream_HTTP_Request $Request
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function upgradeToWebsocket (qcEvents_Stream_HTTP_Request $Request) : qcEvents_Promise {
+      // Make sure the request is valid for a Websocket-Upgrade
+      if ($Request->getField ('Upgrade') != 'websocket')
+        return qcEvents_Promise::reject ('Missing or invalid Upgrade-Header');
+      
+      if (!in_array ('Upgrade', explode (',', str_replace (' ', '', $Request->getField ('Connection')))))
+        return qcEvents_Promise::reject ('Missing Upgrade-Token on Connection-Header');
+      
+      if (!($Nonce = $Request->getField ('Sec-WebSocket-Key')))
+        return qcEvents_Promise::reject ('Missing Sec-WebSocket-Key-Header');
+      
+      if ($Request->getField ('Sec-WebSocket-Version') != 13)
+        return qcEvents_Promise::reject ('Invalud WebSocket-Version');
+      
+      // Preapre response-header
+      $Response = new qcEvents_Stream_HTTP_Header (array (
+        'HTTP/' . $Request->getVersion (true) . ' 101 Switch protocols',
+        'Upgrade: websocket',
+        'Connection: Upgrade',
+        'Sec-WebSocket-Accept: ' . base64_encode (sha1 ($Nonce . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true)),
+      ));
+      
+      // Send out the response
+      return $this->httpdSetResponse (
+        $Request,
+        $Response
+      )->then (
+        function () {
+          // Retrive our source-stream
+          $Stream = $this->getPipeSource ();
+          
+          // Remove the stream as source from ourself
+          return $Stream->unpipe ($this)->catch (function () { })->then (
+            function () use ($Stream) {
+              // Create a new websocket
+              $Websocket = new qcEvents_Stream_Websocket (qcEvents_Stream_Websocket::TYPE_SERVER);
+              
+              // Pipe the stream to the new socket
+              return $Stream->pipeStream ($Websocket)->then (
+                function () use ($Websocket) {
+                  return $Websocket;
+                }
+              );
+            }
+          );
         }
       );
     }
