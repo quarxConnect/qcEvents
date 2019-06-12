@@ -65,6 +65,141 @@
     }
     // }}}
     
+    // {{{ serveFromFilesystem
+    /**
+     * Answer this request using a file from filesystem
+     * 
+     * @param qcEvents_Stream_HTTP_Request $Request Request to serve
+     * @param string $Directory Document-Root-Directory to serve the file from
+     * @param bool $allowSymlinks (optional) Allow symlinks to files outside the document-root
+     * @param qcEvents_Stream_HTTP_Header $Response (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function serveFromFilesystem (qcEvents_Stream_HTTP_Request $Request, $Directory, $allowSymlinks = false, qcEvents_Stream_HTTP_Header $Response = null) : qcEvents_Promise {
+      // Make sure we have a response-header
+      if (!$Response)
+        $Response = new qcEvents_Stream_HTTP_Header (array ('HTTP/1.1 500 Internal server error'));
+      
+      $Response->setVersion ($Request->getVersion (true));
+      
+      // Sanatize the Document-Root
+      if (($Directory = realpath ($Directory)) === false) {
+        $Response->setStatus (500);
+        $Response->setMessage ('Internal server error');
+        $Response->setField ('Content-Type', 'text/plain');
+        
+        return $this->httpdSetResponse ($Request, $Response, 'Invalid document-root.' . "\n");
+      }
+      
+      $Directory .= '/';
+      
+      // Check the requested URI 
+      $URI = $Request->getURI ();
+      
+      if (($p = strpos ($URI, '?')) !== false)
+        $URI = substr ($URI, 0, $p);
+      
+      if ($URI [0] == '/')
+        $URI = substr ($URI, 1);
+      
+      // Remove pseudo-elements from URL
+      $Path = array ();
+      
+      foreach (explode ('/', $URI) as $Segment)
+        if ($Segment == '.')
+          continue;
+        elseif ($Segment == '..')
+          array_pop ($Path);
+        else
+          $Path [] = $Segment;
+      
+      $Path = implode ('/', $Path);
+      
+      // Create absolute path from request
+      $Path = realpath ($Directory . $Path) . (strlen ($Path) == 0 ? '/' : '');
+      
+      // Check if the path exists and is valid
+      if (($Path === false) || !file_exists ($Path) || (!$allowSymlinks && (substr ($Path, 0, strlen ($Directory)) != $Directory))) {
+        $Response->setStatus (404);
+        $Response->setMessage ('Not found');
+        $Response->setField ('Content-Type', 'text/plain');
+        
+        return $this->httpdSetResponse ($Request, $Response, 'Not found ' . $Path . "\r\n");
+      }
+      
+      // Handle directory-requests
+      if (is_dir ($Path)) {
+        // Check if it was requested as directory
+        if ((strlen ($URI) > 0) && (substr ($URI, -1, 1) != '/')) {
+          $Response->setStatus (302);
+          $Response->setMessage ('This is a directory');
+          $Response->setField ('Content-Type', 'text/plain');
+          $Response->setField ('Location', '/' . $URI . '/');
+          
+          return $this->httpdSetResponse ($Request, $Response, 'This is a directory');
+        } elseif (!is_file ($Path . 'index.html')) {
+          $Response->setStatus (403);
+          $Response->setMessage ('Forbidden');
+          $Response->setField ('Content-Type', 'text/plain');
+          
+          return $this->httpdSetResponse ($Request, $Response, 'Directory-Listing not supported');
+        } else
+          $Path .= 'index.html';
+      }
+      
+      // Try to read the file
+      require_once ('qcEvents/File.php');
+      
+      return qcEvents_File::readFileContents (
+        qcEvents_Base::singleton (),
+        $Path
+      )->then (
+        function ($Content) use ($Path, $Request, $Response) {
+          // Set a proper status
+          $Response->setStatus (200);
+          $Response->setMessage ('Ok');
+          
+          // Try to guess content-type
+          if (function_exists ('mime_content_type')) {
+            // Try mime-magic on the file
+            $ContentType = mime_content_type ($Path);
+            
+            // Catch text/plain to cover some edge-cases
+            if ($ContentType == 'text/plain') {
+              // Handle some known special cases of text/plain
+              switch (strtolower (substr ($Path, strrpos ($Path,'.')))) {
+                case '.css':
+                  $ContentType = 'text/css'; break;
+                case '.js':
+                  $ContentType = 'text/javascript'; break;
+              }
+              
+              // Try to detect character-encoding
+              if (function_exits ('mb_detect_encoding') &&
+                  ($Encoding = mb_detect_encoding ($Content)))
+                $ContentType .= '; charset="' . $Encoding . '"';
+            }
+            
+            // Push to response
+            $Response->setField ('Content-Type', $ContentType);
+          }
+          
+          return $this->httpdSetResponse ($Request, $Response, $Content);
+        },
+        function () {
+          // Push an error to the response
+          $Response->setStatus (403);
+          $Response->setMessage ('Forbidden');
+          
+          // Forward the result
+          return $this->httpdSetResponse ($Request, $Response, 'File could not be read');
+        }
+      );
+    }
+    // }}}
+    
     // {{{ httpdSetResponse
     /**
      * Finish a request within a single transmission
