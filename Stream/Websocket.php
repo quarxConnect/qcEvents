@@ -37,7 +37,7 @@
     
     /* Type of websocket-endpoint */
     const TYPE_CLIENT = 0;
-    const TYPE_SERVER = 1; # Unimplemented
+    const TYPE_SERVER = 1;
     
     /* Nonce for connection-setup */
     private static $Nonce = 0x00000000;
@@ -88,9 +88,6 @@
      * @return void
      **/
     function __construct ($Type = self::TYPE_CLIENT, array $Protocols = null, $URI = null, $Origin = null) {
-      if ($Type != self::TYPE_CLIENT)
-        throw new Exception ('Only client-endpoints are supported at the moment');
-      
       $this->Type = $Type;
       $this->Protocols = $Protocols;
       $this->URI = $URI;
@@ -482,7 +479,11 @@
       $Length = strlen ($Payload);
       
       // Start the frame-header
-      $Frame = pack ('CC', ($Finish ? 0x80 : 0x00) | ($Opcode & 0x0F), ($this->Type == $this::TYPE_CLIENT ? 0x80 : 0x00) | ($Length < 0x7E ? $Length : ($Length < 0x10000 ? 0x7E : 0x7F)));
+      $Frame = pack (
+        'CC',
+        ($Finish ? 0x80 : 0x00) | ($Opcode & 0x0F),
+        ($this->Type == $this::TYPE_CLIENT ? 0x80 : 0x00) | ($Length < 0x7E ? $Length : ($Length < 0x10000 ? 0x7E : 0x7F))
+      );
       
       if ($Length > 0xFFFF)
         $Frame .= pack ('J', $Length);
@@ -532,14 +533,27 @@
      * @return qcEvents_Promise
      **/
     public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+      if ($this->Type == $this::TYPE_SERVER) {
+        // Register the source
+        $this->Stream = $Source;
+        $this->Start = null;
+        
+        // Raise events
+        $this->___callback ('websocketConnected');
+        $this->___callback ('eventPipedStream', $Source);
+        
+        return qcEvents_Promise::resolve ();
+      }
+      
       // Check if we should generate a handshake
       if ($this->URI === null) {
         // Register the source
         $this->Stream = $Source;
         $this->Start = null;
         
-        // Forward the callback
+        // Raise events
         $this->___callback ('websocketConnected');
+        $this->___callback ('eventPipedStream', $Source);
         
         return qcEvents_Promise::resolve ();
       }
@@ -613,7 +627,7 @@
               // Register the source
               $this->Stream = $Source;
 
-              // Forward the callback
+              // Raise events
               $this->___callback ('websocketConnected');
               $this->___callback ('eventPipedStream', $Source);
             }
@@ -633,12 +647,16 @@
      * @return qcEvents_Promise
      **/
     public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
+      // Check if the source is our stream
       if ($this->Stream === $Source) {
+        // Remove reference to stream
         $this->Stream = null;
         
+        // Raise a callback
         $this->___callback ('eventUnpiped', $Source);
       }
       
+      // Return a resolved promise
       return qcEvents_Promise::resolve ();
     }
     // }}}

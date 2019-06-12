@@ -70,9 +70,11 @@
       $this->Opcode = $Opcode;
       
       // Collect all pending data on close
-      $this->addHook ('eventClosed', function (qcEvents_Stream_Websocket_Message $Self) {
-        $this->Buffer = $this->read ();
-      }, null, true);
+      $this->once ('eventClosed')->then (
+        function () {
+          $this->Buffer = $this->read ();
+        }
+      );
       
       // Push payload if there is some
       if ($Payload !== null) {
