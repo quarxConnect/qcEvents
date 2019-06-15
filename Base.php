@@ -283,10 +283,11 @@
       $Interval = $Timer->getInterval ();
       
       $Seconds = floor ($Interval);
-      $uSeconds = $Interval - $Seconds;
+      $uSeconds = ($Interval - $Seconds) * 1000000;
       
       // Enqueue the timer
       $Then = $this->getTimer ();
+      
       $Then [0] += $Seconds;
       $Then [1] += $uSeconds;
       
