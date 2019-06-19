@@ -70,7 +70,7 @@
         
         // Connect ourself with that socket
         return $Socket->pipeStream ($Client, true)->then (
-          function (qcEvents_Socket $Socket, $Status) use ($Client) {
+          function () use ($Socket, $Client) {
             // Check wheter to enable TLS
             if (($this->remoteTLS === true) && !$Client->hasFeature ('STARTTLS') && !$Socket->tlsEnable ())
               return $this->Pool->releaseSocket ($Socket);
@@ -129,7 +129,7 @@
             );
           },
           function () use ($Socket) {
-            $this->Pool->releaseSocket ($Socket)
+            $this->Pool->releaseSocket ($Socket);
           }
         );
       });

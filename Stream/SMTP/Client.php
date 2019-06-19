@@ -910,7 +910,7 @@
           // Create a new promise
           return new qcEvents_Promise (function ($resolve, $reject) {
             $this->initCallback = array ($resolve, $reject);
-          })
+          });
         }
       );
     }
