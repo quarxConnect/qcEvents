@@ -266,6 +266,23 @@
     }
     // }}}
     
+    // {{{ removeHooks
+    /**
+     * Remove registered hooks
+     * 
+     * @param string $Name (optional) Name of hook to remove callbacks for
+     * 
+     * @access public
+     * @return void
+     **/
+    public function removeHooks ($Name = null) {
+      if ($Name === null)
+        $this->Hooks = array ();
+      else
+        unset ($this->Hooks [strtolower ($Name)]);
+    }
+    // }}}
+    
     // {{{ once
     /**
      * Register a hook that is triggered once when a given event raises for the first time
