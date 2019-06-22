@@ -127,7 +127,7 @@
           $this->removeHook ('eventReadable', array ($this, '___pipeDo'));
           $this->removeHook ('eventClosed', array ($this, '___pipeClose'));
           
-          $Handler->removeHook ('eventReadable', array ($this, '___pipeHandlerDo'));
+          # $Handler->removeHook ('eventReadable', array ($this, '___pipeHandlerDo'));
           $Handler->removeHook ('eventClosed', array ($this, '___pipeHandlerClose'));
           
           // Forward the error
@@ -140,7 +140,7 @@
       $this->addHook ('eventClosed', array ($this, '___pipeClose'));
       
       // Make sure we are being informed about changes on the handler itself
-      $Handler->addHook ('eventReadable', array ($this, '___pipeHandlerDo'));
+      # $Handler->addHook ('eventReadable', array ($this, '___pipeHandlerDo'));
       $Handler->addHook ('eventClosed', array ($this, '___pipeHandlerClose'));
       
       // Register a new pipe
@@ -231,31 +231,31 @@
      * @access public
      * @return void
      **/
-    public function ___pipeHandlerDo (qcEvents_Interface_Stream_Consumer $Handler) {
-      // Check if there are pipes to process
-      if (count ($this->Pipes) == 0) {
-        if ($this instanceof qcEvents_Interface_Hookable) {
-          $this->removeHook ('eventReadable', array ($this, '___pipeDo'));
-          $this->removeHook ('eventClosed', array ($this, '___pipeClose'));
-        }
-      
-        return;
-      }
-      
-      // Check if there is already such pipe
-      if (($key = $this->getPipeHandlerKey ($Handler)) === false) {
-        $Handler->removeHook ('eventReadable', array ($this, '___pipeHandlerDo'));
-        $Handler->removeHook ('eventClosed', array ($this, '___pipeHandlerClose'));
-        
-        return;
-      }
-      
-      // Try to read the data
-      if (!is_string ($Data = $Handler->read ($this::$pipeBlockSize)) || (strlen ($Data) < 1))
-        return;
-      
-      $this->write ($Data);
-    }
+    #public function ___pipeHandlerDo (qcEvents_Interface_Stream_Consumer $Handler) {
+    #  // Check if there are pipes to process
+    #  if (count ($this->Pipes) == 0) {
+    #    if ($this instanceof qcEvents_Interface_Hookable) {
+    #      $this->removeHook ('eventReadable', array ($this, '___pipeDo'));
+    #      $this->removeHook ('eventClosed', array ($this, '___pipeClose'));
+    #    }
+    #  
+    #    return;
+    #  }
+    #  
+    #  // Check if there is already such pipe
+    #  if (($key = $this->getPipeHandlerKey ($Handler)) === false) {
+    #    # $Handler->removeHook ('eventReadable', array ($this, '___pipeHandlerDo'));
+    #    $Handler->removeHook ('eventClosed', array ($this, '___pipeHandlerClose'));
+    #    
+    #    return;
+    #  }
+    #  
+    #  // Try to read the data
+    #  if (!is_string ($Data = $Handler->read ($this::$pipeBlockSize)) || (strlen ($Data) < 1))
+    #    return;
+    #  
+    #  $this->write ($Data);
+    #}
     // }}}
     
     // {{{ ___pipeClose
