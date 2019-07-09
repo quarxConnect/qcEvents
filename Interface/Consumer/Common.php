@@ -57,6 +57,16 @@
     // }}}
     
     
+    // {{{ eventClosed
+    /**
+     * Callback: The interface was closed
+     * 
+     * @access public
+     * @return void
+     **/
+    # protected function eventClosed ();
+    // }}}
+    
     // {{{ eventUnpiped
     /**
      * Callback: A source was removed from this consumer
