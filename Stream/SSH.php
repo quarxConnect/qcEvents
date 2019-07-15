@@ -229,11 +229,17 @@
      * 
      * @param string $Username
      * @param string $Password
+     * @param bool $Force (optional) Force submission of password over an unencrypted connection
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function authPassword ($Username, $Password) : qcEvents_Promise {
+    public function authPassword ($Username, $Password, $Force = false) : qcEvents_Promise {
+      // Make sure the connection is encrypted
+      if (!$Force && ($this->cipherLocal [0] == self::CIPHER_NONE))
+        return qcEvents_Promise::reject ('Will not transmit password over an unencrypted connection');
+      
+      // Create the message
       $Message = new qcEvents_Stream_SSH_UserAuthRequest;
       $Message->Username = $Username;
       $Message->Service = 'ssh-connection';
@@ -241,6 +247,7 @@
       $Message->ChangePassword = false;
       $Message->Password = $Password;
       
+      // Enqueue message for authentication
       return $this->enqueueAuthMessage ($Message);
     }
     // }}}
