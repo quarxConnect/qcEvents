@@ -20,59 +20,15 @@
   
   require_once ('qcEvents/File.php');
   require_once ('qcEvents/Stream/SSH/Message.php');
+  require_once ('qcEvents/Stream/SSH/PublicKey.php');
   
-  class qcEvents_Stream_SSH_PrivateKey {
-    /* Type of this private key */
-    const TYPE_RSA = 0;
-    const TYPE_DSA = 1;     # Unsupported
-    const TYPE_ECDSA = 2;   # Unsupported
-    const TYPE_ED25519 = 3; # Unsupported
-    
-    private $Type = qcEvents_Stream_SSH_PrivateKey::TYPE_RSA;
-    
-    /* RSA Modulus */
-    private $rsaModulus = null;
-    
-    /* RSA Public Exponent */
-    private $rsaPublicExponent = null;
-    
+  class qcEvents_Stream_SSH_PrivateKey extends qcEvents_Stream_SSH_PublicKey {
     /* RSA Private Exponent */
     private $rsaPrivateExponent = null;
     
     /* RSA Primes */
     private $rsaPrime1 = null;
     private $rsaPrime2 = null;
-    
-    /* DSA-Parameters (unsupported) */
-    private $dsaP = null;
-    private $dsaQ = null;
-    private $dsaG = null;
-    private $dsaY = null;
-    
-    // {{{ loadFromFile
-    /**
-     * Try to load a private key from a file
-     * 
-     * @param qcEvents_Base $Base
-     * @param string $Filename
-     * 
-     * @access public
-     * @return qcEvents_Promise
-     **/
-    public static function loadFromFile (qcEvents_Base $Base, $Filename) : qcEvents_Promise {
-      // Try to read all contents from the file first
-      return qcEvents_File::readFileContents ($Base, $Filename)->then (
-        function ($Data) {
-          // Try to parse the key
-          if (!is_object ($Key = static::loadFromString ($Data)))
-            throw new exception ('Failed to load key');
-          
-          // Forward the result
-          return $Key;
-        }
-      );
-    }
-    // }}}
     
     // {{{ loadFromString
     /**
@@ -81,9 +37,9 @@
      * @param string $String
      * 
      * @access public
-     * @return qcEvents_Stream_SSH_PrivateKey
+     * @return qcEvents_Stream_SSH_PublicKey
      **/
-    public static function loadFromString ($String) : ?qcEvents_Stream_SSH_PrivateKey {
+    public static function loadFromString ($String) : ?qcEvents_Stream_SSH_PublicKey {
       // Check for something PEM-Encoded and convert to DER
       if (substr ($String, 0, 10) == '-----BEGIN') {
         $Offset = strpos ($String, "\n") + 1;
@@ -137,7 +93,7 @@
         return null;
       }
       
-      // Check for dropbear private-key
+      // Check for SSH private-key
       $Offset = 0;
       $dbType = qcEvents_Stream_SSH_Message::readString ($String, $Offset, $Length);
       
@@ -211,18 +167,6 @@
     }
     // }}}
     
-    // {{{ getType
-    /**
-     * Retrive the type of this key
-     * 
-     * @access public
-     * @return enum
-     **/
-    public function getType () {
-      return $this->Type;
-    }
-    // }}}
-    
     // {{{ sign
     /**
      * Try to sign a given input with our private key
@@ -238,15 +182,8 @@
         $k = strlen (gmp_export ($this->rsaModulus, 1, GMP_BIG_ENDIAN | GMP_MSW_FIRST));
         
         // Create digest-info
-        $DigestInfo = "\x30\x21\x30\x09\x06\x05\x2b\x0e\x03\x02\x1a\x05\x00\x04\x14" . hash ('sha1', $Data, true);
-        $DigestInfoLength = strlen ($DigestInfo);
-        
-        if ($k < $DigestInfoLength + 11)
+        if (($Data = $this->rsaPKCS15encode ($Data, $k)) === null)
           return null;
-        
-        // Apply padding to data
-        $Data = "\x00\x01" . str_repeat ("\xff", $k - $DigestInfoLength - 3) . "\x00" . $DigestInfo;
-        unset ($DigestInfo, $DigestInfoLength);
         
         // Convert to integer (has to be a positive integer, we just assume it as we know the first byte of the input)
         $Data = gmp_import ($Data, 1, GMP_MSW_FIRST | GMP_BIG_ENDIAN);
