@@ -27,6 +27,7 @@
   require_once ('qcEvents/Stream/SSH/NewKeys.php');
   require_once ('qcEvents/Stream/SSH/ServiceRequest.php');
   require_once ('qcEvents/Stream/SSH/UserAuthRequest.php');
+  require_once ('qcEvents/Stream/SSH/PublicKey.php');
   require_once ('qcEvents/Stream/SSH/PrivateKey.php');
   
   // Make sure we have GMP available
@@ -635,6 +636,14 @@
           true
         );
         
+        // Check the hostkey and signature
+        $PublicKey = qcEvents_Stream_SSH_PublicKey::loadFromString ($Message->serverHostKey);
+        
+        if (!$PublicKey->verifySSH ($this->keyExchange->hash, $Message->Signature))
+          return $this->failStream ('Could not verify hostkey');
+        
+        $this->___callback ('authHostkey', $PublicKey);
+        
         // Make sure we have a session-id
         if ($this->sessionID === null)
           $this->sessionID = $this->keyExchange->hash;
@@ -951,6 +960,18 @@
      * @return void
      **/
     protected function eventUnpiped (qcEvents_Interface_Source $Source) { }
+    // }}}
+    
+    // {{{ authHostkey
+    /**
+     * Callback: Hostkey was received from server
+     * 
+     * @param qcEvents_Stream_SSH_PublicKey $Hostkey
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function authHostkey (qcEvents_Stream_SSH_PublicKey $Hostkey) { }
     // }}}
     
     // {{{ authBanner
