@@ -188,7 +188,7 @@
               }
               
               // Try to detect character-encoding
-              if (function_exits ('mb_detect_encoding') &&
+              if (function_exists ('mb_detect_encoding') &&
                   ($Encoding = mb_detect_encoding ($Content)))
                 $ContentType .= '; charset="' . $Encoding . '"';
             }
