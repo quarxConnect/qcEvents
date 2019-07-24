@@ -402,26 +402,42 @@
   }
   
   // Transport layer
-  require_once ('qcEvents/Stream/SSH/Disconnect.php');		//  1
-  require_once ('qcEvents/Stream/SSH/Ignore.php');		//  2
-  require_once ('qcEvents/Stream/SSH/Unimplemented.php');	//  3
-  require_once ('qcEvents/Stream/SSH/Debug.php');		//  4
-  require_once ('qcEvents/Stream/SSH/ServiceRequest.php');	//  5
-  require_once ('qcEvents/Stream/SSH/ServiceAccept.php');	//  6
+  require_once ('qcEvents/Stream/SSH/Disconnect.php');		//   1
+  require_once ('qcEvents/Stream/SSH/Ignore.php');		//   2
+  require_once ('qcEvents/Stream/SSH/Unimplemented.php');	//   3
+  require_once ('qcEvents/Stream/SSH/Debug.php');		//   4
+  require_once ('qcEvents/Stream/SSH/ServiceRequest.php');	//   5
+  require_once ('qcEvents/Stream/SSH/ServiceAccept.php');	//   6
   
   // Algorithm negotiation
-  require_once ('qcEvents/Stream/SSH/KeyExchangeInit.php');	// 20
-  require_once ('qcEvents/Stream/SSH/NewKeys.php');		// 21
+  require_once ('qcEvents/Stream/SSH/KeyExchangeInit.php');	//  20
+  require_once ('qcEvents/Stream/SSH/NewKeys.php');		//  21
   
   // Key-Exchange-Specific
-  require_once ('qcEvents/Stream/SSH/KeyExchangeDHInit.php');	// 30
-  require_once ('qcEvents/Stream/SSH/KeyExchangeDHReply.php');	// 31
+  require_once ('qcEvents/Stream/SSH/KeyExchangeDHInit.php');	//  30
+  require_once ('qcEvents/Stream/SSH/KeyExchangeDHReply.php');	//  31
   
   // User-Authentication
-  require_once ('qcEvents/Stream/SSH/UserAuthRequest.php');	// 50
-  require_once ('qcEvents/Stream/SSH/UserAuthFailure.php');	// 51
-  require_once ('qcEvents/Stream/SSH/UserAuthSuccess.php');	// 52
-  require_once ('qcEvents/Stream/SSH/UserAuthBanner.php');	// 53
-  require_once ('qcEvents/Stream/SSH/UserAuthPublicKeyOK.php');	// 60
+  require_once ('qcEvents/Stream/SSH/UserAuthRequest.php');	//  50
+  require_once ('qcEvents/Stream/SSH/UserAuthFailure.php');	//  51
+  require_once ('qcEvents/Stream/SSH/UserAuthSuccess.php');	//  52
+  require_once ('qcEvents/Stream/SSH/UserAuthBanner.php');	//  53
+  require_once ('qcEvents/Stream/SSH/UserAuthPublicKeyOK.php');	//  60
+  
+  // Connection-Protocol
+  require_once ('qcEvents/Stream/SSH/GlobalRequest.php');	//  80
+  require_once ('qcEvents/Stream/SSH/RequestSuccess.php');	//  81
+  require_once ('qcEvents/Stream/SSH/RequestFailure.php');	//  82
+  require_once ('qcEvents/Stream/SSH/ChannelOpen.php');		//  90
+  require_once ('qcEvents/Stream/SSH/ChannelConfirmation.php');	//  91
+  require_once ('qcEvents/Stream/SSH/ChannelFailure.php');	//  92
+  require_once ('qcEvents/Stream/SSH/ChannelWindowAdjust.php');	//  93
+  require_once ('qcEvents/Stream/SSH/ChannelData.php');		//  94
+  require_once ('qcEvents/Stream/SSH/ChannelExtendedData.php');	//  95
+  require_once ('qcEvents/Stream/SSH/ChannelEnd.php');		//  96
+  require_once ('qcEvents/Stream/SSH/ChannelClose.php');	//  97
+  require_once ('qcEvents/Stream/SSH/ChannelRequest.php');	//  98
+  require_once ('qcEvents/Stream/SSH/ChannelSuccess.php');	//  99
+  require_once ('qcEvents/Stream/SSH/ChannelFailure.php');	// 100
 
 ?>
