@@ -153,6 +153,7 @@
         return qcEvents_Promise::reject ('Not a session-channel');
       
       $Message = new qcEvents_Stream_SSH_ChannelRequest;
+      $Message->RecipientChannel = $this->remoteID;
       $Message->Type = 'env';
       $Message->wantReply = false;
       $Message->envName = $Name;
@@ -174,6 +175,7 @@
         return qcEvents_Promise::reject ('Not a session-channel');
       
       $Message = new qcEvents_Stream_SSH_ChannelRequest;
+      $Message->RecipientChannel = $this->remoteID;
       $Message->Type = 'shell';
       
       return $this->wantReply ($Message);
@@ -194,6 +196,7 @@
         return qcEvents_Promise::reject ('Not a session-channel');
       
       $Message = new qcEvents_Stream_SSH_ChannelRequest;
+      $Message->RecipientChannel = $this->remoteID;
       $Message->Type = 'exec';
       $Message->Command = $Command;
       
@@ -215,6 +218,7 @@
         return qcEvents_Promise::reject ('Not a session-channel');
       
       $Message = new qcEvents_Stream_SSH_ChannelRequest;
+      $Message->RecipientChannel = $this->remoteID;
       $Message->Type = 'subsystem';
       $Message->Command = $Name;
       
@@ -242,7 +246,7 @@
           
           // Check wheter to write out the request
           if (count ($this->Requests) == 1)
-            $this->Stream->writeMessage ($Message);
+            $this->Stream->writeMessage ($Message)->catch ($Reject);
         }
       );
     }
@@ -529,7 +533,7 @@
         
         // Check wheter to write out the next request
         if (count ($this->Requests) > 0)
-          $this->Stream->writeMessage ($this->Requests [0][0]);
+          $this->Stream->writeMessage ($this->Requests [0][0])->catch ($this->Requests [0][2]);
         
       }
     }

@@ -58,7 +58,7 @@
       
       if ((($Reason = self::readUInt32 ($Packet, $Offset, $Length)) === null) ||
           (($Description = self::readString ($Packet, $Offset, $Length)) === null) ||
-          (($Langauge = self::readString ($Packet, $Offset, $Length)) === null))
+          (($Language = self::readString ($Packet, $Offset, $Length)) === null))
         return false;
       
       if ($Length != $Offset)
