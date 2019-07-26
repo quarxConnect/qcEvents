@@ -27,6 +27,8 @@
     public $RecipientChannel = 0x00000000;
     
     /* Type of extended data */
+    const TYPE_STDERR = 0x00000001;
+    
     public $Type = 0x00000000;
     
     /* Data-Transmission for that channel */    

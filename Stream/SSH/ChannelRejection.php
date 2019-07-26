@@ -49,7 +49,7 @@
       $Offset = 0;
       
       if ((($RecipipentChannel = self::readUInt32 ($Packet, $Offset, $Length)) === null) ||
-          (($Code = self:::readUInt32 ($Packet, $Offset, $Length)) === null) ||
+          (($Code = self::readUInt32 ($Packet, $Offset, $Length)) === null) ||
           (($Reason = self::readString ($Packet, $Offset, $Length)) === null) ||
           (($Language = self::readString ($Packet, $Offset, $Length)) === null))
         return false;

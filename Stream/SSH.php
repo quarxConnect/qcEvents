@@ -27,6 +27,8 @@
   require_once ('qcEvents/Stream/SSH/NewKeys.php');
   require_once ('qcEvents/Stream/SSH/ServiceRequest.php');
   require_once ('qcEvents/Stream/SSH/UserAuthRequest.php');
+  require_once ('qcEvents/Stream/SSH/ChannelOpen.php');
+  require_once ('qcEvents/Stream/SSH/Channel.php');
   require_once ('qcEvents/Stream/SSH/PublicKey.php');
   require_once ('qcEvents/Stream/SSH/PrivateKey.php');
   
@@ -189,6 +191,24 @@
     /* Promise-Callbacks for authentication */
     private $authPromise = null;
     
+    /* Number of next channel to allocate */
+    private $nextChannel = 0x00000000;
+    
+    /* List of channels */
+    private $Channels = array ();
+    
+    // {{{ getStream
+    /**
+     * Retrive our source-stream
+     * 
+     * @access public
+     * @return qcEvents_Interface_Stream
+     **/
+    public function getStream () : ?qcEvents_Interface_Stream {
+      return $this->Stream;
+    }
+    // }}}
+    
     // {{{ authPublicKey
     /**
      * Try to perform public-key-based authentication
@@ -249,6 +269,79 @@
       
       // Enqueue message for authentication
       return $this->enqueueAuthMessage ($Message);
+    }
+    // }}}
+    
+    // {{{ requestSession
+    /**
+     * Request a session-channel
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function requestSession () : qcEvents_Promise {
+      // Make sure our state is good
+      if ($this->State != $this::STATE_READY)
+        return qcEvents_Promise::reject ('Invalid state');
+      
+      // Create an open-request
+      $Message = new qcEvents_Stream_SSH_ChannelOpen;
+      $Message->Type = 'session';
+      $Message->SenderChannel = $this->nextChannel++;
+      $Message->InitialWindowSize = 2097152; // 2 MB
+      $Message->MaximumPacketSize = 32768;
+      
+      // Write out the message
+      $this->writeMessage ($Message);
+      
+      // Prepare the channel
+      $this->Channels [$Message->SenderChannel] = $Channel = new qcEvents_Stream_SSH_Channel ($this, $Message->SenderChannel, $Message->Type);
+      
+      // Return it's promise
+      return $this->Channels [$Message->SenderChannel]->getConnectionPromise ();
+    }
+    // }}}
+    
+    // {{{ requestConnection
+    /**
+     * Request a TCP/IP-channel
+     * 
+     * @param string $OriginatorHost
+     * @param int $OriginatorPort
+     * @param string $DestinationHost
+     * @param int $DestinationPort
+     * @param bool $Forwarded (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function requestConnection ($OriginatorHost, $OriginatorPort, $DestinationHost, $DestinationPort, $Forwarded = false) : qcEvents_Promise {
+      # TODO
+      return qcEvents_Promise::reject ('Unimplemented');
+    }
+    // }}}
+    
+    // {{{ removeChannel
+    /**
+     * Silently remove a channel from our set of channels
+     * 
+     * @param qcEvents_Stream_SSH_Channel $Channel
+     * 
+     * @access public
+     * @return void
+     **/
+    public function removeChannel (qcEvents_Stream_SSH_Channel $Channel) {
+      // Retrive the local id of the chanenl
+      $localID = $Channel->getLocalID ();
+      
+      // Make sure the channel is hosted here
+      if (!isset ($this->Channels [$localID]) ||
+          ($Channel !== $this->Channels [$localID]) ||
+          ($Channel->getStream () !== $this))
+        return;
+      
+      // Remove the channel
+      unset ($this->Channels [$localID]);
     }
     // }}}
     
@@ -404,10 +497,10 @@
      * 
      * @param qcEvents_Stream_SSH_Message $Message
      * 
-     * @access private
+     * @access public
      * @return qcEvents_Promise
      **/
-    private function writeMessage (qcEvents_Stream_SSH_Message $Message) : qcEvents_Promise {
+    public function writeMessage (qcEvents_Stream_SSH_Message $Message) : qcEvents_Promise {
       return $this->writePacket ($Message->toPacket ());
     }
     // }}}
@@ -749,6 +842,31 @@
       } elseif ($Message instanceof qcEvents_Stream_SSH_UserAuthBanner) {
         $this->___callback ('authBanner', $Message->Message, $Message->Language);
       
+      // Process global request
+      } elseif ($Message instanceof qcEvents_Stream_SSH_GlobalRequest) {
+        trigger_error ('Unhandled global request: ' . $Message->Name);
+      
+      // Process channel-related messages
+      } elseif (($Message instanceof qcEvents_Stream_SSH_ChannelConfirmation) ||
+                ($Message instanceof qcEvents_Stream_SSH_ChannelRejection) ||
+                ($Message instanceof qcEvents_Stream_SSH_ChannelWindowAdjust) ||
+                ($Message instanceof qcEvents_Stream_SSH_ChannelData) ||
+                ($Message instanceof qcEvents_Stream_SSH_ChannelExtendedData) ||
+                ($Message instanceof qcEvents_Stream_SSH_ChannelEnd) ||
+                ($Message instanceof qcEvents_Stream_SSH_ChannelClose) ||
+                ($Message instanceof qcEvents_Stream_SSH_ChannelRequest) ||
+                ($Message instanceof qcEvents_Stream_SSH_ChannelSuccess) ||
+                ($Message instanceof qcEvents_Stream_SSH_ChannelFailure)) {
+        // Make sure the channel is known
+        if (isset ($this->Channels [$Message->RecipientChannel]))
+          $this->Channels [$Message->RecipientChannel]->receiveMessage ($Message);
+        else
+          trigger_error ('Message for unknown channel received');
+        
+      } elseif ($Message instanceof qcEvents_Stream_SSH_Debug) {
+        if ($Message->Display)
+          var_dump ($Message);
+        
       } elseif (is_object ($Message)) {
         var_dump ($Message);
       } else {
