@@ -430,7 +430,7 @@
   require_once ('qcEvents/Stream/SSH/RequestFailure.php');	//  82
   require_once ('qcEvents/Stream/SSH/ChannelOpen.php');		//  90
   require_once ('qcEvents/Stream/SSH/ChannelConfirmation.php');	//  91
-  require_once ('qcEvents/Stream/SSH/ChannelFailure.php');	//  92
+  require_once ('qcEvents/Stream/SSH/ChannelRejection.php');	//  92
   require_once ('qcEvents/Stream/SSH/ChannelWindowAdjust.php');	//  93
   require_once ('qcEvents/Stream/SSH/ChannelData.php');		//  94
   require_once ('qcEvents/Stream/SSH/ChannelExtendedData.php');	//  95
