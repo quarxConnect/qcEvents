@@ -322,6 +322,11 @@
      * @return qcEvents_Promise
      **/
     public function requestForward ($listenAddress = '', $listenPort = 0) : qcEvents_Promise {
+      // Make sure our state is good
+      if ($this->State != $this::STATE_READY)
+        return qcEvents_Promise::reject ('Invalid state');
+      
+      // Prepare the message
       $Message = new qcEvents_Stream_SSH_GlobalRequest;
       $Message->Name = 'tcpip-forward';
       $Message->Address = $listenAddress;
@@ -392,7 +397,33 @@
      * @return qcEvents_Promise
      **/
     public function requestConnection ($OriginatorHost, $OriginatorPort, $DestinationHost, $DestinationPort, $Forwarded = false) : qcEvents_Promise {
-      # TODO
+      // Make sure our state is good
+      if ($this->State != $this::STATE_READY)
+        return qcEvents_Promise::reject ('Invalid state');
+      
+      // Create an open-request
+      $Message = new qcEvents_Stream_SSH_ChannelOpen;
+      $Message->Type = ($Forwarded ? 'forwarded-tcpip' : 'direct-tcpip');
+      $Message->SenderChannel = $this->nextChannel++;
+      $Message->InitialWindowSize = 2097152; // 2 MB
+      $Message->MaximumPacketSize = 32768;
+      $Message->DestinationAddress = $DestinationHost;
+      $Message->DestinationPort = $DestinationPort;
+      $Message->OriginatorAddress = $OriginatorHost;
+      $Message->OriginatorPort = $OriginatorPort;
+      
+      // Write out the message
+      $this->writeMessage ($Message);
+    
+      // Prepare the channel
+      $this->Channels [$Message->SenderChannel] = $Channel = new qcEvents_Stream_SSH_Channel ($this, $Message->SenderChannel, $Message->Type);
+      
+      // Run a callback
+      $this->___callback ('channelCreated', $Channel);
+      
+      // Return it's promise
+      return $this->Channels [$Message->SenderChannel]->getConnectionPromise ();
+      
       return qcEvents_Promise::reject ('Unimplemented');
     }
     // }}}
