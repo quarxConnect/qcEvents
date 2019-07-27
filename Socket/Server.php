@@ -19,7 +19,7 @@
    **/
   
   require_once ('qcEvents/Interface/Loop.php');
-  require_once ('qcEvents/Interface/Hookable.php');
+  require_once ('qcEvents/Interface/Server.php');
   require_once ('qcEvents/Trait/Hookable.php');
   require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/Promise.php');
@@ -33,7 +33,7 @@
    * @package qcEvents
    * @revision 03
    **/
-  class qcEvents_Socket_Server implements qcEvents_Interface_Loop, qcEvents_Interface_Hookable {
+  class qcEvents_Socket_Server implements qcEvents_Interface_Loop, qcEvents_Interface_Server {
     use qcEvents_Trait_Hookable;
     
     /* Base-Class for Child-Connections */
