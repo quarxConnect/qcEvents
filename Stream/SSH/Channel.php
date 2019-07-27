@@ -81,6 +81,14 @@
       // Create a connection-promise
       $this->ConnectionPromise = array (null);
       $this->ConnectionPromise [0] = new qcEvents_Promise (function (callable $Resolve, callable $Reject) {
+        // Check for a race-condition
+        if ($this->remoteID === -1)
+          return call_user_func ($Reject, 'Unknown reason (race condition)');
+        
+        if ($this->remoteID !== null)
+          return call_user_func ($Resolve , $this);
+        
+        // Store the callbacks
         $this->ConnectionPromise [1] = $Resolve;
         $this->ConnectionPromise [2] = $Reject;
       });
@@ -96,6 +104,18 @@
      **/
     public function getStream () : qcEvents_Stream_SSH {
       return $this->Stream;
+    }
+    // }}}
+    
+    // {{{ getType
+    /**
+     * Retrive the type of this channel
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getType () {
+      return $this->Type;
     }
     // }}}
     
@@ -407,7 +427,8 @@
      **/
     public function receiveMessage (qcEvents_Stream_SSH_Message $Message) {
       // Check if a pending channel was confirmed
-      if ($Message instanceof qcEvents_Stream_SSH_ChannelConfirmation) {
+      if (($Message instanceof qcEvents_Stream_SSH_ChannelOpen) ||
+          ($Message instanceof qcEvents_Stream_SSH_ChannelConfirmation)) {
         // Make sure this doesn't happen more than once
         if ($this->remoteID !== null)
           return trigger_error ('Duplicate channel-open-confirmation received');

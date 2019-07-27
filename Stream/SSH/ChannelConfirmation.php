@@ -51,13 +51,13 @@
       $Length = strlen ($Packet);
       $Offset = 0;
       
-      if ((($RecipipentChannel = self::readUInt32 ($Packet, $Offset, $Length)) === null) ||
+      if ((($RecipientChannel = self::readUInt32 ($Packet, $Offset, $Length)) === null) ||
           (($SenderChannel = self::readUInt32 ($Packet, $Offset, $Length)) === null) ||
           (($InitialWindowSize = self::readUInt32 ($Packet, $Offset, $Length)) === null) ||
           (($MaximumPacketSize = self::readUInt32 ($Packet, $Offset, $Length)) === null))
         return false;
       
-      $this->RecipipentChannel = $RecipipentChannel;
+      $this->RecipientChannel = $RecipientChannel;
       $this->SenderChannel = $SenderChannel;
       $this->InitialWindowSize = $InitialWindowSize;
       $this->MaximumPacketSize = $MaximumPacketSize;
@@ -78,7 +78,7 @@
      **/
     public function pack () {
       return
-        self::writeUInt32 ($this->RecipipentChannel) .
+        self::writeUInt32 ($this->RecipientChannel) .
         self::writeUInt32 ($this->SenderChannel) .
         self::writeUInt32 ($this->InitialWindowSize) .
         self::writeUInt32 ($this->MaximumPacketSize) .

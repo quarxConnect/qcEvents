@@ -27,6 +27,11 @@
     public $RecipientChannel = 0x00000000;
     
     /* Machine-readable reason-code */
+    const CODE_ADMINISTRATIVELY_PROHIBITED = 0x00000001;
+    const CODE_CONNECT_FAILED              = 0x00000002;
+    const CODE_UNKNOWN_CHANNEL_TYPE        = 0x00000003;
+    const CODE_RESOURCE_SHORTAGE           = 0x00000004;
+    
     public $Code = 0x00000000;
     
     /* Human-readable reason */

@@ -194,6 +194,12 @@
     /* Number of next channel to allocate */
     private $nextChannel = 0x00000000;
     
+    /* List of global requests that want a reply */
+    private $Requests = array ();
+    
+    /* List of requested remote port-forwardings */
+    private $Forwardings = array ();
+    
     /* List of channels */
     private $Channels = array ();
     
@@ -297,8 +303,78 @@
       // Prepare the channel
       $this->Channels [$Message->SenderChannel] = $Channel = new qcEvents_Stream_SSH_Channel ($this, $Message->SenderChannel, $Message->Type);
       
+      // Run a callback
+      $this->___callback ('channelCreated', $Channel);
+      
       // Return it's promise
       return $this->Channels [$Message->SenderChannel]->getConnectionPromise ();
+    }
+    // }}}
+    
+    // {{{ requestForward
+    /**
+     * Request a TCP/IP-Forwarding
+     * 
+     * @param string $listenAddress (optional)
+     * @param int $listenPort (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function requestForward ($listenAddress = '', $listenPort = 0) : qcEvents_Promise {
+      $Message = new qcEvents_Stream_SSH_GlobalRequest;
+      $Message->Name = 'tcpip-forward';
+      $Message->Address = $listenAddress;
+      $Message->Port = $listenPort;
+      
+      return $this->wantReply ($Message)->then (
+        function ($Message) use ($listenAddress, $listenPort) {
+          // Get the port from the reply if needed
+          if (($listenPort == 0) && (strlen ($Message->Payload) > 0)) {
+            $Offset = 0;
+            $listenPort = $Message::readUInt32 ($Message->Payload, $Offset);
+          }
+          
+          // Register the forwarding
+          $this->Forwardings [] = array ($listenAddress, $listenPort);
+          
+          // Forward the result
+          return new qcEvents_Promise_Solution (array ($listenAddress, $listenPort));
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ cancelForward
+    /**
+     * Stop an active port-forwarding
+     * 
+     * @param string $listenAddress
+     * @param int $listenPort
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function cancelForward ($listenAddress, $listenPort) : qcEvents_Promise {
+      // Make sure we know the forwarding
+      $Found = false;
+      
+      foreach ($this->Forwardings as $Index=>$Forwarding)
+        if ($Found = (($Forwarding [0] == $listenAddress) && ($Forwarding [1] == $listenPort))) {
+          unset ($this->Forwardings [$Index]);
+          break;
+        }
+      
+      if (!$Found)
+        return qcEvents_Promise::reject ('Forwarding not found');
+      
+      // Write out the request
+      $Message = new qcEvents_Stream_SSH_GlobalRequest;
+      $Message->Name = 'cancel-tcpip-forward';
+      $Message->Address = $listenAddress;
+      $Message->Port = $listenPort;
+      
+      return $this->wantReply ($Message);
     }
     // }}}
     
@@ -491,6 +567,32 @@
     }
     // }}}
     
+    // {{{ wantReply
+    /**
+     * Write out a global request and expect a reply for it
+     * 
+     * @param qcEvents_Stream_SSH_GlobalRequest $Request
+     * 
+     * @access private
+     * @return qcEvents_Promise
+     **/
+    private function wantReply (qcEvents_Stream_SSH_GlobalRequest $Request) : qcEvents_Promise {
+      return new qcEvents_Promise (
+        function (callable $Resolve, callable $Reject) use ($Request) {
+          // Make sure the reply-bit is set
+          $Request->wantReply = true;
+    
+          // Push to queue
+          $this->Requests [] = array ($Request, $Resolve, $Reject);
+    
+          // Check wheter to write out the request
+          if (count ($this->Requests) == 1)
+            $this->writeMessage ($Request)->catch ($Reject);
+        }
+      );
+    }
+    // }}}
+    
     // {{{ writeMessage
     /**
      * Write a message to the wire
@@ -501,6 +603,13 @@
      * @return qcEvents_Promise
      **/
     public function writeMessage (qcEvents_Stream_SSH_Message $Message) : qcEvents_Promise {
+      // Sanity-check for global requests not to poison our queue
+      if (($Message instanceof qcEvents_Stream_SSH_GlobalRequest) && $Message->wantReply) {
+        if ((count ($this->Requests) < 1) ||
+            ($this->Requests [0][0] !== $Message))
+          return $this->wantReply ($Message);
+      }
+      
       return $this->writePacket ($Message->toPacket ());
     }
     // }}}
@@ -846,7 +955,67 @@
       } elseif ($Message instanceof qcEvents_Stream_SSH_GlobalRequest) {
         trigger_error ('Unhandled global request: ' . $Message->Name);
       
+      } elseif (($Message instanceof qcEvents_Stream_SSH_RequestSuccess) ||
+                ($Message instanceof qcEvents_Stream_SSH_RequestFailure)) {
+        // Make sure there is a request pending at all
+        if (count ($this->Requests) < 1)
+          return trigger_error ('Received reply for global request without pending one');
+        
+        // Get the request from queue
+        $RequestInfo = array_shift ($this->Requests);
+        
+        // Resolve or reject the promise
+        call_user_func ($RequestInfo [($Message instanceof qcEvents_Stream_SSH_RequestSuccess ? 1 : 2)], $Message);
+        
+        // Check wheter to write out the next request
+        if (count ($this->Requests) > 0)
+          $this->writeMessage ($this->Requests [0][0])->catch ($this->Requests [0][2]);
+      
       // Process channel-related messages
+      } elseif ($Message instanceof qcEvents_Stream_SSH_ChannelOpen) {
+        // We only support forwarded tcp/ip-channels for the moment
+        if ($Message->Type != 'forwarded-tcpip') {
+          $Reply = new qcEvents_Stream_SSH_ChannelRejection;
+          $Reply->RecipientChannel = $Message->SenderChannel;
+          $Reply->Code = $Message::CODE_ADMINISTRATIVELY_PROHIBITED;
+          $Reply->Reason = 'Only forwarded channels are allowed';
+          
+          return $this->writeMessage ($Reply);
+        }
+        
+        // Make sure the forwarding was requested
+        $Found = false;
+        
+        foreach ($this->Forwardings as $Forwarding)
+          if ($Found = (($Forwarding [0] == $Message->DestinationAddress) && ($Forwarding [1] == $Message->DestinationPort)))
+            break;
+        
+        if (!$Found) {
+          $Reply = new qcEvents_Stream_SSH_ChannelRejection;
+          $Reply->RecipientChannel = $Message->SenderChannel;
+          $Reply->Code = $Message::CODE_ADMINISTRATIVELY_PROHIBITED;
+          $Reply->Reason = 'Forwarding was not requested';
+        
+          return $this->writeMessage ($Reply);
+        }
+        
+        // Prepare confirmation-messsage
+        $Reply = new qcEvents_Stream_SSH_ChannelConfirmation;
+        $Reply->RecipientChannel = $Message->SenderChannel;
+        $Reply->SenderChannel = $this->nextChannel++;
+        $Reply->InitialWindowSize = 2097152; // 2 MB
+        $Reply->MaximumPacketSize = 32768;
+        
+        // Write out the reply
+        $this->writeMessage ($Reply);
+        
+        // Create a new channel
+        $this->Channels [$Reply->SenderChannel] = $Channel = new qcEvents_Stream_SSH_Channel ($this, $Reply->SenderChannel, 'forwarded-tcpip');
+        $Channel->receiveMessage ($Message);
+        
+        $this->___callback ('channelCreated', $Channel);
+        $this->___callback ('channelConnected', $Channel);
+        
       } elseif (($Message instanceof qcEvents_Stream_SSH_ChannelConfirmation) ||
                 ($Message instanceof qcEvents_Stream_SSH_ChannelRejection) ||
                 ($Message instanceof qcEvents_Stream_SSH_ChannelWindowAdjust) ||
@@ -1120,6 +1289,30 @@
      * @return void
      **/
     protected function authSuccessfull () { }
+    // }}}
+    
+    // {{{ channelCreated
+    /**
+     * Callback: A channel was created
+     * 
+     * @param qcEvents_Stream_SSH_Channel $Channel
+     * 
+     * @access protected
+     * @retrun void
+     **/
+    protected function channelCreated (qcEvents_Stream_SSH_Channel $Channel) { }
+    // }}}
+    
+    // {{{ channelConnected
+    /**
+     * Callback: A channel was successfully connected
+     * 
+     * @param qcEvents_Stream_SSH_Channel $Channel
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function channelConnected (qcEvents_Stream_SSH_Channel $Channel) { }
     // }}}
   }
 
