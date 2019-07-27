@@ -798,7 +798,7 @@
       // Try to unpack the message
       $Message = qcEvents_Stream_SSH_Message::fromPacket ($Packet, $Length);
       
-      // Check wheter to start a new key-exchange
+      // Check wheter to start a new key-exchange (may happen at any time)
       if ($Message instanceof qcEvents_Stream_SSH_KeyExchangeInit) {
         // Make sure we are not exchanging a key
         if ($this->keyExchange !== null)
@@ -940,7 +940,7 @@
         }
       
       // A new service was accepted
-      } elseif ($Message instanceof qcEvents_Stream_SSH_ServiceAccept) {
+      } elseif (($Message instanceof qcEvents_Stream_SSH_ServiceAccept) && ($this->State == self::STATE_CONNECT)) {
         if ($Message->Service == 'ssh-userauth') {
           $this->State = self::STATE_AUTH;
           
@@ -956,9 +956,10 @@
         }
       
       // A response to an ongoing authentication-process was received
-      } elseif (($Message instanceof qcEvents_Stream_SSH_UserAuthSuccess) ||
-                ($Message instanceof qcEvents_Stream_SSH_UserAuthFailure) ||
-                ($Message instanceof qcEvents_Stream_SSH_UserAuthPublicKeyOK)) {
+      } elseif ((($Message instanceof qcEvents_Stream_SSH_UserAuthSuccess) ||
+                 ($Message instanceof qcEvents_Stream_SSH_UserAuthFailure) ||
+                 ($Message instanceof qcEvents_Stream_SSH_UserAuthPublicKeyOK)) &&
+                ($this->State == self::STATE_AUTH)) {
         // Change our state
         if ($Message instanceof qcEvents_Stream_SSH_UserAuthSuccess)
           $this->State = self::STATE_READY;
@@ -979,15 +980,16 @@
         }
         
       // Push any authentication-related banner to an event
-      } elseif ($Message instanceof qcEvents_Stream_SSH_UserAuthBanner) {
+      } elseif (($Message instanceof qcEvents_Stream_SSH_UserAuthBanner) && ($this->State == self::STATE_AUTH)) {
         $this->___callback ('authBanner', $Message->Message, $Message->Language);
       
       // Process global request
-      } elseif ($Message instanceof qcEvents_Stream_SSH_GlobalRequest) {
+      } elseif (($Message instanceof qcEvents_Stream_SSH_GlobalRequest) && ($this->State == self::STATE_READY)) {
         trigger_error ('Unhandled global request: ' . $Message->Name);
       
-      } elseif (($Message instanceof qcEvents_Stream_SSH_RequestSuccess) ||
-                ($Message instanceof qcEvents_Stream_SSH_RequestFailure)) {
+      } elseif ((($Message instanceof qcEvents_Stream_SSH_RequestSuccess) ||
+                 ($Message instanceof qcEvents_Stream_SSH_RequestFailure)) &&
+                ($this->State == self::STATE_READY)) {
         // Make sure there is a request pending at all
         if (count ($this->Requests) < 1)
           return trigger_error ('Received reply for global request without pending one');
@@ -1003,7 +1005,7 @@
           $this->writeMessage ($this->Requests [0][0])->catch ($this->Requests [0][2]);
       
       // Process channel-related messages
-      } elseif ($Message instanceof qcEvents_Stream_SSH_ChannelOpen) {
+      } elseif (($Message instanceof qcEvents_Stream_SSH_ChannelOpen) && ($this->State == self::STATE_READY)) {
         // We only support forwarded tcp/ip-channels for the moment
         if ($Message->Type != 'forwarded-tcpip') {
           $Reply = new qcEvents_Stream_SSH_ChannelRejection;
@@ -1047,33 +1049,23 @@
         $this->___callback ('channelCreated', $Channel);
         $this->___callback ('channelConnected', $Channel);
         
-      } elseif (($Message instanceof qcEvents_Stream_SSH_ChannelConfirmation) ||
-                ($Message instanceof qcEvents_Stream_SSH_ChannelRejection) ||
-                ($Message instanceof qcEvents_Stream_SSH_ChannelWindowAdjust) ||
-                ($Message instanceof qcEvents_Stream_SSH_ChannelData) ||
-                ($Message instanceof qcEvents_Stream_SSH_ChannelExtendedData) ||
-                ($Message instanceof qcEvents_Stream_SSH_ChannelEnd) ||
-                ($Message instanceof qcEvents_Stream_SSH_ChannelClose) ||
-                ($Message instanceof qcEvents_Stream_SSH_ChannelRequest) ||
-                ($Message instanceof qcEvents_Stream_SSH_ChannelSuccess) ||
-                ($Message instanceof qcEvents_Stream_SSH_ChannelFailure)) {
+      } elseif ((($Message instanceof qcEvents_Stream_SSH_ChannelConfirmation) ||
+                 ($Message instanceof qcEvents_Stream_SSH_ChannelRejection) ||
+                 ($Message instanceof qcEvents_Stream_SSH_ChannelWindowAdjust) ||
+                 ($Message instanceof qcEvents_Stream_SSH_ChannelData) ||
+                 ($Message instanceof qcEvents_Stream_SSH_ChannelExtendedData) ||
+                 ($Message instanceof qcEvents_Stream_SSH_ChannelEnd) ||
+                 ($Message instanceof qcEvents_Stream_SSH_ChannelClose) ||
+                 ($Message instanceof qcEvents_Stream_SSH_ChannelRequest) ||
+                 ($Message instanceof qcEvents_Stream_SSH_ChannelSuccess) ||
+                 ($Message instanceof qcEvents_Stream_SSH_ChannelFailure)) &&
+                ($this->State == self::STATE_READY)) {
         // Make sure the channel is known
         if (isset ($this->Channels [$Message->RecipientChannel]))
           $this->Channels [$Message->RecipientChannel]->receiveMessage ($Message);
         else
           trigger_error ('Message for unknown channel received');
-        
-      } elseif ($Message instanceof qcEvents_Stream_SSH_Debug) {
-        if ($Message->Display)
-          var_dump ($Message);
-        
-      } elseif (is_object ($Message)) {
-        var_dump ($Message);
-      } else {
-        require_once ('dump.php');
-        dump ($Packet);
       }
-        
     }
     // }}}
     
