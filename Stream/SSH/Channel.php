@@ -56,6 +56,9 @@
     /* Watch for write-events */
     private $watchWrite = false;
     
+    /* We don't want any further write's */
+    private $isEOF = false;
+    
     /* Check if we are trying to close the channel */
     private $isClosing = false;
     
@@ -302,6 +305,9 @@
           !$this->Stream)
         return qcEvents_Promise::reject ('Channel not connected');
       
+      if ($this->isEOF)
+        return qcEvents_Promise::reject ('Channel already closed on sending side');
+      
       // Encapsulate data
       $Message = new qcEvents_Stream_SSH_ChannelData;
       $Message->RecipientChannel = $this->remoteID;
@@ -327,7 +333,8 @@
         return ($this->watchWrite != false);
       
       // Retrive the source-stream of our SSH-Stream
-      if (!is_object ($Stream = $this->Stream->getStream ()))
+      if (!is_object ($Stream = $this->Stream->getStream ()) ||
+          $this->isEOF)
         return null;
       
       // Check for changes
@@ -351,6 +358,29 @@
       $Stream->addHook ('eventWriteable', $this->watchWrite);
       $Stream->watchWrite (true);
       
+    }
+    // }}}
+    
+    // {{{ eof
+    /**
+     * Signal end of stream from our side
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function eof () : qcEvents_Promise {
+      // Check if we are already there
+      if ($this->isEOF)
+        return qcEvents_Promise::resolve ();
+      
+      // Mark ourself as EOF
+      $this->isEOF = true;
+      
+      // Signal EOF
+      $Message = new qcEvents_Stream_SSH_ChannelEnd;
+      $Message->RecipientChannel = $this->remoteID;
+        
+      return $this->Stream->writeMessage ($Message);
     }
     // }}}
     
