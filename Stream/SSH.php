@@ -1169,22 +1169,11 @@
       }
       
       // Get the greeting off the buffer
-      $Greeting = substr ($this->Buffer, 0, $p);
+      $this->remoteVersion = substr ($this->Buffer, 0, $p);
       $this->Buffer = substr ($this->Buffer, $p + 1);
       
-      if ($this->Compability && (substr ($Greeting, -1, 1) == "\r"))
-        $Greeting = substr ($Greeting, 0, -1);
-      
-      // Split greeting into version and comment
-      if (($p = strpos ($Greeting, ' ')) !== false) {
-        $this->remoteVersion = substr ($Greeting, 0, $p);
-        $Comment = substr ($Greeting, $p + 1);
-      } else {
-        $this->remoteVersion = $Greeting;
-        $Comment = '';
-      }
-      
-      unset ($Greeting);
+      if ($this->Compability && (substr ($this->remoteVersion, -1, 1) == "\r"))
+        $this->remoteVersion = substr ($this->remoteVersion, 0, -1);
       
       // Unpack the version
       if (substr ($this->remoteVersion, 0, 4) != 'SSH-') {
