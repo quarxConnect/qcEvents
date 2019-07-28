@@ -215,6 +215,52 @@
     }
     // }}}
     
+    // {{{ getLocalVersion
+    /**
+     * Retrive the local version-string of this stream
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getLocalVersion () {
+      return $this->localVersion;
+    }
+    // }}}
+    
+    // {{{ setLocalVersion
+    /**
+     * Store local version of this SSH-Stream
+     * 
+     * @param string $Version
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function setLocalVersion ($Version) {
+      if ($this->State != $this::STATE_NONE)
+        return false;
+      
+      $this->localVersion = $Version;
+      
+      if (substr ($this->localVersion, 0, 8) != 'SSH-2.0-')
+        trigger_error ('SSH-Version should start with SSH-2.0-');
+      
+      return true;
+    }
+    // }}}
+    
+    // {{{ getRemoteVersion
+    /**
+     * Retrive version-string from our peer
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getRemoteVersion () {
+      return $this->removeVersion;
+    }
+    // }}}
+    
     // {{{ authPublicKey
     /**
      * Try to perform public-key-based authentication
