@@ -54,6 +54,9 @@
     /* Receive-Buffer */
     private $Buffer = '';
     
+    /* Pending header for next message */
+    private $nextMessage = null;
+    
     /* Mode of this stream */
     const MODE_CLIENT = 1;
     const MODE_SERVER = 2; # Unimplemented
@@ -773,19 +776,21 @@
       
       while ($Length - $Offset >= max ($this->packetMinimumSize, $this->cipherRemote [3]) + $this->macRemote [1]) {
         // Try to decrypt first block
-        $Packet = $this->decryptBlock (substr ($this->Buffer, $Offset, $this->cipherRemote [3]));
-        
-        // Read basic header from packet
-        $Header = unpack ('Nlength/cpadding', substr ($Packet, 0, 5));
-        
-        $packetLength = $Header ['length'];
-        $paddingLength = $Header ['padding'];
-        
-        unset ($Header);
+        if ($this->nextMessage === null) {
+          $Packet = $this->decryptBlock (substr ($this->Buffer, $Offset, $this->cipherRemote [3]));
+          
+          // Read basic header from packet
+          $this->nextMessage = unpack ('Nlength/cpadding', substr ($Packet, 0, 5));
+          $this->nextMessage ['data'] = $Packet;
+        } else
+          $Packet = $this->nextMessage ['data'];
         
         // Check how many blocks to read
-        $readBlocks = ceil (($packetLength + 4) / $this->cipherRemote [3]);
+        $readBlocks = ceil (($this->nextMessage ['length'] + 4) / $this->cipherRemote [3]);
         $readLength = $readBlocks * $this->cipherRemote [3];
+        
+        if ($readLength > 35000)
+          trigger_error ('Have to read more than 35k octets, that is propably a bug');
         
         // Make sure we have the entire packet on the buffer
         if ($Length - $Offset < $readLength + $this->macRemote [1])
@@ -808,9 +813,9 @@
         $this->sequenceRemote++;
         
         // Split up the packet
-        $payloadLength = $packetLength - $paddingLength - 1;
+        $payloadLength = $this->nextMessage ['length'] - $this->nextMessage ['padding'] - 1;
         $Payload = substr ($Packet, 5, $payloadLength);
-        $Padding = substr ($Packet, -$paddingLength, $paddingLength);
+        $Padding = substr ($Packet, -$this->nextMessage ['padding'], $this->nextMessage ['padding']);
         
         # TODO: Uncompress payload
         
@@ -818,12 +823,12 @@
         
         // Move forward
         $Offset += $readLength + $this->macRemote [1];
+        $this->nextMessage = null;
       }
       
       // Truncate data from the buffer
       if ($Offset > 0)
         $this->Buffer = substr ($this->Buffer, $Offset);
-      
     }
     // }}}
     
@@ -1111,7 +1116,8 @@
           $this->Channels [$Message->RecipientChannel]->receiveMessage ($Message);
         else
           trigger_error ('Message for unknown channel received');
-      }
+      } else
+        trigger_error ('Unhandled message');
     }
     // }}}
     
