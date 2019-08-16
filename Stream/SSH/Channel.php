@@ -38,6 +38,10 @@
     /* Local ID of this channel */
     private $localID = null;
     
+    /* Local Connection-Information on forwarded connections */
+    private $localAddress = null;
+    private $localPort = null;
+    
     /* Remote ID of this channel */
     private $remoteID = null;
     
@@ -46,6 +50,10 @@
     
     /* Maximum size of data-packets to send */
     private $remoteMaximumPacketSize = null;
+    
+    /* Remote Connection-Information on forwarded connections */
+    private $remoteAddress = null;
+    private $remotePort = null;
     
     /* Stream for stderr (extended data) */
     private $stdErr = null;
@@ -95,6 +103,32 @@
         $this->ConnectionPromise [1] = $Resolve;
         $this->ConnectionPromise [2] = $Reject;
       });
+    }
+    // }}}
+    
+    // {{{ __debugInfo
+    /**
+     * Prepare nicer output for var_dump()
+     * 
+     * @access friendly
+     * @return array
+     **/
+    function __debugInfo () {
+      $Info = array (
+        'type' => $this->Type,
+        'localID' => $this->localID,
+        'remoteID' => $this->remoteID,
+      );
+      
+      if (($this->Type == 'direct-tcpip') ||
+          ($this->Type == 'forwarded-tcpip')) {
+        $Info ['localAddress'] = $this->localAddress;
+        $Info ['localPort'] = $this->localPort;
+        $Info ['remoteAddress'] = $this->remoteAddress;
+        $Info ['remotePort'] = $this->remotePort;
+      }
+      
+      return $Info;
     }
     // }}}
     
@@ -468,6 +502,14 @@
         $this->remoteWindowSize = $Message->InitialWindowSize;
         $this->remoteMaximumPacketSize = $Message->MaximumPacketSize;
         
+        if (($Message instanceof qcEvents_Stream_SSH_ChannelOpen) &&
+            (($Message->Type == 'forwarded-tcpip') || ($Message->Type == 'direct-tcpip'))) {
+          $this->localAddress = $Message->DestinationAddress;
+          $this->localPort = $Message->DestinationPort;
+          $this->remoteAddress = $Message->OriginatorAddress;
+          $this->remotePort = $Message->OriginatorPort;
+        }
+        
         // Try to resolve the promise
         if (isset ($this->ConnectionPromise [1])) {
           $Resolve = $this->ConnectionPromise [1];
@@ -475,7 +517,7 @@
           
           call_user_func ($Resolve, $this);
         }
-      
+        
       // Check if a pending channel was rejected
       } elseif ($Message instanceof qcEvents_Stream_SSH_ChannelRejection) {
         // Make sure we don't reject an established channel
