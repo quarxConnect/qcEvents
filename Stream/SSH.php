@@ -366,11 +366,12 @@
      * 
      * @param string $listenAddress (optional)
      * @param int $listenPort (optional)
+     * @param callable $setupCallback (optional)
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function requestForward ($listenAddress = '', $listenPort = 0) : qcEvents_Promise {
+    public function requestForward ($listenAddress = '', $listenPort = 0, callable $setupCallback = null) : qcEvents_Promise {
       // Make sure our state is good
       if ($this->State != $this::STATE_READY)
         return qcEvents_Promise::reject ('Invalid state');
@@ -382,7 +383,7 @@
       $Message->Port = $listenPort;
       
       return $this->wantReply ($Message)->then (
-        function ($Message) use ($listenAddress, $listenPort) {
+        function ($Message) use ($listenAddress, $listenPort, $setupCallback) {
           // Get the port from the reply if needed
           if (($listenPort == 0) && (strlen ($Message->Payload) > 0)) {
             $Offset = 0;
@@ -390,7 +391,7 @@
           }
           
           // Register the forwarding
-          $this->Forwardings [] = array ($listenAddress, $listenPort);
+          $this->Forwardings [] = array ($listenAddress, $listenPort, $setupCallback);
           
           // Forward the result
           return new qcEvents_Promise_Solution (array ($listenAddress, $listenPort));
@@ -1124,7 +1125,7 @@
         if ($Message->Type != 'forwarded-tcpip') {
           $Reply = new qcEvents_Stream_SSH_ChannelRejection;
           $Reply->RecipientChannel = $Message->SenderChannel;
-          $Reply->Code = $Message::CODE_ADMINISTRATIVELY_PROHIBITED;
+          $Reply->Code = $Reply::CODE_ADMINISTRATIVELY_PROHIBITED;
           $Reply->Reason = 'Only forwarded channels are allowed';
           
           return $this->writeMessage ($Reply);
@@ -1132,36 +1133,65 @@
         
         // Make sure the forwarding was requested
         $Found = false;
+        $setupCallback = null;
         
         foreach ($this->Forwardings as $Forwarding)
-          if ($Found = (($Forwarding [0] == $Message->DestinationAddress) && ($Forwarding [1] == $Message->DestinationPort)))
+          if ($Found = (($Forwarding [0] == $Message->DestinationAddress) && ($Forwarding [1] == $Message->DestinationPort))) {
+            $setupCallback = $Forwarding [2];
+            
             break;
+          }
         
         if (!$Found) {
           $Reply = new qcEvents_Stream_SSH_ChannelRejection;
           $Reply->RecipientChannel = $Message->SenderChannel;
-          $Reply->Code = $Message::CODE_ADMINISTRATIVELY_PROHIBITED;
+          $Reply->Code = $Reply::CODE_ADMINISTRATIVELY_PROHIBITED;
           $Reply->Reason = 'Forwarding was not requested';
         
           return $this->writeMessage ($Reply);
         }
         
-        // Prepare confirmation-messsage
-        $Reply = new qcEvents_Stream_SSH_ChannelConfirmation;
-        $Reply->RecipientChannel = $Message->SenderChannel;
-        $Reply->SenderChannel = $this->nextChannel++;
-        $Reply->InitialWindowSize = 2097152; // 2 MB
-        $Reply->MaximumPacketSize = 32768;
-        
-        // Write out the reply
-        $this->writeMessage ($Reply);
-        
-        // Create a new channel
-        $this->Channels [$Reply->SenderChannel] = $Channel = new qcEvents_Stream_SSH_Channel ($this, $Reply->SenderChannel, 'forwarded-tcpip');
+        // Preapre a new channel
+        $Channel = new qcEvents_Stream_SSH_Channel ($this, $this->nextChannel++, 'forwarded-tcpip');
         $Channel->receiveMessage ($Message);
         
-        $this->___callback ('channelCreated', $Channel);
-        $this->___callback ('channelConnected', $Channel);
+        // Setup the channel
+        if ($setupCallback) {
+          $Promise = $setupCallback ($Channel);
+          
+          if (!($Promise instanceof qcEvents_Promise))
+            $Promise = ($Promise === false ? qcEvents_Promise::reject ('Failed to setup') : qcEvents_Promise::resolve ());
+        } else
+          $Promise = qcEvents_Promise::resolve ();
+        
+        $Promise->then (
+          function () use ($Message, $Channel) {
+            // Prepare confirmation-messsage
+            $Reply = new qcEvents_Stream_SSH_ChannelConfirmation;
+            $Reply->RecipientChannel = $Message->SenderChannel;
+            $Reply->SenderChannel = $Channel->getLocalID ();
+            $Reply->InitialWindowSize = 2097152; // 2 MB
+            $Reply->MaximumPacketSize = 32768;
+            
+            // Write out the reply
+            $this->writeMessage ($Reply);
+            
+            // Register the new channel
+            $this->Channels [$Reply->SenderChannel] = $Channel;
+            
+            // Raise callbacks
+            $this->___callback ('channelCreated', $Channel);
+            $this->___callback ('channelConnected', $Channel);
+          },
+          function ($e) use ($Message) {
+            $Reply = new qcEvents_Stream_SSH_ChannelRejection;
+            $Reply->RecipientChannel = $Message->SenderChannel;
+            $Reply->Code = $Reply::CODE_ADMINISTRATIVELY_PROHIBITED;
+            $Reply->Reason = 'Channel-Setup was rejected by middleware';
+            
+            return $this->writeMessage ($Reply);
+          }
+        );
         
       } elseif ((($Message instanceof qcEvents_Stream_SSH_ChannelConfirmation) ||
                  ($Message instanceof qcEvents_Stream_SSH_ChannelRejection) ||
