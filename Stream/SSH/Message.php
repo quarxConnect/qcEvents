@@ -18,6 +18,13 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
+  // Make sure we have GMP available
+  if (!extension_loaded ('gmp') && (!function_exists ('dl') || !dl ('gmp.so'))) {
+    trigger_error ('GMP required');
+
+    return;
+  }
+  
   abstract class qcEvents_Stream_SSH_Message {
     const MESSAGE_TYPE = null;
     
