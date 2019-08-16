@@ -53,13 +53,13 @@
       $Length = strlen ($Packet);
       $Offset = 0;
       
-      if ((($RecipipentChannel = self::readUInt32 ($Packet, $Offset, $Length)) === null) ||
+      if ((($RecipientChannel = self::readUInt32 ($Packet, $Offset, $Length)) === null) ||
           (($Code = self::readUInt32 ($Packet, $Offset, $Length)) === null) ||
           (($Reason = self::readString ($Packet, $Offset, $Length)) === null) ||
           (($Language = self::readString ($Packet, $Offset, $Length)) === null))
         return false;
       
-      $this->RecipipentChannel = $RecipipentChannel;
+      $this->RecipientChannel = $RecipientChannel;
       $this->Code = $Code;
       $this->Reason = $Reason;
       $this->Language = $Language;
@@ -77,7 +77,7 @@
      **/
     public function pack () {
       return
-        self::writeUInt32 ($this->RecipipentChannel) .
+        self::writeUInt32 ($this->RecipientChannel) .
         self::writeUInt32 ($this->Code) .
         self::writeString ($this->Reason) .
         self::writeString ($this->Language);
