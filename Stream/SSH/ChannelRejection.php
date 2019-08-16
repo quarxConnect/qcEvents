@@ -21,7 +21,7 @@
   require_once ('qcEvents/Stream/SSH/Message.php');
   
   class qcEvents_Stream_SSH_ChannelRejection extends qcEvents_Stream_SSH_Message {
-    const MESSAGE_TYPE = 91;
+    const MESSAGE_TYPE = 92;
     
     /* Number of channel on recipient-side */
     public $RecipientChannel = 0x00000000;
