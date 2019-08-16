@@ -196,11 +196,17 @@
         
         // Check for extended length
         if ($fLength == 126) {
+          if ($Length < $Offset + 2)
+            break;
+          
           $fLength = unpack ('nlength', substr ($this->readBuffer, $Offset, 2));
           $fLength = $fLength ['length'];
           $Offset += 2;  
         } elseif ($fLength == 127) {
-          $fLength = unpack ('Jlength', substr ($this->readBuffer, $Offset, 2));
+          if ($Length < $Offset + 8)
+            break;
+          
+          $fLength = unpack ('Jlength', substr ($this->readBuffer, $Offset, 8));
           $fLength = $fLength ['length'];
           $Offset += 8;
         }
