@@ -501,6 +501,69 @@
     }
     // }}}
     
+    // {{{ startCommand
+    /**
+     * Try to open a session and start a command (stdin will be available, stdout/stderr won't be captured by this)
+     * 
+     * @param string $Command The command to execute
+     * @param array $Environment (optional) Set of environment-variables to pass (not known to work, but on RFC)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function startCommand ($Command, array $Environment = null) : qcEvents_Promise {
+      return $this->requestSession ()->then (
+        function (qcEvents_Stream_SSH_Channel $Channel) use ($Command, $Environment) {
+          // Push environment to channel
+          if ($Environment)
+            foreach ($Environment as $Key=>$Value)
+              $Channel->setEnv ($Key, $Value);
+          
+          // Try to execute the command
+          return $Channel->exec ($Command)->then (
+            function () use ($Channel) {
+              return $Channel;
+            },
+            function () use ($Channel) {
+              // Clean up the channel
+              $Channel->close ();
+              
+              // Forward the original error
+              throw new qcEvents_Promise_Soluiton (func_get_args ());
+            }
+          );
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ runCommand
+    /**
+     * Try to open a session, run a command and return it's output
+     * 
+     * @param string $Command
+     * @param array $Environment (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function runCommand ($Command, array $Environment = null) : qcEvents_Promise {
+      return $this->startCommand ($Command, $Environment)->then (
+        function (qcEvents_Stream_SSH_Channel $Channel) {
+          // Close stdin on channel
+          $Channel->eof ();
+          
+          // Wait for end of stream
+          return $Channel->once ('eventClosed')->then (
+            function () use ($Channel) {
+              return $Channel->read ();
+            }
+          );
+        }
+      );
+    }
+    // }}}
+    
     // {{{ consume
     /**
      * Receive data from our source-stream
