@@ -818,6 +818,9 @@
       }
       
       // Write out the packet
+      if (!$this->Stream)
+        return qcEvents_Promise::reject ('Not connected');
+      
       return $this->Stream->write ($Packet . $MAC);
     }
     // }}}
@@ -1209,8 +1212,10 @@
           $this->Channels [$Message->RecipientChannel]->receiveMessage ($Message);
         else
           trigger_error ('Message for unknown channel received');
-      } else
-        trigger_error ('Unhandled message');
+      } elseif ($Message !== null)
+        trigger_error ('Unhandled message: ' . get_class ($Message));
+      elseif ($Length > 0)
+        trigger_error ('Unparsed message: ' . ord ($Packet [0]));
     }
     // }}}
     
