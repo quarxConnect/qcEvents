@@ -555,7 +555,8 @@
       
       // Recieve a channel-EOF
       } elseif ($Message instanceof qcEvents_Stream_SSH_ChannelEnd) {
-        // Ignored
+        // Ignored, just forward as event
+        $this->___callback ('channelEnd');
       
       // Close the remote end of the channel
       } elseif ($Message instanceof qcEvents_Stream_SSH_ChannelClose) {
@@ -653,6 +654,16 @@
      * @return void
      **/
     protected function eventPiped (qcEvents_Interface_Source $Source) { }
+    // }}}
+    
+    // {{{ channelEnd
+    /**
+     * Callback: Channel-End-Message was received
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function channelEnd () { }
     // }}}
   }
 
