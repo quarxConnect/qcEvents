@@ -561,6 +561,29 @@
     }
     // }}}
     
+    // {{{ getKeyExchangeInit
+    /**
+     * Retrive a message to initialize key-exchange
+     * 
+     * @access private
+     * @return qcEvents_Stream_SSH_KeyExchangeInit
+     **/
+    private function getKeyExchangeInit () : qcEvents_Stream_SSH_KeyExchangeInit {
+      $Message = new qcEvents_Stream_SSH_KeyExchangeInit;
+    
+      $Message->KexAlgorithms = array ('diffie-hellman-group1-sha1', 'diffie-hellman-group14-sha1');
+      $Message->serverHostKeyAlgortihms = array ('ssh-rsa');
+      $Message->ciphersClientServer = array ('aes128-ctr', 'aes192-ctr', 'aes256-ctr');
+      $Message->ciphersServerClient = array ('aes128-ctr', 'aes192-ctr', 'aes256-ctr');
+      $Message->macClientServer = $Message->macServerClient = array ('hmac-sha1-96', 'hmac-sha1', 'hmac-md5-96', 'hmac-md5');
+      $Message->compClientServer = $Message->compServerClient = array ('none');
+      $Message->langClientServer = $Message->langServerClient = array ('');
+      $Message->kexFollows = false;
+      
+      return $Message;
+    }
+    // }}}
+    
     // {{{ consume
     /**
      * Receive data from our source-stream
@@ -627,20 +650,8 @@
       // Push our version to peer
       $this->Stream->write ($this->localVersion . "\r\n");
       
-      // Create initial key-exchange-message
-      $this->localKeyExchange = $Message = new qcEvents_Stream_SSH_KeyExchangeInit;
-    
-      $Message->KexAlgorithms = array ('diffie-hellman-group1-sha1', 'diffie-hellman-group14-sha1');
-      $Message->serverHostKeyAlgortihms = array ('ssh-rsa');
-      $Message->ciphersClientServer = array ('aes128-ctr', 'aes192-ctr', 'aes256-ctr');
-      $Message->ciphersServerClient = array ('aes128-ctr', 'aes192-ctr', 'aes256-ctr');
-      $Message->macClientServer = $Message->macServerClient = array ('hmac-sha1-96', 'hmac-sha1', 'hmac-md5-96', 'hmac-md5');
-      $Message->compClientServer = $Message->compServerClient = array ('none');
-      $Message->langClientServer = $Message->langServerClient = array ('');
-      $Message->kexFollows = false;
-    
       // Send key-exchange-message to peer
-      $this->writePacket ($Message->toPacket ());
+      $this->writeMessage ($this->localKeyExchange = $this->getKeyExchangeInit ());
       
       // Return new promise
       return new qcEvents_Promise (
@@ -918,6 +929,10 @@
         if ($this->keyExchange !== null)
           return $this->failStream ('Duplicate KeyExchangeInit-Message received');
         
+        // Check if we have already sent a kxinit
+        if ($this->localKeyExchange === null)
+          $this->writeMessage ($this->localKeyExchange = $this->getKeyExchangeInit ());
+        
         // Store the message for reference
         $this->remoteKeyExchange = $Message;
         
@@ -1055,6 +1070,7 @@
         
         // Remove informations from negotiation
         $this->keyExchange = null;
+        $this->localKeyExchange = null;
       
       // A new service was accepted
       } elseif (($Message instanceof qcEvents_Stream_SSH_ServiceAccept) && ($this->State == self::STATE_CONNECT)) {
