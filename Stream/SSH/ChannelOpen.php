@@ -19,6 +19,7 @@
    **/
   
   require_once ('qcEvents/Stream/SSH/Message.php');
+  require_once ('qcEvents/Stream/SSH/Channel.php');
   
   class qcEvents_Stream_SSH_ChannelOpen extends qcEvents_Stream_SSH_Message {
     const MESSAGE_TYPE = 90;
@@ -30,10 +31,10 @@
     public $SenderChannel = 0x00000000;
     
     /* Initial window-size */
-    public $InitialWindowSize = 0x00000000;
+    public $InitialWindowSize = qcEvents_Stream_SSH_Channel::DEFAULT_WINDOW_SIZE;
     
     /* Maximum packet size */
-    public $MaximumPacketSize = 0x00000000;
+    public $MaximumPacketSize = qcEvents_Stream_SSH_Channel::DEFAULT_MAXIMUM_PACKET_SIZE;
     
     /* Any unparsed payload */
     public $Payload = null;

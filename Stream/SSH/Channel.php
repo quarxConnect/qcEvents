@@ -24,6 +24,9 @@
   require_once ('qcEvents/Stream/SSH/ChannelRequest.php');
   
   class qcEvents_Stream_SSH_Channel extends qcEvents_Abstract_Source implements qcEvents_Interface_Stream {
+    const DEFAULT_WINDOW_SIZE = 2097152;       //  2 MB
+    const DEFAULT_MAXIMUM_PACKET_SIZE = 32768; // 32 KB
+    
     /* Instance of stream this channel is hosted on */
     private $Stream = null;
     
@@ -37,6 +40,12 @@
     
     /* Local ID of this channel */
     private $localID = null;
+    
+    /* Current allowed window-size */
+    private $localWindowSize = null;
+    
+    /* Maximum size of data-packets to receive */
+    private $localMaximumPacketSize = null;
     
     /* Local Connection-Information on forwarded connections */
     private $localAddress = null;
@@ -79,15 +88,20 @@
      * 
      * @param qcEvents_Stream_SSH $Stream
      * @param int $localID
+     * @param string $Type
+     * @param int $windowSize (optional)
+     * @param int $maximumPacketSize (optional)
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Stream_SSH $Stream, $localID, $Type) {
+    function __construct (qcEvents_Stream_SSH $Stream, $localID, $Type, $windowSize = self::DEFAULT_WINDOW_SIZE, $maximumPacketSize = self::DEFAULT_MAXIMUM_PACKET_SIZE) {
       // Store initial settings
       $this->Stream = $Stream;
       $this->Type = $Type;
       $this->localID = $localID;
+      $this->localWindowSize = $windowSize;
+      $this->localMaximumPacketSize = $maximumPacketSize;
       
       // Create a connection-promise
       $this->ConnectionPromise = array (null);
@@ -543,16 +557,33 @@
         $this->remoteWindowSize += $Message->bytesToAdd;
       
       // Receive data from remote side
-      } elseif ($Message instanceof qcEvents_Stream_SSH_ChannelData) {
-        # TODO: Check Window
-        # TODO: Check Length-Constraints
+      } elseif (($Message instanceof qcEvents_Stream_SSH_ChannelData) ||
+                ($Message instanceof qcEvents_Stream_SSH_ChannelExtendedData)) {
+        // Check if the window is large enough to receive this message
+        $Length = strlen ($Message->Data);
         
-        $this->sourceInsert ($Message->Data);
+        if ($this->localWindowSize < $Length)
+          # TODO
+          return;
         
-      } elseif ($Message instanceof qcEvents_Stream_SSH_ChannelExtendedData) {
-        if (($Message->Type == $Message::TYPE_STDERR) && $this->stdErr)
+        // Remove the received bytes from the window
+        $this->localWindowSize -= $Length;
+        
+        // Forward the data
+        if ($Message instanceof qcEvents_Stream_SSH_ChannelData)
+          $this->sourceInsert ($Message->Data);
+        elseif (($Message->Type == $Message::TYPE_STDERR) && $this->stdErr)
           $this->stdErr->sourceInsert ($Message->Data);
-      
+        
+        // Check wheter to adjust the window
+        if ($this->localWindowSize <= $this->localMaximumPacketSize) {
+          $Reply = new qcEvents_Stream_SSH_ChannelWindowAdjust;
+          $Reply->RecipientChannel = $this->remoteID;
+          $this->localWindowSize += $Reply->bytesToAdd = self::DEFAULT_WINDOW_SIZE; # TODO: Static value
+          
+          $this->Stream->writeMessage ($Reply);
+        }
+        
       // Recieve a channel-EOF
       } elseif ($Message instanceof qcEvents_Stream_SSH_ChannelEnd) {
         // Ignored, just forward as event

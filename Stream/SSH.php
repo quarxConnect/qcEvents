@@ -343,8 +343,6 @@
       $Message = new qcEvents_Stream_SSH_ChannelOpen;
       $Message->Type = 'session';
       $Message->SenderChannel = $this->nextChannel++;
-      $Message->InitialWindowSize = 2097152; // 2 MB
-      $Message->MaximumPacketSize = 32768;
       
       // Write out the message
       $this->writeMessage ($Message);
@@ -455,8 +453,6 @@
       $Message = new qcEvents_Stream_SSH_ChannelOpen;
       $Message->Type = ($Forwarded ? 'forwarded-tcpip' : 'direct-tcpip');
       $Message->SenderChannel = $this->nextChannel++;
-      $Message->InitialWindowSize = 2097152; // 2 MB
-      $Message->MaximumPacketSize = 32768;
       $Message->DestinationAddress = $DestinationHost;
       $Message->DestinationPort = $DestinationPort;
       $Message->OriginatorAddress = $OriginatorHost;
@@ -1176,8 +1172,6 @@
             $Reply = new qcEvents_Stream_SSH_ChannelConfirmation;
             $Reply->RecipientChannel = $Message->SenderChannel;
             $Reply->SenderChannel = $Channel->getLocalID ();
-            $Reply->InitialWindowSize = 2097152; // 2 MB
-            $Reply->MaximumPacketSize = 32768;
             
             // Write out the reply
             $this->writeMessage ($Reply);
