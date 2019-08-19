@@ -1056,6 +1056,9 @@
           $this->cipherRemote [] = $this->deriveKey ('A', $this->cipherRemote [3]);
           $this->macRemote [] = $this->deriveKey ('E');
         }
+        
+        // Remove informations from negotiation
+        $this->keyExchange = null;
       
       // A new service was accepted
       } elseif (($Message instanceof qcEvents_Stream_SSH_ServiceAccept) && ($this->State == self::STATE_CONNECT)) {
