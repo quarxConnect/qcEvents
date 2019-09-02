@@ -34,6 +34,9 @@
     /* URL of our endpoint */
     private $EndpointURL = null;
     
+    /* Use opportunistic authentication */
+    private $forceOpportunisticAuthentication = false;
+    
     // {{{ __construct
     /**
      * Create a new JSON-RPC-Client
@@ -49,6 +52,20 @@
       $this->Version = $Version;
       $this->Pool = $Pool;
       $this->EndpointURL = $EndpointURL;
+    }
+    // }}}
+    
+    // {{{ useOpportunisticAuthentication
+    /**
+     * Control wheter to use opportunistic authentication
+     * 
+     * @param bool $Toggle (optional)
+     * 
+     * @access public
+     * @return void
+     **/
+    public function useOpportunisticAuthentication ($Toggle = true) {
+      $this->forceOpportunisticAuthentication = !!$Toggle;
     }
     // }}}
     
@@ -82,7 +99,7 @@
       
       // Try to run the request
       return new qcEvents_Promise (function ($resolve, $reject) use ($Request) {
-        $this->Pool->addNewRequest (
+        $httpRequest = $this->Pool->addNewRequest (
           $this->EndpointURL,
           'POST',
           array (
@@ -134,6 +151,10 @@
             $resolve ($JSON->result);
           }
         );
+        
+        // Check wheter to enable opportunistic 
+        if ($this->forceOpportunisticAuthentication)
+          $httpRequest->addAuthenticationMethod ('Basic', array ());
       });
     }
     // }}}
