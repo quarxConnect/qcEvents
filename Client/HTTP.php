@@ -201,7 +201,8 @@
           if (!$Request->hasBody () && $authenticationPreflight && (($Username !== null) || ($Password !== null))) {
             $Request->setMethod ('OPTIONS');
             $Request->setCredentials (null, null);
-          }
+          } elseif (!$authenticationPreflight && (($Username !== null) || ($Password !== null)))
+            $Request->addAuthenticationMethod ('Basic');
           
           // Pipe the socket to our request
           $Socket->pipe ($Request);
