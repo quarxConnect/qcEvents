@@ -287,8 +287,7 @@
         return qcEvents_Promise::reject ('Request is not active');
       
       // Set length of content
-      if ($Body !== null)
-        $Response->setField ('Content-Length', strlen ($Body));
+      $Response->setField ('Content-Length', strlen ($Body));
       
       // Write out the response
       return $this->httpHeaderWrite ($Response)->then (
