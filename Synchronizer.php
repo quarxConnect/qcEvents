@@ -29,6 +29,9 @@
     /* Store entire results on this class */
     private $storeResult = true;
     
+    /* Throw exception if one was received */
+    private $throwExceptions = true;
+    
     /* The last result received */
     private $lastResult = null;
     
@@ -38,16 +41,20 @@
      * 
      * @param enum $resultMode (optional) Return results in this mode
      * @param bool $storeResult (optional) Store results on this class
+     * @param bool $throwExceptions (optional) Throw exception if one was received
      * 
      * @access friendly
      * @return void
      **/
-    function __construct ($resultMode = null, $storeResult = null) {
+    function __construct ($resultMode = null, $storeResult = null, $throwExceptions = null) {
       if ($resultMode !== null)
         $this->resultMode = $resultMode;
       
       if ($storeResult !== null)
-        $this->storeResult = $storeResult;
+        $this->storeResult = !!$storeResult;
+      
+      if ($throwExceptions !== null)
+        $this->throwExceptions = !!$throwExceptions;
     }
     // }}}
     
@@ -153,6 +160,8 @@
         $rc = $Handler;
       
       // Check for a returned promise
+      $Exception = null;
+      
       if ($rc instanceof qcEvents_Promise) {
         // Check if this was expected
         if (!$isPromise) {
@@ -163,7 +172,7 @@
         
         $rc->then (
           $Callback,
-          function () use (&$Loop, &$Ready, &$Result, $Base) {
+          function ($Error) use (&$Loop, &$Ready, &$Result, &$Exception, $Base) {
             // Store the result
             $Ready = true;
             $Result = array (false);
@@ -171,6 +180,9 @@
             // Leave the loop
             if ($Loop)
               $Base->loopBreak ();
+            
+            if (($Error instanceof Exception) || ($Error instanceof Error))
+              $Exception = $Error;
           }
         );
       } elseif ($isPromise) {
@@ -184,6 +196,9 @@
       
       while (!$Ready)
         $Base->loop (true);
+      
+      if (($Exception !== null) && $this->throwExceptions)
+        throw $Exception;
       
       // Process the result
       $c = count ($Result);
