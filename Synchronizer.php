@@ -156,8 +156,10 @@
         
         // Do the call
         $rc = $Method->invokeArgs ((is_object ($Handler) ? $Handler : null), $Parameters);
-      } else
+      } else {
         $rc = $Handler;
+        $isPromise = true;
+      }
       
       // Check for a returned promise
       $Exception = null;
