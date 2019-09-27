@@ -268,9 +268,11 @@
         return qcEvents_Promise::resolve (true);
       elseif ($this->registrationStatus === false)
         return qcEvents_Promise::reject ('Not registered');
+      elseif ($this->registrationStatus !== null)
+        return $this->registrationStatus;
       
       // Retrive directory first
-      return $this->getDirectory ()->then (
+      return $this->registrationStatus = $this->getDirectory ()->then (
         function ($Directory) {
           // Make sure there is a newAccount-URL on directory
           if (!isset ($Directory->newAccount))
@@ -507,42 +509,41 @@
         'User-Agent' => 'qcEvents-ACME/0.1',
       );
       
-      $Request = function ($resolve, $reject) use ($URL, $Method, $rejectError, &$Headers, &$Payload) {
-        $this->httpPool->addNewRequest (
-          $URL,
-          $Method,
-          $Headers,
-          $Payload,
-          function (qcEvents_Client_HTTP $httpPool, qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, $Body = null) use ($rejectError, $resolve, $reject) {
-            // Check for errors on the response
-            if (!$Header)
-              return $reject ('No header received');
-            
-            // Look for a nonce
-            if ($Header->hasField ('Replay-Nonce'))
-              $this->replayNonce = $Header->getField ('Replay-Nonce');
-            
-            // Try to parse JSON on the result
-            if (($Header->getField ('Content-Type') == 'application/json') ||
-                ($Header->getField ('Content-Type') == 'application/problem+json'))
-              $Body = json_decode ($Body);
-            
-            // Check for an error-response
-            if ($rejectError && $Header->isError ())
-              return $reject ('Errornous response received' . (is_object ($Body) && isset ($Body->detail) ? ': ' . $Body->detail : ''), $Header, $Body);
-            
-            // Forward the result
-            return $resolve ($Body, $Header);
-          }
-        );
+      $Resolve = function ($Body, qcEvents_Stream_HTTP_Header $Header = null) use ($rejectError, $URL) {
+        // Check for errors on the response
+        if (!$Header)
+          throw new exception ('No header received');
+        
+        // Look for a nonce
+        if ($Header->hasField ('Replay-Nonce'))
+          $this->replayNonce = $Header->getField ('Replay-Nonce');
+        
+        // Try to parse JSON on the result
+        if (($Header->getField ('Content-Type') == 'application/json') ||
+            ($Header->getField ('Content-Type') == 'application/problem+json'))
+          $Body = json_decode ($Body);
+        
+        // Check for an error-response
+        if ($rejectError && $Header->isError ())
+          throw new exception ('Errornous response received' . (is_object ($Body) && isset ($Body->detail) ? ': ' . $Body->detail : ''));
+        
+        // Forward the result
+        return new qcEvents_Promise_Solution (array ($Body, $Header));
       };
       
       // Check wheter to sign payload
       if (!$Sign)
-        return new qcEvents_Promise ($Request);
+        return $this->httpPool->request (
+          $URL,
+          $Method,
+          $Headers,
+          $Payload
+        )->then (
+          $Resolve
+        );
       
       return $this->getNonce ()->then (
-        function ($Nonce) use ($URL, $Request, &$Headers, &$Payload) {
+        function ($Nonce) use ($URL, $Resolve, $Method, &$Headers, &$Payload) {
           // Create header
           $header = $this->joseHeader;
           $header ['nonce'] = $Nonce;
@@ -566,7 +567,14 @@
           $Payload = json_encode ($payload);
           
           // Run the request
-          return new qcEvents_Promise ($Request);
+          return $this->httpPool->request (
+            $URL,
+            $Method,
+            $Headers,
+            $Payload
+          )->then (
+            $Resolve
+          );
         }
       );
     }
