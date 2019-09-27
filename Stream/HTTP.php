@@ -156,7 +156,7 @@
             $this->___callback ('httpHeaderReady', $this->Header);
             
             // Switch states
-            if ($this->bodySuppressed || !$this->Header->hasBody ()) {
+            if (!$this->expectBody () || !$this->Header->hasBody ()) {
               $this->httpSetState (self::HTTP_STATE_FINISHED);
               
               return $this->___callback ('httpFinished', $this->Header, null);
@@ -223,6 +223,24 @@
           $this->httpBodyAppend ($this->bufferRead);
           $this->bufferRead = '';
         }
+    }
+    // }}}
+    
+    // {{{ expectBody
+    /**
+     * Check if this header expects a body in response
+     * 
+     * @access private
+     * @return bool
+     **/
+    private function expectBody () {
+      if ($this->bodySuppressed)
+        return false;
+      
+      if ($this->getType () == $this::TYPE_REQUEST)
+        return ($this->getMethod () != 'HEAD');
+      
+      return true;
     }
     // }}}
     
