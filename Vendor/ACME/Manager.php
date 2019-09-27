@@ -189,7 +189,10 @@
           unset ($this->Challenges [$Key]);
         
         // Create a new key
-        $Order->Key = $Order->createKey ();
+        if (!isset ($Order->Key))
+          $Order->Key = $Order->createKey ();
+        else
+          trigger_error ('Key for order was already set');
         
         // Create a CSR for this order
         $CSR = $Order->createCSR ($Order->Key);
