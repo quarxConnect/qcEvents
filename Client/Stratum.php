@@ -91,6 +91,35 @@
     }
     // }}}
     
+    // {{{ configure
+    /**
+     * Try to negotiate protocol-extensions with out server
+     * 
+     * @param array $Extensions
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function configure (array $Extensions) : qcEvents_Promise {
+      // Check if this call is supported
+      if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK)
+        return qcEvents_Promise::reject ('Unsupported on eth-getwork');
+      
+      // Convert extensions
+      $Parameters = array ();
+      
+      foreach ($Extensions as $Extension=>$eParameters)
+        foreach ($eParameters as $Key=>$Value)
+          $Parameters [$Extension . '.' . $Key] = $Value;
+      
+      // Forward the request
+      return $this->sendRequest (
+        'mining.configure',
+        array (array_keys ($Extensions), $Parameters)
+      );
+    }
+    // }}}
+    
     // {{ authenticate
     /**
      * Try to authenticate at the pool
