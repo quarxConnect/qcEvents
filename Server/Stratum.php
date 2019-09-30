@@ -32,11 +32,29 @@
     private static $Nonces = array ();
     private static $nextNonce = 0;
     
-    // Version-Identifier of our client
+    /* Version-Identifier of our client */
     private $Version = null;
     
-    // Mininig-Difficulty
+    /* Client is capable of changing the extranonce */
+    private $canChangeExtranonce = false;
+    
+    /* Client is capable of Multi-Version-Mining (aka ASIC Boost) */
+    private $canMineMultiVersion = false;
+    
+    /* Client supports changing the version-mask */
+    private $canChangeVersionMask = false;
+    
+    /* Minimum difficulty requested by the client */
+    private $minDifficulty = null;
+    
+    /* Mininig-Difficulty */
     private $Difficulty = 1;
+    
+    /* Allowed bits for version-mask */
+    private $allowedVersionMask = 0x1fffe000;
+    
+    /* Version-Mask for Multi-Version-Mining */
+    private $versionMask = null;
     
     // Extra-Nonce for this client
     private $ExtraNonce1 = null;
@@ -169,7 +187,7 @@
      * @return float
      **/
     public function getDifficulty () {
-      return $this->Difficulty;
+      return max ($this->minDifficulty, $this->Difficulty);
     }
     // }}}
     
@@ -191,7 +209,7 @@
           ($this->getProtocolVersion () != $this::PROTOCOL_ETH_STRATUM)) // TODO: Check if eth-stratum really don't support this
         return $this->sendNotify (
           'mining.set_difficulty',
-          array ($this->Difficulty)
+          array ($this->getDifficulty ())
         );
     }
     // }}}
@@ -423,6 +441,31 @@
           'mining.set_extranonce',
           array (sprintf ('%08x', $this->ExtraNonce1), $this->ExtraNonce2Length)
         );
+    }
+    // }}}
+    
+    // {{{ setVersionMask
+    /**
+     * Try to change the version-mask for this miner
+     * 
+     * @param int $VersionMask
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setVersionMask ($VersionMask) {
+      // Check if the miner is capable of this
+      if (!$this->canChangeVersionMask)
+        return;
+      
+      // Store the change locally
+      $this->versionMask = $VersionMask;
+      
+      // Notify the client
+      $this->sendNotify (
+        'mining.set_version_mask',
+        array (sprintf ('%08x', $this->versionMask))
+      );
     }
     // }}}
     
@@ -763,8 +806,62 @@
         
         // Raise a callback
         return $this->___callback ('stratumWork', $Message->id, $Valid, $Block, $this->Jobs [$JobID], $Message->params);
-      } elseif (($Message->method == 'mining.extranonce.subscribe') || ($Message->method == 'mining.multi_version')) {
-        # TODO
+      // Check for Miner-Configuration (BIP 310)
+      } elseif ($Message->method == 'mining.configure') {
+        $Params = array ();
+        
+        foreach ($Message->params [0] as $Extension)
+          if ($Extension == 'version-rolling') {
+            // Client is capable of multi-version-mining
+            $this->canMineMultiVersion = true;
+            $this->canChangeVersionMask = true;
+            
+            // Store and return the mask
+            $Params ['version-rolling.mask'] = sprintf ('%08x', $this->versionMask = (hexdec ($Message->params [1]->{'version-rolling.mask'}) & $this->allowedVersionMask));
+            
+            // Mark the extension as processed
+            $Params [$Extension] = true;
+          } elseif ($Extension == 'minimum-difficulty') {
+            // Check if the extension is negotiated correct
+            if ($Params [$Extension] =
+                (isset ($Message->params [1]->{'minimum-difficulty.value'}) &&
+                 ($Message->params [1]->{'minimum-difficulty.value'} >= 0)))
+              // Store the miners preference
+              $this->minDifficulty = $Message->params [1]->{'minimum-difficulty.value'};
+          
+          } elseif ($Extension == 'subscribe-extranonce') {
+            // Store the support for mining.set_extranonce
+            $this->canChangeExtranonce = true;
+            
+            // Mark the extension as processed
+            $Params [$Extension] = true;
+          } else
+            $Params [$Extension] = false;
+        
+        $this->sendMessage (array (
+          'id' => $Message->id,
+          'error' => null,
+          'result' => $Params,
+        ));
+      } elseif ($Message->method == 'mining.multi_version') {
+        // Client is capable of multi-version-mining
+        $this->canMineMultiVersion = true;
+        
+        // Set some hard-coded version-mask for Bitmain miners
+        if ($this->versionMask === null)
+          $this->versionMask = 0x00c00000;
+        
+        // Inidcate success
+        $this->sendMessage (array (
+          'id' => $Message->id,
+          'error' => null,
+          'result' => array (4),
+        ));
+      } elseif ($Message->method == 'mining.extranonce.subscribe') {
+        // Store the support for mining.set_extranonce
+        $this->canChangeExtranonce = true;
+        
+        // Indicate success
         $this->sendMessage (array (
           'id' => $Message->id,
           'error' => null,
@@ -827,6 +924,16 @@
       
       $Merkle = $Merkle [0];
       
+      // Reassemble the version
+      $Version = hexdec (hexdec ($Job [5]));
+      
+      if (($this->versionMask !== null) && (count ($Message->params) > 5)) {
+        $versionBits = hexdec ($Message->params [5]);
+        
+        if (($versionBits & ~$this->versionMask) == 0)
+          $Version = ($Version & ~$this->versionMask) | ($versionBits & $this->versionMask);
+      }
+      
       // Reassemble the header
       $Prev = hex2bin ($Job [1]);
       $Prev =
@@ -835,7 +942,7 @@
       
       return pack (
         'Va32a32VVV',
-        hexdec ($Job [5]),                // Version
+        $Version,                         // Version
         strrev ($Prev),                   // Previous block hash
         $Merkle,                          // Merkle root hash
         hexdec ($Message->params [3]),    // Time of block
@@ -867,16 +974,13 @@
         $diffBase = gmp_init ('0x00000000ffff0000000000000000000000000000000000000000000000000000');
       
       $Hash = gmp_import (strrev (hash ('sha256', hash ('sha256', $Header, true), true)));
-      $Diff = gmp_div ($diffBase, gmp_init ((int)ceil ($this->Difficulty)));
+      $Diff = gmp_div ($diffBase, gmp_init ((int)ceil ($this->getDifficulty ())));
       $Valid = (gmp_cmp ($Hash, $Diff) <= 0);
       
       // Check if a block was found
       $Max = hexdec ($Job [6]);
       
       $Block = (gmp_cmp ($Hash, gmp_mul (gmp_init ($Max & 0xFFFFFF), gmp_pow (gmp_init (256), ((($Max >> 24) & 0xFF) - 3)))) <= 0);
-      
-      if ($Block)
-        printf ("%s\n%064s\n%064s\n", $Job [6], gmp_strval ($Hash, 16), gmp_strval (gmp_mul (gmp_init ($Max & 0xFFFFFF), gmp_pow (gmp_init (256), ((($Max >> 24) & 0xFF) - 3))), 16));
       
       // Return the result
       return $Valid;
@@ -911,7 +1015,7 @@
         $diffBase = gmp_init ('0x0000ffff00000000000000000000000000000000000000000000000000000000'); // NOTE: This is for LTC, others may differ
       
       $Hash = gmp_import (strrev ($Scrypt->nosalt ($Header, 80)));
-      $Diff = gmp_div ($diffBase, gmp_init ((int)ceil ($this->Difficulty)));
+      $Diff = gmp_div ($diffBase, gmp_init ((int)ceil ($this->getDifficulty ())));
       $Valid = (gmp_cmp ($Hash, $Diff) <= 0);
       
       // Check if a block was found
