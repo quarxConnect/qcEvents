@@ -381,11 +381,12 @@
      * 
      * @param int $ExtraNonce1 (optional)
      * @param int $ExtraNonce2Length (optional)
+     * @param bool $Notify (optional) Send notification to our client (default)
      * 
      * @access public
      * @return void
      **/
-    public function setExtraNonce ($ExtraNonce1 = null, $ExtraNonce2Length = null) {
+    public function setExtraNonce ($ExtraNonce1 = null, $ExtraNonce2Length = null, $Notify = true) {
       // Make sure any change is desired
       if (($ExtraNonce1 === null) && ($ExtraNonce2Length === null))
         return;
@@ -408,6 +409,9 @@
       $this->___callback ('stratumExtraNonceChanged', $this->ExtraNonce1, $this->ExtraNonce2Length);
       
       // Notify the client
+      if (!$Notify)
+        return;
+      
       if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM_NICEHASH)
         $this->sendNotify (
           'mining.set_extranonce',
@@ -446,10 +450,6 @@
       call_user_func_array ('printf', $Args);
     }
     // }}}
-    
-    public function sendMessage ($Message, array $Extra = null) {
-      return parent::sendMessage ($Message, $Extra);
-    }
     
     // {{{ processRequest
     /**
