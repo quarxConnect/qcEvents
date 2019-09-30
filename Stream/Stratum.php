@@ -195,9 +195,9 @@
      * @param array $Extra (optional)
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function sendMessage ($Message, array $Extra = null) {
+    public function sendMessage ($Message, array $Extra = null) : qcEvents_Promise {
       // Make sure the message is an array
       $Message = (array)$Message;
       
@@ -210,9 +210,13 @@
       
       // Push message to the wire
       if (!$this->Stream || !$this->Stream->isConnected ())
-        $this->Queue [] = $Message;
-      else
-        $this->Stream->write (json_encode ($Message) . "\n");
+        return new qcEvents_Promise (
+          function (callable $Resolve, callable $Reject) use ($Message) {
+            $this->Queue [] = array ($Message, $Resolve, $Reject);
+          }
+        );
+      
+      return $this->Stream->write (json_encode ($Message) . "\n");
     }
     // }}}
     
@@ -411,7 +415,7 @@
             
             // Push queue to the wire
             foreach ($this->Queue as $Q)
-              $this->sendMessage ($Q);
+              $this->sendMessage ($Q [0])->then ($Q [1], $Q [2]);
                                   
             $this->Queue = array ();
                         
