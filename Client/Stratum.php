@@ -46,12 +46,7 @@
         case $this::PROTOCOL_ETH_GETWORK:
           $this->Version = $Version;
           
-          return qcEvents_Promise::resolve (array (
-            'Services' => array (),
-            'ExtraNonce1' => null,
-            'ExtraNonce2Length' => null,
-          ));
-        
+          return qcEvents_Promise::resolve (array (), null, null);
         // Ethereum-Stratum has empty parameters?!
         case $this::PROTOCOL_ETH_STRATUM:
           $Params = array ();
@@ -90,7 +85,7 @@
           $this->___callback ('stratumSubscribed', $Result ['Services'], $Result ['ExtraNonce1'], $Result ['ExtraNonce2Length']);
           
           // Forward the result
-          return $Result;
+          return new qcEvents_Promise_Solution (array ($Result ['Services'], $Result ['ExtraNonce1'], $Result ['ExtraNonce2Length']));
         }
       );
     }
