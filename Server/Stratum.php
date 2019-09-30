@@ -83,6 +83,53 @@
     }
     // }}}
     
+    // {{{ sendSubscribtion
+    /**
+     * Send positive response to a subscribtion-request
+     * 
+     * @param int $ID
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function sendSubscribtion ($ID) : qcEvents_Promise {
+      // Respond depending on protocol-version
+      $Version = $this->getProtocolVersion ();
+      
+      if ($Version == $this::PROTOCOL_ETH_STRATUM_NICEHASH) // Nicehash-Variant of stream for ethereum
+        $Result = array (
+          0 => array (
+            0 => array (
+              0 => 'mining.notify',
+              1 => time (),
+              2 => 'EthereumStratum/1.0.0',
+            ),
+          ),
+          1 => sprintf ('%06x', $this->ExtraNonce1),
+        );
+      elseif ($Version != $this::PROTOCOL_ETH_STRATUM) // Anything that's not stratum for ethereum
+        $Result = array (
+          0 => array (
+            0 => array (
+              0 => 'mining.notify',
+              1 => time (),
+            ),
+          ),
+          1 => sprintf ('%08x', $this->ExtraNonce1),
+          2 => $this->ExtraNonce2Length,
+        );
+      else // Stratum for ethereum
+        $Result = true;
+      
+      // Send out the response
+      return $this->sendMessage (array (
+        'id' => $ID,
+        'error' => null,
+        'result' => $Result,
+      ));
+    }
+    // }}}
+    
     // {{{ getVersion
     /**
      * Retrive the client-identifier
