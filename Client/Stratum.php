@@ -19,6 +19,7 @@
    **/
   
   require_once ('qcEvents/Stream/Stratum.php');
+  require_once ('qcEvents/Stream/Stratum/Job.php');
   require_once ('qcEvents/Promise.php');
   
   class qcEvents_Client_Stratum extends qcEvents_Stream_Stratum {
@@ -225,9 +226,14 @@
         return $this->___callback ('stratumSetDifficulty', $this->Difficulty);
       
       // Pool sends new job
-      } elseif ($Message->method == 'mining.notify')
-        return $this->___callback ('stratumNewJob', $Message->params);
+      } elseif ($Message->method == 'mining.notify') {
+        if ($Job = qcEvents_Stream_Stratum_Job::fromArray ($this, $Message->params))
+          $this->___callback ('stratumNewJob', $Job);
+        
+        return;
+      }
       
+      // Inherit to our parent if request wasn't handled
       parent::processRequest ($Message);
     }
     // }}}
@@ -242,17 +248,66 @@
      * @return void
      **/
     protected function processNotify ($Message) {
-      if (($this->getProtocolVersion () != $this::PROTOCOL_ETH_GETWORK) || (count ($Message->result) != 3))
+      // Check if this might be a job or inherit to our parent
+      if (($this->getProtocolVersion () != $this::PROTOCOL_ETH_GETWORK) ||
+          !($Job = qcEvents_Stream_Stratum_Job::fromArray ($this, $Message->result)))
         return parent::processNotify ($Message);
       
-      return $this->___callback ('stratumNewJob', $Message->result);
+      // Propagate the job
+      return $this->___callback ('stratumNewJob', $Job);
     }
     // }}}
     
+    
+    // {{{ stratumSubscribed
+    /**
+     * Callback: We are subscribed to events at our server
+     * 
+     * @param array $Services
+     * @param string $ExtraNonce1
+     * @param int $ExtraNonce2Length
+     * 
+     * @access protected
+     * @return void
+     **/
     protected function stratumSubscribed ($Services, $ExtraNonce1, $ExtraNonce2Length) { }
+    // }}}
+    
+    // {{{ stratumAuthenticated
+    /**
+     * Callback: We were authenticated at our server
+     * 
+     * @param string $Username
+     * 
+     * @access protected
+     * @return void
+     **/
     protected function stratumAuthenticated ($Username) { }
+    // }}}
+    
+    // {{{ stratumSetDifficulty
+    /**
+     * Callback: Difficulty was changed
+     * 
+     * @param float $Difficulty
+     * 
+     * @access protected
+     * @return void
+     **/
     protected function stratumSetDifficulty ($Difficulty) { }
-    protected function stratumNewJob ($Job) { }
+    // }}}
+    
+    // {{{ stratumNewJob
+    /**
+     * Callback: A new Job was received from our server
+     * 
+     * @param qcEvents_Stream_Stratum_Job $Job
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function stratumNewJob (qcEvents_Stream_Stratum_Job $Job) { }
+    // }}}
   }
 
 ?>

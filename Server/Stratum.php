@@ -26,6 +26,7 @@
   }
   
   require_once ('qcEvents/Stream/Stratum.php');
+  require_once ('qcEvents/Stream/Stratum/Job.php');
   
   class qcEvents_Server_Stratum extends qcEvents_Stream_Stratum {
     // Used nonces
@@ -218,117 +219,41 @@
     /**
      * Register a mining-job
      * 
-     * @param array $Job
+     * @param qcEvents_Stream_Stratum_Job $Job
      * 
      * @access public
      * @return void
      **/
-    public function addJob ($Job) {
-      // Preprocess ethereum-stuff
-      if ($this->getAlgorithm () == $this::ALGORITHM_ETH) {
-        /**
-         * Ethereum-GetWork has 3 Elements (Headerhash, Seedhash, Target)
-         * Ethereum-Stratum has 5 Elements (Job-ID, Headerhash, Seedhash, Target, Reset)
-         * Ethereum-Stratum-Nicehash has 4 Elements (Job-ID, Seedhash, Headerhash, Reset)
-         **/
-        static $jobTypes = array (
-          3 => self::PROTOCOL_ETH_GETWORK,
-          4 => self::PROTOCOL_ETH_STRATUM_NICEHASH,
-          5 => self::PROTOCOL_ETH_STRATUM,
-        );
-        
-        if (!isset ($jobTypes [count ($Job)])) {
-          trigger_error ('Invlaid Job-Format');
-          
-          return false;
-        }
-        
-        $inFormat = $jobTypes [count ($Job)];
-        
-        // Check wheter to convert the job
-        if ($inFormat != $this->getProtocolVersion ()) {
-          // Convert Job to eth-stratum
-          if ($inFormat == $this::PROTOCOL_ETH_STRATUM_NICEHASH)
-            $Job = array (
-              $Job [0],
-              $Job [2],
-              $Job [1],
-              gmp_strval (gmp_div (gmp_init ('00000000ffff0000000000000000000000000000000000000000000000000000', 16), gmp_init ($this->Difficulty)), 16),
-              $Job [3],
-            );
-          elseif ($inFormat == $this::PROTOCOL_ETH_GETWORK)
-            $Job = array (
-              substr ($Job [0], 2),
-              substr ($Job [0], 2),
-              substr ($Job [1], 2),
-              substr ($Job [2], 2),
-              true, // TODO: How to detect if we have to reset?!
-            );
-          
-          // Convert back to desired format
-          if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM_NICEHASH)
-            $Job = array (
-              $Job [0],
-              $Job [2],
-              $Job [1],
-              $Job [4],
-            );
-            // TODO: Retarget difficulty here
-          elseif ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK)
-            $Job = array (
-              '0x' . $Job [1],
-              '0x' . $Job [2],
-              '0x' . $Job [3],
-            );
-        }
-      }
-      
-      // Check wheter to reset
-      if ($isEthereumGetWork = ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK))
-        $Reset = true;
-      elseif ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM)
-        $Reset = (isset ($Job [4]) && $Job [4]);
-      elseif ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM_NICEHASH)
-        $Reset = (isset ($Job [3]) && $Job [3]);
-      elseif (isset ($Job [8]))
-        $Reset = $Job [8];
-      else
-        $Reset = false;
-      
+    public function addJob (qcEvents_Stream_Stratum_Job $Job) {
       // Reset jobs if needed
-      if ($Reset)
+      if ($Job->isReset ())
         $this->Jobs = array ();
       
       // Register the job
-      $this->Jobs [$Job [0]] = $Job;
-      $this->jobLatest = $Job [0];
+      $this->Jobs [$this->jobLatest = $Job->getID ()] = $Job;
       
       // Raise a callback
-      $this->___callback ('stratumWorkNew', $Job, $Reset);
+      $this->___callback ('stratumWorkNew', $Job);
       
       // Forward the job
       foreach ($this->workRequests as $Key=>$Message)
         $this->sendMessage (array (
           'id' => $Message->id,
           'error' => null,
-          'result' => array (
-            $this->Jobs [$this->jobLatest][0],
-            $this->Jobs [$this->jobLatest][1],
-            $this->Jobs [$this->jobLatest][2],
-          ),
+          'result' => $Job->toArray ($this::PROTOCOL_ETH_GETWORK),
         ));
       
       $this->workRequests = array ();
       
-      if ($isEthereumGetWork)
+      if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK)
         return $this->sendMessage (array (
           'id' => 0,
-          'result' => $Job,
+          'result' => $Job->toArray ($this::PROTOCOL_ETH_GETWORK),
         ));
       
       return $this->sendNotify (
         'mining.notify',
-        $Job
+        $Job->toArray ($this->getProtocolVersion ())
       );
     }
     // }}}
@@ -567,11 +492,7 @@
                 return $this->sendMessage (array (
                   'id' => $Message->id,
                   'error' => null,
-                  'result' => array (
-                    $this->Jobs [$this->jobLatest][0],
-                    $this->Jobs [$this->jobLatest][1],
-                    $this->Jobs [$this->jobLatest][2],
-                  ),
+                  'result' => $this->Jobs [$this->jobLatest]->toArray ($this::PROTOCOL_ETH_GETWORK),
                 ));
               }
             );
@@ -581,11 +502,7 @@
           return $this->sendMessage (array (
             'id' => $Message->id,
             'error' => null,
-            'result' => array (
-              $this->Jobs [$this->jobLatest][0],
-              $this->Jobs [$this->jobLatest][1],
-              $this->Jobs [$this->jobLatest][2],
-            ),
+            'result' => $this->Jobs [$this->jobLatest]->toArray ($this::PROTOCOL_ETH_GETWORK),
           ));
         } elseif ($Message->method == 'eth_submitWork') {
           // Signal getwork-based implementation
@@ -743,12 +660,12 @@
         
         // Treat ethereum special
         if ($isEthereum) {
-          // Convert work to  Eth-Submit-Work-Format
+          // Convert work to Eth-Submit-Work-Format
           if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM_NICEHASH) {
             if ($Wellformed = (count ($Message->params) == 3))
               $Message->params = array (
                 '0x' . $Message->params [2],
-                '0x' . $this->Jobs [$JobID][2],
+                '0x' . $this->Jobs [$JobID]->getHeaderHash (),
                 '0x' // TODO!!!
               );
           } elseif ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM) {
@@ -889,24 +806,18 @@
     /**
      * Rebuild block-header for a given job and mining-result
      * 
-     * @param array $Job
+     * @param qcEvents_Stream_Stratum_Job $Job
      * @param object $Message
      * 
-     * @access private
+     * @access public
      * @return string
      **/
-    private function rebuildBlockHeader ($Job, $Message) {
+    public function rebuildBlockHeader (qcEvents_Stream_Stratum_Job $Job, $Message) {
       // Reassemle the coinbase
-      $Coinbase = hex2bin (sprintf (
-        '%s%08x%0' . ($this->ExtraNonce2Length * 2) . 's%s',
-        $Job [2],
-        $this->ExtraNonce1,
-        $Message->params [2],
-        $Job [3]
-      ));
+      $Coinbase = $this->rebuildCoinbase ($Job, $Message);
       
       // Generate Merkle-Root
-      $Merkle = $Job [4];
+      $Merkle = $Job->getMerkleTree ();
       
       foreach ($Merkle as $k=>$Hash)
         $Merkle [$k] = hex2bin ($Hash);
@@ -925,7 +836,7 @@
       $Merkle = $Merkle [0];
       
       // Reassemble the version
-      $Version = hexdec (hexdec ($Job [5]));
+      $Version = hexdec ($Job->getVersion ());
       
       if (($this->versionMask !== null) && (count ($Message->params) > 5)) {
         $versionBits = hexdec ($Message->params [5]);
@@ -935,7 +846,7 @@
       }
       
       // Reassemble the header
-      $Prev = hex2bin ($Job [1]);
+      $Prev = hex2bin ($Job->getHeaderHash ());
       $Prev =
         substr ($Prev, 28, 4) . substr ($Prev, 24, 4) . substr ($Prev, 20, 4) . substr ($Prev, 16, 4) .
         substr ($Prev, 12, 4) . substr ($Prev, 8, 4) . substr ($Prev, 4, 4) . substr ($Prev, 0, 4);
@@ -946,9 +857,30 @@
         strrev ($Prev),                   // Previous block hash
         $Merkle,                          // Merkle root hash
         hexdec ($Message->params [3]),    // Time of block
-        hexdec ($Job [6]),                // Difficulty
+        hexdec ($Job->getDifficulty ()),  // Difficulty
         hexdec ($Message->params [4])     // Nonce
       );
+    }
+    // }}}
+    
+    // {{{ rebuildCoinbase
+    /**
+     * Rebuild a coinbase-transaction from a job and a work-result
+     * 
+     * @param qcEvents_Stream_Stratum_Job $Job
+     * @param array $Message
+     * 
+     * @access public
+     * @return string
+     **/
+    public function rebuildCoinbase (qcEvents_Stream_Stratum_Job $Job, $Message) {
+      return hex2bin (sprintf (
+        '%s%08x%0' . ($this->ExtraNonce2Length * 2) . 's%s',
+        $Job->getCoinbaseStart (),
+        $this->ExtraNonce1,
+        $Message->params [2],
+        $Job->getCoinbaseEnd ()
+      ));
     }
     // }}}
     
@@ -956,14 +888,14 @@
     /**
      * Validate an sha256-mining-job
      * 
-     * @param array $Job
+     * @param qcEvents_Stream_Stratum_Job $Job
      * @param object $Message
      * @param bool $Block (optional)
      * 
      * @access private
      * @return bool
      **/
-    private function validateSHA256 ($Job, $Message, &$Block = false) {
+    private function validateSHA256 (qcEvents_Stream_Stratum_Job $Job, $Message, &$Block = false) {
       // Rebuild the block-header
       $Header = $this->rebuildBlockHeader ($Job, $Message);
       
@@ -978,7 +910,7 @@
       $Valid = (gmp_cmp ($Hash, $Diff) <= 0);
       
       // Check if a block was found
-      $Max = hexdec ($Job [6]);
+      $Max = hexdec ($Job->getDifficulty ());
       
       $Block = (gmp_cmp ($Hash, gmp_mul (gmp_init ($Max & 0xFFFFFF), gmp_pow (gmp_init (256), ((($Max >> 24) & 0xFF) - 3)))) <= 0);
       
@@ -990,13 +922,13 @@
     /**
      * Validate an scrypt-mining-job
      * 
-     * @param array $Job
+     * @param qcEvents_Stream_Stratum_Job $Job
      * @param object $Message
      * 
      * @access private
      * @return bool
      **/
-    private function validateScrypt ($Job, $Message, &$Block = false) {
+    private function validateScrypt (qcEvents_Stream_Stratum_Job $Job, $Message, &$Block = false) {
       // Make sure we have Scrypt available
       require_once ('Scrypt/Scrypt.php');
       
@@ -1019,7 +951,7 @@
       $Valid = (gmp_cmp ($Hash, $Diff) <= 0);
       
       // Check if a block was found
-      $Max = hexdec ($Job [6]);
+      $Max = hexdec ($Job->getDifficulty ());
       $Block = (gmp_cmp ($Hash, gmp_mul (gmp_init ($Max & 0xFFFFFF), gmp_pow (gmp_init (256), ((($Max >> 24) & 0xFF) - 3)))) <= 0);
       
       // Return the result
@@ -1086,13 +1018,13 @@
      * @param int $ID Message-ID of the request
      * @param bool $Valid Validation-Result (NULL if unsure)
      * @param bool $Block A block was found (NULL if unsure)
-     * @param array $Job
+     * @param qcEvents_Stream_Stratum_Job $Job
      * @param array $Work
      * 
      * @access protected
      * @return void
      **/
-    protected function stratumWork ($ID, $Valid, $Block, array $Job, array $Work) { }
+    protected function stratumWork ($ID, $Valid, $Block, qcEvents_Stream_Stratum_Job $Job, array $Work) { }
     // }}}
     
     // {{{ stratumWorkUnknownJob
@@ -1112,26 +1044,25 @@
     /**
      * Callback: A malformed work was received
      * 
-     * @param array $Job
+     * @param qcEvents_Stream_Stratum_Job $Job
      * @param array $Work
      * 
      * @access protected
      * @return void
      **/
-    protected function stratumWorkMalformedJob ($Job, $Work) { }
+    protected function stratumWorkMalformedJob (qcEvents_Stream_Stratum_Job $Job, $Work) { }
     // }}}
     
     // {{{ stratumWorkNew
     /**
      * Callback: A new job was added
      * 
-     * @param array $Job
-     * @param bool $Reset (optional)
+     * @param qcEvents_Stream_Stratum_Job $Job
      * 
      * @access protected
      * @return void
      **/
-    protected function stratumWorkNew ($Job, $Reset = false) { }
+    protected function stratumWorkNew (qcEvents_Stream_Stratum_Job $Job) { }
     // }}}
     
     // {{{ stratumHashrate
