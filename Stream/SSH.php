@@ -469,8 +469,6 @@
       
       // Return it's promise
       return $this->Channels [$Message->SenderChannel]->getConnectionPromise ();
-      
-      return qcEvents_Promise::reject ('Unimplemented');
     }
     // }}}
     
@@ -1100,17 +1098,19 @@
         // Resolve any promise
         if ($this->authPromise) {
           // Resolve the promise
-          if ($Message instanceof qcEvents_Stream_SSH_UserAuthFailure)
-            call_user_func ($this->authPromise [1], $Message->PartialSuccess, $Message->Methods);
-          else
-            call_user_func ($this->authPromise [0]);
-          
+          $authPromise = $this->authPromise;
           $this->authPromise = null;
+          
+          if ($Message instanceof qcEvents_Stream_SSH_UserAuthFailure)
+            call_user_func ($authPromise [1], $Message->PartialSuccess, $Message->Methods);
+          else
+            call_user_func ($authPromise [0]);
           
           // Raise an event for this
           if ($Message instanceof qcEvents_Stream_SSH_UserAuthSuccess)
             $this->___callback ('authSuccessfull');
-        }
+        } else
+          trigger_error ('Authentication-Response without promise received');
         
       // Push any authentication-related banner to an event
       } elseif (($Message instanceof qcEvents_Stream_SSH_UserAuthBanner) && ($this->State == self::STATE_AUTH)) {
