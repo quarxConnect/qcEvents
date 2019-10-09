@@ -79,6 +79,9 @@
     /* Check if we are trying to close the channel */
     private $isClosing = false;
     
+    /* Status of command that was executed on this channel */
+    private $commandStatus = null;
+    
     /* Connection-Promise */
     private $ConnectionPromise = null;
     
@@ -105,18 +108,20 @@
       
       // Create a connection-promise
       $this->ConnectionPromise = array (null);
-      $this->ConnectionPromise [0] = new qcEvents_Promise (function (callable $Resolve, callable $Reject) {
-        // Check for a race-condition
-        if ($this->remoteID === -1)
-          return call_user_func ($Reject, 'Unknown reason (race condition)');
-        
-        if ($this->remoteID !== null)
-          return call_user_func ($Resolve , $this);
-        
-        // Store the callbacks
-        $this->ConnectionPromise [1] = $Resolve;
-        $this->ConnectionPromise [2] = $Reject;
-      });
+      $this->ConnectionPromise [0] = new qcEvents_Promise (
+        function (callable $Resolve, callable $Reject) {
+          // Check for a race-condition
+          if ($this->remoteID === -1)
+            return call_user_func ($Reject, 'Unknown reason (race condition)');
+          
+          if ($this->remoteID !== null)
+            return call_user_func ($Resolve, $this);
+          
+          // Store the callbacks
+          $this->ConnectionPromise [1] = $Resolve;
+          $this->ConnectionPromise [2] = $Reject;
+        }
+      );
     }
     // }}}
     
@@ -294,6 +299,18 @@
       $Message->Command = $Name;
       
       return $this->wantReply ($Message);
+    }
+    // }}}
+    
+    // {{{ getCommandStatus
+    /**
+     * Retrive the exit-status of the command executed on this channel (if any)
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getCommandStatus () {
+      return $this->commandStatus;
     }
     // }}}
     
