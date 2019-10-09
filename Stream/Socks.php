@@ -7,6 +7,11 @@
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   
   class qcEvents_Stream_Socks extends qcEvents_Abstract_Source implements qcEvents_Interface_Stream, qcEvents_Interface_Stream_Consumer {
+    /* Timeouts */
+    const NEGOTIATE_TIMEOUT = qcEvents_Socket::CONNECT_TIMEOUT;
+    const AUTHENTICATE_TIMEOUT = 30;
+    const CONNECT_TIMEOUT = qcEvents_Socket::CONNECT_TIMEOUT * 2;
+    
     /* Connection-types */
     const TYPE_TCP = 1;
     const TYPE_TCP_SERVER = 2;
@@ -43,6 +48,7 @@
     /* Offset password-authentication during greeting (since SOCKS5) */
     private $offerPasswordAuthentication = false;
     
+    /* Promise-Callbacks for current operation */
     private $promiseCallbacks = null;
     
     // {{{ authenticate
@@ -69,11 +75,7 @@
       );
       
       // Create a promise
-      return new qcEvents_Promise (
-        function (callable $Resolve, callable $Reject) {
-          $this->promiseCallbacks = array ($Resolve, $Reject);
-        }
-      );
+      return $this->createPromiseCallbacks (self::AUTHENTICATE_TIMEOUT);
     }
     // }}}
     
@@ -139,11 +141,7 @@
       $this->Stream->write ($Message);
       
       // Create a promise
-      return new qcEvents_Promise (
-        function (callable $Resolve, callable $Reject) {
-          $this->promiseCallbacks = array ($Resolve, $Reject);
-        }
-      );
+      return $this->createPromiseCallbacks ($this::CONNECT_TIMEOUT);
     }
     // }}}
     
@@ -427,11 +425,7 @@
           $this->Stream->write ("\x05\x01\x00");
         
         // Create a promise
-        $Promise = new qcEvents_Promise (
-          function (callable $Resolve, callable $Reject) {
-            $this->promiseCallbacks = array ($Resolve, $Reject);
-          }
-        );
+        $Promise = $this->createPromiseCallbacks (self::NEGOTIATE_TIMEOUT);
       } else {
         // Update our state
         $this->State = self::STATE_AUTH;
@@ -510,6 +504,40 @@
     }
     // }}}
     
+    // {{{ createPromiseCallbacks
+    /**
+     * Create and register a promise, optionally with a timeout
+     * 
+     * @param int $Timeout (optional)
+     * 
+     * @access private
+     * @return qcEvents_Promise
+     **/
+    private function createPromiseCallbacks ($Timeout = null) : qcEvents_Promise {
+      return new qcEvents_Promise (
+        function (callable $Resolve, callable $Reject) use ($Timeout) {
+          // Try to create a timeout-function if requested
+          if (($Timeout > 0) &&
+              (($this->Stream instanceof qcEvents_Interface_Common) ||
+               ($this->Stream instanceof qcEvents_Interface_Loop)) &&
+              is_object ($eventBase = $this->Stream->getEventBase ())) {
+            $Timeout = $eventBase->addTimeout ($Timeout);
+            
+            $Timeout->then (
+              function () {
+                $this->failConnection ('Operation timed out');
+              }
+            );
+          } else
+            $Timeout = null;
+          
+          // Register the promise
+          $this->promiseCallbacks = array ($Resolve, $Reject, $Timeout);
+        }
+      );
+    }
+    // }}}
+    
     // {{{ runPromiseCallback
     /**
      * Run any pending promise-callback
@@ -521,12 +549,19 @@
      * @return void
      **/
     private function runPromiseCallback ($ID = 0) {
+      // Make sure there is a promise registered
       if (!$this->promiseCallbacks)
         return;
       
+      // Stop any timer
+      if ($this->promiseCallbacks [2])
+        $this->promiseCallbacks [2]->cancel ();
+      
+      // Get and clear the callbacks
       $cb = $this->promiseCallbacks;
       $this->promiseCallbacks = null;
       
+      // Run the callback
       $args = func_get_args ();
       array_shift ($args);
       
