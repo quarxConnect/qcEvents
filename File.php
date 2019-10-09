@@ -25,6 +25,9 @@
     /* The filename of this stream */
     private $Filename = '';
     
+    /* Close stream on EOF */
+    private $closeOnEOF = true;
+    
     /* Modification-time to set on close */
     private $modificationTime = null;
     
@@ -164,6 +167,23 @@
     }
     // }}}
     
+    // {{{ closeOnEnd
+    /**
+     * Raise close on the stream if End-of-File was reached
+     * 
+     * @param bool $Toggle (optional) Change the behaviour
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function closeOnEnd ($Toggle = null) {
+      if ($Toggle !== null)
+        $this->closeOnEOF = !!$Toggle;
+      
+      return $this->closeOnEOF;
+    }
+    // }}}
+    
     // {{{ truncate
     /**
      * Truncate this file to a given size or to the size of the actual position
@@ -277,7 +297,7 @@
       parent::raiseRead ();
       
       // Check if we reached end-of-file
-      if (is_resource ($fd = $this->getReadFD ()) && feof ($fd))
+      if ($this->closeOnEOF && is_resource ($fd = $this->getReadFD ()) && feof ($fd))
         $this->close ();
     }
     // }}}
