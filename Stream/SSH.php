@@ -614,10 +614,20 @@
      * @return qcEvents_Promise
      **/
     public function close () : qcEvents_Promise {
-      # TODO
-      $this->___callback ('eventClosed');
+      // Close all channels
+      $Promises = array ();
       
-      return qcEvents_Promise::resolve ();
+      foreach ($this->Channels as $Channel)
+        $Promises [] = $Channel->close ()->catch (function () { });
+      
+      $this->Channels = array ();
+      
+      # TODO
+      return qcEvents_Promise::all ($Promises)->then (
+        function () {
+          $this->___callback ('eventClosed');
+        }
+      );
     }
     // }}}
     
@@ -681,6 +691,12 @@
           
           $this->connectPromise = null;
         }
+        
+        // Close all channels
+        foreach ($this->Channels as $Channel)
+          $Channel->close ();
+        
+        $this->Channels = array ();
         
         // Raise a callback
         $this->___callback ('eventUnpiped', $Source);
