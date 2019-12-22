@@ -176,12 +176,13 @@
      * 
      * @param array $Promises
      * @param qcEvents_Base $Base (optional)
-     * @param bool $forceSpec (optional)
+     * @param bool $ignoreRejections (optional) Ignore rejections as long as one promise fullfills
+     * @param bool $forceSpec (optional) Enforce behaviour along specification, don't fullfill the promise if there are no promises given
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function race (array $Promises, qcEvents_Base $Base = null, $forceSpec = false) {
+    public static function race (array $Promises, qcEvents_Base $Base = null, $ignoreRejections = false, $forceSpec = false) {
       // Check for non-promises first
       foreach ($Promises as $Promise)
         if (!($Promise instanceof qcEvents_Promise)) {
@@ -200,9 +201,10 @@
         return static::reject ();
       }
       
-      return new static (function ($resolve, $reject) use ($Promises) {
+      return new static (function ($resolve, $reject) use ($Promises, $ignoreRejections) {
         // Track if the promise is settled
         $Done = false;
+        $Countdown = count ($Promises);
         
         // Register handlers
         foreach ($Promises as $Promise)
@@ -220,9 +222,13 @@
          
               return new qcEvents_Promise_Solution (func_get_args ());
             },
-            function () use (&$Done, $reject) {
+            function () use (&$Done, &$Countdown, $reject, $ignoreRejections) {
               // Check if the promise is settled
               if ($Done)
+                return;
+              
+              // Check if we ignore rejections until one was fullfilled
+              if ($ignoreRejections && (--$Countdown > 0))
                 return;
               
               // Mark the promise as settled
