@@ -201,46 +201,49 @@
         return static::reject ();
       }
       
-      return new static (function ($resolve, $reject) use ($Promises, $ignoreRejections) {
-        // Track if the promise is settled
-        $Done = false;
-        $Countdown = count ($Promises);
-        
-        // Register handlers
-        foreach ($Promises as $Promise)
-          $Promise->then (
-            function () use (&$Done, $resolve) {
-              // Check if the promise is already settled
-              if ($Done)
-                return;
-              
-              // Mark the promise as settled
-              $Done = true;
-              
-              // Forward the result
-              call_user_func_array ($resolve, func_get_args ());
-         
-              return new qcEvents_Promise_Solution (func_get_args ());
-            },
-            function () use (&$Done, &$Countdown, $reject, $ignoreRejections) {
-              // Check if the promise is settled
-              if ($Done)
-                return;
-              
-              // Check if we ignore rejections until one was fullfilled
-              if ($ignoreRejections && (--$Countdown > 0))
-                return;
-              
-              // Mark the promise as settled
-              $Done = true;
-              
-              // Forward the result
-              call_user_func_array ($reject, func_get_args ());
-              
-              throw new qcEvents_Promise_Solution (func_get_args ());
-            }
-          );
-      }, $Base);
+      return new static (
+        function ($resolve, $reject) use ($Promises, $ignoreRejections) {
+          // Track if the promise is settled
+          $Done = false;
+          $Countdown = count ($Promises);
+          
+          // Register handlers
+          foreach ($Promises as $Promise)
+            $Promise->then (
+              function () use (&$Done, $resolve) {
+                // Check if the promise is already settled
+                if ($Done)
+                  return;
+                
+                // Mark the promise as settled
+                $Done = true;
+                
+                // Forward the result
+                call_user_func_array ($resolve, func_get_args ());
+           
+                return new qcEvents_Promise_Solution (func_get_args ());
+              },
+              function () use (&$Done, &$Countdown, $reject, $ignoreRejections) {
+                // Check if the promise is settled
+                if ($Done)
+                  return;
+                
+                // Check if we ignore rejections until one was fullfilled
+                if ($ignoreRejections && (--$Countdown > 0))
+                  return;
+                
+                // Mark the promise as settled
+                $Done = true;
+                
+                // Forward the result
+                call_user_func_array ($reject, func_get_args ());
+                
+                throw new qcEvents_Promise_Solution (func_get_args ());
+              }
+            );
+        },
+        $Base
+      );
     }
     // }}}
     
