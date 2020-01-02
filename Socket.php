@@ -583,7 +583,7 @@
           
           // Do the DNS-Lookup
           if (!is_array ($Result = dns_get_record ($Label, DNS_SRV, $AuthNS, $Addtl)) || (count ($Result) == 0))
-            return $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED);
+            return $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED, 'Failed to resolve destination (SRV) with dns_get_record()');
           
           // Forward the result
           return $this->socketResolverResultArray ($Result, $Addtl, $Domain, DNS_SRV, null, $Type);
@@ -618,7 +618,7 @@
       // Check unreachable-cache
       if (isset (self::$Unreachables [$Key = $this->socketAddress [1] . ':' . $this->socketAddress [2] . ':' . $this->socketAddress [3]])) {
         if (time () - self::$Unreachables [$Key] < $this::UNREACHABLE_TIMEOUT)
-          return $this->socketHandleConnectFailed (self::ERROR_NET_UNREACHABLE);
+          return $this->socketHandleConnectFailed (self::ERROR_NET_UNREACHABLE, 'Destination is marked as unreachable on cache');
         
         unset (self::$Unreachables [$Key]);
       }
@@ -636,7 +636,7 @@
         $ctx = stream_context_create ();
       
       if (!is_resource ($Socket = @stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, STREAM_CLIENT_ASYNC_CONNECT, $ctx)))
-        return $this->socketHandleConnectFailed (-$errno);
+        return $this->socketHandleConnectFailed (-$errno, 'connect() failed: ' . $err);
       
       stream_set_blocking ($Socket, 0);
       
@@ -756,7 +756,7 @@
       
       // Check our TLS-Status and treat as connection failed if required
       if (($this->tlsStatus === true) && !$this->tlsEnable ())
-        return $this->socketHandleConnectFailed ($this::ERROR_NET_TLS_FAILED);
+        return $this->socketHandleConnectFailed ($this::ERROR_NET_TLS_FAILED, 'Failed to enable TLS');
       
       // Fire custom callback
       if ($this->socketConnectResolve) {
@@ -776,11 +776,12 @@
      * Internal Callback: Pending connection could not be established
      * 
      * @param enum $Error (optional)
+     * @param string $Message (optional)
      * 
      * @access private
      * @return void
      **/
-    private function socketHandleConnectFailed ($Error = self::ERROR_NET_UNKNOWN) {
+    private function socketHandleConnectFailed ($Error = self::ERROR_NET_UNKNOWN, $Message = null) {
       // Mark this host as failed
       if ($this->socketAddress !== null) {
         // Reset the address
@@ -819,14 +820,26 @@
           ($this->Resolving <= 0)) {
         // Fire custom callback
         if ($this->socketConnectReject) {
-          call_user_func ($this->socketConnectReject, $Error);
+          static $errorStringMap = array (
+            self::ERROR_NET_UNKNOWN     => 'Unknown error',
+            self::ERROR_NET_DNS_FAILED  => 'DNS failed',
+            self::ERROR_NET_TLS_FAILED  => 'TLS failed',
+            self::ERROR_NET_TIMEOUT     => 'Connection timed out',
+            self::ERROR_NET_REFUSED     => 'Connection refused',
+            self::ERROR_NET_UNREACHABLE => 'Destination unreachable',
+          );
+          
+          if ($Message === null)
+            $Message = (isset ($errorStringMap [$Error]) ? $errorStringMap [$Error] : $errorStringMap [self::ERROR_NET_UNKNOWN]);
+          
+          call_user_func ($this->socketConnectReject, $Message, $Error);
           
           $this->socketConnectResolve = null;
           $this->socketConnectReject = null;
         }
         
         // Fire the callback
-        $this->___callback ('socketConnectionFailed', $Error);
+        $this->___callback ('socketConnectionFailed', $Message, $Error);
         
         // Disconnect cleanly
         return $this->close ();
@@ -930,7 +943,7 @@
       $this->socketConnectTimer = $this->getEventBase ()->addTimeout (self::CONNECT_TIMEOUT);
       $this->socketConnectTimer->then (
         function () {
-          $this->socketHandleConnectFailed ($this::ERROR_NET_TIMEOUT);
+          $this->socketHandleConnectFailed ($this::ERROR_NET_TIMEOUT, 'Timeout reached');
         }
       );
     }
@@ -955,7 +968,7 @@
       if ((count ($Results) == 0) && ($this->Resolving <= 0)) {
         // Mark connection as failed if there are no addresses pending and no current address
         if ((!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0)) && ($this->socketAddress === null))
-          return $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED);
+          return $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED, 'Failed to resolve destination');
         
         return;
       }
@@ -1558,7 +1571,7 @@
       // Read incoming data from socket
       if (($Data = fread ($this->getReadFD (), $this->bufferSize)) === '') {
         if ($this->isConnecting ())
-          return $this->socketHandleConnectFailed ($this::ERROR_NET_REFUSED);
+          return $this->socketHandleConnectFailed ($this::ERROR_NET_REFUSED, 'Connection refused');
         
         // Check if the socket is really closed
         if (!feof ($this->getReadFD ()))
@@ -1717,12 +1730,13 @@
     /**
      * Callback: Connection could not be established
      * 
+     * @param string $Message
      * @param enum $Error
      * 
      * @access protected
      * @return void
      **/
-    protected function socketConnectionFailed ($Error) { }
+    protected function socketConnectionFailed ($Message, $Error) { }
     // }}}
     
     // {{{ socketReadable
