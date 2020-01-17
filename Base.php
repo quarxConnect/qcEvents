@@ -45,7 +45,12 @@
     private $TimerNext = null;
     
     /* Loop-State */
-    private $loopState = -1;
+    const LOOP_STATE_IDLE = -1;
+    const LOOP_STATE_ACTIVE = 0;
+    const LOOP_STATE_ONCE = 1;
+    const LOOP_STATE_BREAK = 2;
+    
+    private $loopState = qcEvents_Base::LOOP_STATE_IDLE;
     
     // {{{ singleton
     /**
@@ -372,15 +377,17 @@
      **/
     public function loop ($Single = false) {
       // Don't enter the loop twice
-      if (($this->loopState >= 0) && !$Single) {
+      $onLoop = ($this->loopState != self::LOOP_STATE_IDLE);
+      
+      if ($onLoop && !$Single) {
         trigger_error ('Do not enter the loop twice');
         
         return false;
       }
       
       // Reset the loop-state
-      if (!($doubleState = (($this->loopState >= 0) && $Single)))
-        $this->loopState = ($Single ? 1 : 0);
+      if (!($doubleState = ($onLoop && $Single)))
+        $this->loopState = ($Single ? self::LOOP_STATE_ONCE : self::LOOP_STATE_ACTIVE);
       
       // Main-Loop
       do {
@@ -391,7 +398,7 @@
         foreach ($evForced as $ev) {
           $this->invoke ($ev);
           
-          if ($this->loopState > 1)
+          if ($this->loopState == self::LOOP_STATE_BREAK)
             break (2);
         }
         
@@ -431,7 +438,7 @@
             trigger_error ('Empty loop without timers');
           
           // Sleep if we are in a normal loop
-          if ($this->loopState == 0)
+          if ($this->loopState == self::LOOP_STATE_ACTIVE)
             usleep ($usecs);
         } else {
           $secs = floor ($usecs / 1000000);
@@ -452,7 +459,7 @@
           if (isset ($this->fdOwner [(int)$readFD]))
             $this->invoke (array ($this->fdOwner [(int)$readFD], 'raiseRead'));
           
-          if ($this->loopState > 1)
+          if ($this->loopState == self::LOOP_STATE_BREAK)
             break (2);
         }
         
@@ -460,7 +467,7 @@
           if (isset ($this->fdOwner [(int)$writeFD]))
             $this->invoke (array ($this->fdOwner [(int)$writeFD], 'raiseWrite'));
           
-          if ($this->loopState > 1)
+          if ($this->loopState == self::LOOP_STATE_BREAK)
             break (2);
         }
         
@@ -468,13 +475,13 @@
           if (isset ($this->fdOwner [(int)$errorFD]))
             $this->invoke (array ($this->fdOwner [(int)$errorFD], 'raiseError'), $errorFD);
           
-          if ($this->loopState > 1)
+          if ($this->loopState == self::LOOP_STATE_BREAK)
             break (2);
         }
-      } while ($this->loopState < 1);
+      } while ($this->loopState == self::LOOP_STATE_ACTIVE);
       
       // Reset the loop-state
-      $this->loopState = ($doubleState ? 0 : -1);
+      $this->loopState = ($doubleState ? self::LOOP_STATE_ACTIVE : self::LOOP_STATE_IDLE);
       
       // Indicate success
       return true;
@@ -489,10 +496,8 @@
      * @return void
      **/
     public function loopBreak () {
-      if ($this->loopState < 0)
-        return;
-      
-      $this->loopState = 2;
+      if ($this->loopState != self::LOOP_STATE_IDLE)
+        $this->loopState = self::LOOP_STATE_BREAK;
     }
     // }}}
     
@@ -504,10 +509,8 @@
      * @return void
      **/
     public function loopExit () {
-      if ($this->loopState < 0)
-        return;
-      
-      $this->loopState = max ($this->loopState, 1);
+      if ($this->loopState != self::LOOP_STATE_IDLE)
+        $this->loopState = max ($this->loopState, self::LOOP_STATE_ONCE);
     }
     // }}}
     
