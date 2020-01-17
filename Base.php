@@ -70,6 +70,75 @@
     // }}}
     
     
+    // {{{ __debugInfo
+    /**
+     * Return information about this instance to be dumped by var_dump()
+     * 
+     * @access public
+     * @return array
+     **/
+    public function __debugInfo () : array {
+      // Append state to result
+      static $stateMap = array (
+        self::LOOP_STATE_IDLE   => 'Idle',
+        self::LOOP_STATE_ACTIVE => 'Active',
+        self::LOOP_STATE_ONCE   => 'Once',
+        self::LOOP_STATE_BREAK  => 'Break in Active/Once',
+      );
+      
+      $Result = array (
+        'loopState' => (isset ($stateMap [$this->loopState]) ? $stateMap [$this->loopState] : 'Unknown (' . $this->loopState . ')'),
+        'watchedReads' => count ($this->readFDs),
+        'watchedWrites' => count ($this->writeFDs),
+        'watchedErrors' => count ($this->errorFDs),
+      );
+      
+      // Append events to result
+      if (count ($this->Events) > 0) {
+        $registeredEvents = array ();
+        
+        foreach ($this->Events as $registeredEvent)
+          if (method_exists ($registeredEvent, '__debugInfo'))
+            $registeredEvents [] = $registeredEvent;
+          else if (function_exists ('spl_object_id'))
+            $registeredEvents [] = get_class ($registeredEvent) . '#' . spl_object_id ($registeredEvent);
+          else
+            $registeredEvents [] = get_class ($registeredEvent) . '@' . spl_object_hash ($registeredEvent);
+        
+        $Result ['registeredEvents'] = $registeredEvents;
+      }
+      
+      // Append timers to result
+      if (count ($this->Timers) > 0) {
+        $registeredTimers = array ();
+        
+        foreach ($this->Timers as $secTimers)
+          foreach ($secTimers as $usecTimers)
+            $registeredTimers = array_merge ($registeredTimers, array_values ($usecTimers));
+        
+        $Result ['registeredTimers'] = $registeredTimers;
+        $Result ['nextTimerScheduledAt'] = array ('sec' => $this->TimerNext [0], 'usec' => $this->TimerNext [1]);
+      }
+      
+      // Append forced events to result
+      if (count ($this->forcedEvents) > 0) {
+        $forcedEvents = array ();
+        
+        foreach ($this->forcedEvents as $forcedEvent)
+          if (is_array ($forcedEvent) && (count ($forcedEvent) == 2))
+            $forcedEvents [] = array ((is_object ($forcedEvent [0]) ? get_class ($forcedEvent [0]) : $forcedEvent [0]), $forcedEvent [1]);
+          elseif ($forcedEvent instanceof Closure)
+            $forcedEvents [] = (function_exists ('spl_object_id') ? 'Closure#' . spl_object_id ($forcedEvent) : 'Closure@' . spl_object_hash ($forcedEvent));
+          else
+            $forcedEvents [] = $forcedEvent;
+        
+        $Result ['forcedEvents'] = $forcedEvents;
+      }
+      
+      return $Result;
+    }
+    // }}}
+    
     // {{{ addEvent
     /**
      * Add an event to our event-loop

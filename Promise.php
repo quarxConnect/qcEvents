@@ -308,6 +308,33 @@
     }
     // }}}
     
+    // {{{ __debugInfo
+    /**
+     * Return information about this instance to be dumped by var_dump()
+     * 
+     * @access public
+     * @return array
+     **/
+    public function __debugInfo () : array {
+      static $doneMap = array (
+        self::DONE_NONE     => 'pending',
+        self::DONE_FULLFILL => 'fullfilled',
+        self::DONE_REJECT   => 'rejected',
+      );
+      
+      return array (
+        'hasEventBase' => is_object ($this->eventBase),
+        'promiseState' => (isset ($doneMap [$this->done]) ? $doneMap [$this->done] : 'Unknown (' . $this->done . ')'),
+        'promiseResult' => $this->result,
+        'registeredCallbacks' => array (
+          'fullfill' => count ($this->callbacks [self::DONE_FULLFILL]),
+          'reject'   => count ($this->callbacks [self::DONE_REJECT]),
+        ),
+        'resetCallbacks' => $this->resetCallbacks,
+      );
+    }
+    // }}}
+    
     // {{{ getEventBase
     /**
      * Retrive the event-base assigned to this promise

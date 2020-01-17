@@ -30,9 +30,6 @@
    * @revision 02
    **/
   class qcEvents_Timer extends qcEvents_Promise {
-    /* Instance of our event-base */
-    private $eventBase = null;
-    
     /* Interval for this timer */
     private $Interval = 1.00;
     
@@ -74,6 +71,26 @@
         },
         $eventBase
       );
+    }
+    // }}}
+    
+    // {{{ __debugInfo
+    /**
+     * Return information about this instance to be dumped by var_dump()
+     * 
+     * @access public
+     * @return array
+     **/
+    public function __debugInfo () : array {
+      // Retrive info for our parent promise
+      $Result = parent::__debugInfo ();
+      
+      // Patch in our own informations
+      $Result ['timerInterval'] = $this->Interval;
+      $Result ['timerRepeat'] = $this->Repeat;
+      
+      // Forward the result      
+      return $Result;
     }
     // }}}
     
