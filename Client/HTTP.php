@@ -351,6 +351,11 @@
             // Lower the number of max requests
             $Request->setMaxRedirects ($max - 1);
             
+            if ($Status < 307) {
+              $Request->setMethod ('GET');
+              $Request->setBody (null);
+            }
+            
             // Re-Enqueue the request
             return $this->request ($Request);
           }
