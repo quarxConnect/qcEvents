@@ -363,7 +363,7 @@
           // Fire the callbacks
           $this->___callback ('httpRequestResult', $Request, $Header, $Body);
           
-          return new qcEvents_Promise_Solution (array ($Body, $Header));
+          return new qcEvents_Promise_Solution (array ($Body, $Header, $Request));
         }
       );
     }
