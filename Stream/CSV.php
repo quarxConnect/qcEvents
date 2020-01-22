@@ -190,8 +190,19 @@
       
       // Check wheter to apply a header
       if ($this->csvHeader !== false) {
-        if (count ($this->csvHeader) != $Length)
-          return;
+        $hLength = count ($this->csvHeader);
+        
+        // Add empty columns to record
+        if ($Length < $hLength) {
+          for (; $Length < $hLength; $Length++)
+            $Record [] = null;
+        
+        // Truncate columns from record
+        } elseif ($Length > $hLength) {
+          trigger_error ('Truncating record to match headers length');
+          
+          $Record = array_slice ($Record, 0, $hLength);
+        }
         
         $Record = array_combine ($this->csvHeader, $Record);
       }
