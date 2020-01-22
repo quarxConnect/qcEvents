@@ -66,7 +66,7 @@
     private static $Unreachables = array ();
     
     /* Internal resolver */
-    private static $Resolver = null;
+    private static $dnsResolver = null;
     
     /* Our connection-state */
     private $Connected = false;
@@ -295,6 +295,21 @@
       return implode (':', $IP);
     }
     // }}}
+    
+    // {{{ setDNSResolver
+    /**
+     * Store a custom DNS-Resolver
+     * 
+     * @param qcEvents_Client_DNS $dnsResolver
+     * 
+     * @access public
+     * @return void
+     **/
+    public static function setDNSResolver (qcEvents_Client_DNS $dnsResolver) {
+      self::$dnsResolver = $dnsResolver;
+    }
+    // }}}
+    
     
     // {{{ __construct
     /**
@@ -868,11 +883,11 @@
         return false;
       
       // Create a new resolver
-      if (!is_object (self::$Resolver)) {
+      if (!is_object (self::$dnsResolver)) {
         require_once ('qcEvents/Client/DNS.php');
         
         # TODO: This is bound to our event-base
-        self::$Resolver = new qcEvents_Client_DNS ($this->getEventBase ());
+        self::$dnsResolver = new qcEvents_Client_DNS ($this->getEventBase ());
       }
       
       // Check which types to resolve
@@ -889,7 +904,7 @@
       $this->Resolving += count ($Types);
       
       foreach ($Types as $rType)
-        self::$Resolver->resolve ($Hostname, $rType)->then (
+        self::$dnsResolver->resolve ($Hostname, $rType)->then (
           function (qcEvents_Stream_DNS_Recordset $Answers, qcEvents_Stream_DNS_Recordset $Authorities, qcEvents_Stream_DNS_Recordset $Additional, qcEvents_Stream_DNS_Message $Response)
           use ($Hostname, $Port, $Type, $rType) {
             // Decrese counter
@@ -903,7 +918,7 @@
             $this->lastEvent = time ();
             
             // Convert the result
-            $Result = self::$Resolver->dnsConvertPHP ($Response, $AuthNS, $Addtl);
+            $Result = self::$dnsResolver->dnsConvertPHP ($Response, $AuthNS, $Addtl);
             
             // Forward
             return $this->socketResolverResultArray ($Result, $Addtl, $Hostname, $rType, $Port, $Type);
