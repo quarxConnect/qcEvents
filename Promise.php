@@ -375,12 +375,22 @@
         return;
       
       // Check if there is another promise
+      $result = array_values ($result);
+      
       foreach ($result as $p)
         if ($p instanceof qcEvents_Promise)
           return $this::all ($result)->then (
             function ($results) { $this->finish ($this::DONE_FULLFILL, $results); },
             function () { $this->finish ($this::DONE_REJECT, func_get_args ()); }
           );
+      
+      // Make sure first parameter is an exception or error on rejection
+      if ($done == $this::DONE_REJECT) {
+        if (count ($result) == 0)
+          $result [] = new exception ('Empty rejection');
+        elseif (!($result [0] instanceof Throwable))
+          $result [0] = new exception ($result [0]);
+      }
       
       // Store the result
       $this->done = $done;
