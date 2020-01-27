@@ -87,8 +87,8 @@
       echo 'Promise was FULLFILLED', "\n";
       exit (1);
     },
-    function ($Arg) {
-      if ($Arg !== 23) {
+    function (Throwable $Arg) {
+      if ($Arg->getMessage () != 23) {
         echo 'Promise was rejected with ', $Arg, ' (INVALID)', "\n";
         exit (1);
       }
@@ -144,7 +144,7 @@
     function () {
       $Args = func_get_args ();
       
-      if ((count ($Args) != 3) || ($Args [0] !== 23) || ($Args [1] !== 42) || ($Args [2] !== 19)) {
+      if ((count ($Args) != 3) || ($Args [0]->getMessage () != 23) || ($Args [1] !== 42) || ($Args [2] !== 19)) {
         echo 'Promise was rejected with ', implode (', ', $Args), ' (INVALID)', "\n";
         exit (1);
       }
