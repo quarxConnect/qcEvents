@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Interface for Event-Handlers that are run by the event-loop
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -17,45 +17,10 @@
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  interface qcEvents_Interface_Loop {
-    // {{{ getEventBase
-    /**
-     * Retrive the handle of the current event-loop-handler
-     * 
-     * @access public
-     * @return qcEvents_Base May be NULL if none is assigned
-     * 
-     * @remark This is implemented by qcEvents_Trait_Parented
-     **/
-    public function getEventBase ();
-    // }}}
-    
-    // {{{ setEventBase
-    /**
-     * Set a new event-loop-handler
-     * 
-     * @param qcEvents_Base $Base
-     * 
-     * @access public
-     * @return void
-     * 
-     * @remark This is implemented by qcEvents_Trait_Parented
-     **/
-    public function setEventBase (qcEvents_Base $Base);
-    // }}}
-    
-    // {{{ unsetEventBase
-    /**
-     * Remove any assigned event-loop-handler
-     * 
-     * @access public
-     * @return void
-     * 
-     * @remark This is implemented by qcEvents_Trait_Parented
-     **/
-    public function unsetEventBase ();
-    // }}}
-    
+  
+  require_once ('qcEvents/Interface/Based.php');
+  
+  interface qcEvents_Interface_Loop extends qcEvents_Interface_Based {
     // {{{ getReadFD
     /**
      * Retrive the stream-resource to watch for reads

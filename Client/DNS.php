@@ -21,6 +21,7 @@
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/Stream/DNS.php');
+  require_once ('qcEvents/Trait/Parented.php');
   require_once ('qcEvents/Promise.php');
   
   /**
@@ -33,6 +34,8 @@
    * @revision 02
    **/
   class qcEvents_Client_DNS extends qcEvents_Hookable {
+    use qcEvents_Trait_Parented;
+    
     /* DNS64-Prefix-Hack */
     public static $DNS64_Prefix = null;
     
@@ -61,19 +64,7 @@
      * @return void
      **/
     function __construct (qcEvents_Base $eventBase) {
-      $this->eventBase = $eventBase;
-    }
-    // }}}
-    
-    // {{{ getEventBase
-    /**
-     * Retive the assigned event-base of this client
-     * 
-     * @access public
-     * @return qcEvents_Base
-     **/
-    public function getEventBase () {
-      return $this->eventBase;
+      $this->setEventBase ($eventBase);
     }
     // }}}
     
@@ -177,14 +168,14 @@
     public function enqueueQuery (qcEvents_Stream_DNS_Message $Message) : qcEvents_Promise {
       // Make sure we have nameservers registered
       if ((count ($this->Nameservers) == 0) && !$this->useSystemNameserver ())
-        return qcEvents_Promise::reject ('No nameservers known', $this->eventBase);
+        return qcEvents_Promise::reject ('No nameservers known', $this->getEventBase ());
       
       // Make sure the message is a question
       elseif (!$Message->isQuestion ())
-        return qcEvents_Promise::reject ('Message must be a question', $this->eventBase);
+        return qcEvents_Promise::reject ('Message must be a question', $this->getEventBase ());
       
       // Create a socket and a stream for this query
-      $Socket = new qcEvents_Socket ($this->eventBase);
+      $Socket = new qcEvents_Socket ($this->getEventBase ());
       $Socket->useInternalResolver (false);
       
       $Promise = $Socket->connect (

@@ -1,7 +1,7 @@
 <?PHP
 
   /**
-   * qcEvents - Interface Commons
+   * qcEvents - Interface Based
    * Copyright (C) 2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
@@ -18,51 +18,37 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Interface/Hookable.php');
-  require_once ('qcEvents/Interface/Based.php');
-  
-  interface qcEvents_Interface_Common extends qcEvents_Interface_Hookable, qcEvents_Interface_Based {
-    // {{{ isWatching
+  interface qcEvents_Interface_Based {
+    // {{{ getEventBase
     /**
-     * Check if we are registered on the assigned Event-Base and watching for events
-     * 
-     * @param bool $Set (optional) Toogle the state
+     * Retrive the handle of the current event-loop-handler
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Base
      **/
-    public function isWatching ($Set = null);
+    public function getEventBase () : ?qcEvents_Base;
     // }}}
     
-    // {{{ close
+    // {{{ setEventBase
     /**
-     * Close this event-interface
+     * Set the Event-Base of this source
      * 
-     * @access public
-     * @return qcEvents_Promise
-     **/
-    public function close () : qcEvents_Promise;
-    // }}}
-    
-    
-    // {{{ eventClosed
-    /**
-     * Callback: The interface was closed
+     * @param qcEvents_Base $eventBase
      * 
      * @access public
      * @return void
      **/
-    # protected function eventClosed ();
+    public function setEventBase (qcEvents_Base $eventBase);
     // }}}
     
-    // {{{ eventError
+    // {{{ unsetEventBase
     /**
-     * Callback: An error was received for this handler on the event-loop
+     * Remove any assigned event-loop-handler
      * 
      * @access public
-     * @return void  
+     * @return void
      **/
-    # protected function eventError ();
+    public function unsetEventBase ();
     // }}}
   }
 

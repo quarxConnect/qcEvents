@@ -26,6 +26,7 @@
   }
   
   require_once ('qcEvents/Interface/Loop.php');
+  require_once ('qcEvents/Trait/Parented.php');
   require_once ('qcEvents/Hookable.php');
   
   /**
@@ -38,6 +39,8 @@
    * @revision 02
    **/
   class qcEvents_inotify extends qcEvents_Hookable implements qcEvents_Interface_Loop {
+    use qcEvents_Trait_Parented;
+    
     /* File-Operations */
     const MASK_ACCESS = 1; // File was accessed (read)
     const MASK_MODIFY = 2; // File was modified
@@ -65,9 +68,6 @@
     
     private static $inotifyGenerations = 0;
     private static $inotifyEvents = array ();
-    
-    /* Our event-base */
-    private $eventBase = null;
     
     // Internal inotify-handle
     private $inotify = null;
@@ -190,7 +190,7 @@
     
     private function getInotify () {
       // Make sure we have an event-base
-      if (!$this->eventBase)
+      if (!($eventBase = $this->getEventBase ()))
         return null;
       
       // Check if we already have a source
@@ -198,7 +198,7 @@
         return $this->inotify;
       
       // Scan existing events for inotify
-      foreach ($this->eventBase->getEvents () as $Event)
+      foreach ($eventBase->getEvents () as $Event)
         if (($Event instanceof qcEvents_inotify) && is_resource ($Event->inotify)) {
           $this->inotify = $Event->inotify;
           $this->inotifyGeneration = $Event->inotifyGeneration;
@@ -213,7 +213,7 @@
         
         self::$inotifyEvents [$this->inotifyGeneration] = array ();
         
-        $this->eventBase->addEvent ($this);
+        $eventBase->addEvent ($this);
       }
       
       // Return the source
@@ -248,39 +248,23 @@
     }
     // }}}
     
-    // {{{ getEventBase
-    /**
-     * Retrive the handle of the current event-loop-handler
-     * 
-     * @access public
-     * @return qcEvents_Base May be NULL if none is assigned
-     * 
-     * @remark This is implemented by qcEvents_Trait_Parented
-     **/
-    public function getEventBase () {
-      return $this->eventBase;
-    }
-    // }}}
-    
     // {{{ setEventBase
     /**
      * Set a new event-loop-handler
      * 
-     * @param qcEvents_Base $Base
+     * @param qcEvents_Base $eventBase
      * 
      * @access public
      * @return void  
      **/
-    public function setEventBase (qcEvents_Base $Base) {
-      // Don't do anything if the handler didn't change
-      if ($this->eventBase === $Base)
-        return null;
+    public function setEventBase (qcEvents_Base $eventBase) {
+      // Check if anything changed
+      if ($this->getEventBase () === $eventBase)
+        return;
       
-      // Unbind from the event-base
+      // Let our parent to the work first
       $this->unsetEventBase ();
-      
-      // Assign the new event-base
-      $this->eventBase = $Base;
+      parent::setEventBase ($eventBase);
       
       // Check if our target exists
       if (!file_exists ($this->inotifyPath))
@@ -317,7 +301,8 @@
       
       $this->inotifyDescriptor = null;
       $this->inotify = null;
-      $this->eventBase = null;
+      
+      return parent::unsetEventBase ();
     }
     // }}}
     

@@ -21,14 +21,14 @@
   require_once ('qcEvents/Interface/Loop.php');
   require_once ('qcEvents/Interface/Stream.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
+  require_once ('qcEvents/Trait/Parented.php');
   require_once ('qcEvents/Abstract/Pipe.php');
   require_once ('qcEvents/Promise.php');
   
   abstract class qcEvents_IOStream extends qcEvents_Abstract_Pipe implements qcEvents_Interface_Loop, qcEvents_Interface_Stream, qcEvents_Interface_Stream_Consumer {
-    const DEFAULT_READ_LENGTH = 4096;
+    use qcEvents_Trait_Parented;
     
-    /* Internal handle of our event-loop */
-    private $eventLoop = null;
+    const DEFAULT_READ_LENGTH = 4096;
     
     /* Our stream-file-descriptors */
     private $readFD = null;
@@ -49,67 +49,14 @@
     /**
      * Create a new IOStream
      * 
-     * @param qcEvents_Base $Base
+     * @param qcEvents_Base $eventBase
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Base $Base = null) {
-      if ($Base)
-        $this->setEventBase ($Base);
-    }
-    // }}}
-    
-    // {{{ getEventBase
-    /**
-     * Retrive the handle of the current event-loop-handler
-     * 
-     * @access public
-     * @return qcEvents_Base May be NULL if none is assigned
-     **/
-    public function getEventBase () {
-      return $this->eventLoop;
-    }
-    // }}}
-    
-    // {{{ setEventBase
-    /**
-     * Set a new event-loop-handler
-     * 
-     * @param qcEvents_Base $Base
-     * 
-     * @access public
-     * @return void
-     **/
-    public function setEventBase (qcEvents_Base $Base) {
-      // Check if the event-loop if different from the current one
-      if ($Base === $this->eventLoop)
-        return;
-      
-      // Remove ourself from the current event loop
-      if ($this->eventLoop)
-        $this->eventLoop->removeEvent ($this);
-      
-      // Assign the new event-loop
-      $this->eventLoop = $Base;
-      
-      $Base->addEvent ($this);
-    }
-    // }}}
-    
-    // {{{ unsetEventBase
-    /**
-     * Remove any assigned event-loop-handler
-     * 
-     * @access public
-     * @return void
-     **/
-    public function unsetEventBase () {
-      if (!$this->eventLoop)
-        return;
-      
-      $this->eventLoop->removeEvent ($this);
-      $this->eventLoop = null;
+    function __construct (qcEvents_Base $eventBase = null) {
+      if ($eventBase)
+        $this->setEventBase ($eventBase);
     }
     // }}}
     
@@ -126,11 +73,11 @@
       if ($Set !== null) {
         $this->watchSetup = ($Set ? true : false);
         
-        if ($this->eventLoop) {
+        if ($eventBase = $this->getEventBase ()) {
           if ($this->watchSetup)
-            $this->eventLoop->addEvent ($this);
+            $eventBase->addEvent ($this);
           else
-            $this->eventLoop->removeEvent ($this);
+            $eventBase->removeEvent ($this);
         }
         
         return true;
@@ -156,8 +103,8 @@
       $this->readFD = $fd;
       $this->writeFD = $fd;
       
-      if ($this->eventLoop)
-        $this->eventLoop->updateEvent ($this);
+      if ($eventBase = $this->getEventBase ())
+        $eventBase->updateEvent ($this);
       
       return true;
     }
@@ -180,8 +127,8 @@
       $this->readFD = $readFD;
       $this->writeFD = $writeFD;
       
-      if ($this->eventLoop)
-        $this->eventLoop->updateEvent ($this);
+      if ($eventBase = $this->getEventBase ())
+        $eventBase->updateEvent ($this);
       
       return true;
     }
@@ -237,21 +184,23 @@
     /**
      * Set/Retrive the current event-watching status
      * 
-     * @param bool $Set (optional) Set the status
+     * @param bool $setState (optional) Set the status
      * 
      * @access public
      * @return bool
      **/
-    public function watchRead ($Set = null) {
+    public function watchRead ($setState = null) {
       // Check wheter to change the status
-      if ($Set !== null) {
+      if ($setState !== null) {
         // Change the status, remember the old
-        $o = $this->watchReads;
-        $this->watchReads = ($Set ? true : false);
+        $originalSetting = $this->watchReads;
+        $this->watchReads = !!$setState;
         
         // Update the event-loop if there were changes
-        if ($this->eventLoop && ($o != $this->watchReads) && !$this->eventLoop->updateEvent ($this)) {
-          $this->watchReads = $o;
+        if (($eventBase = $this->getEventBase ()) &&
+            ($originalSetting != $this->watchReads) &&
+            !$eventBase->updateEvent ($this)) {
+          $this->watchReads = $originalSetting;
           
           return false;
         }
@@ -299,8 +248,8 @@
         $this->writeBuffer [] = array ($Data, $resolve, $reject);
         
         // Make sure we catch write-events
-        if (!$this->watchWrites && $this->eventLoop)
-          $this->eventLoop->updateEvent ($this);
+        if (!$this->watchWrites && ($eventBase = $this->getEventBase ()))
+          $eventBase->updateEvent ($this);
       });
     }
     // }}}
@@ -336,21 +285,23 @@
     /**
      * Set/Retrive the current event-watching status
      * 
-     * @param bool $Set (optional) Set the status
+     * @param bool $setState (optional) Set the status
      * 
      * @access public
      * @return bool
      **/
-    public function watchWrite ($Set = null) {
+    public function watchWrite ($setState = null) {
       // Check wheter to change the status
-      if ($Set !== null) {
+      if ($setState !== null) {
         // Change the status, remember the old
-        $o = $this->watchWrites;
-        $this->watchWrites = ($Set ? true : false);
+        $originalSetting = $this->watchWrites;
+        $this->watchWrites = !!$setState;
         
         // Update the event-loop if there were changes
-        if ($this->eventLoop && (($o || (count ($this->writeBuffer) > 0)) != $this->watchWrites) && !$this->eventLoop->updateEvent ($this)) {
-          $this->watchWrites = $o;
+        if (($eventBase = $this->getEventBase ()) &&
+            (($originalSetting || (count ($this->writeBuffer) > 0)) != $this->watchWrites) &&
+            !$eventBase->updateEvent ($this)) {
+          $this->watchWrites = $originalSetting;
           
           return false;
         }
@@ -481,8 +432,8 @@
       if (count ($this->writeBuffer) == 0) {
         $this->___callback ('eventWritable');
         
-        if (!$this->watchWrites && $this->eventLoop)
-          $this->eventLoop->updateEvent ($this);
+        if (!$this->watchWrites && ($eventBase = $this->getEventBase ()))
+          $eventBase->updateEvent ($this);
         
         return;
       }

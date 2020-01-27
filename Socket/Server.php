@@ -21,6 +21,7 @@
   require_once ('qcEvents/Interface/Loop.php');
   require_once ('qcEvents/Interface/Server.php');
   require_once ('qcEvents/Trait/Hookable.php');
+  require_once ('qcEvents/Trait/Parented.php');
   require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/Promise.php');
   
@@ -34,7 +35,7 @@
    * @revision 03
    **/
   class qcEvents_Socket_Server implements qcEvents_Interface_Loop, qcEvents_Interface_Server {
-    use qcEvents_Trait_Hookable;
+    use qcEvents_Trait_Hookable, qcEvents_Trait_Parented;
     
     /* Base-Class for Child-Connections */
     const CHILD_CLASS_BASE = 'qcEvents_Socket';
@@ -45,9 +46,6 @@
     /* Server-Socket-Types */
     const TYPE_TCP = qcEvents_Socket::TYPE_TCP;
     const TYPE_UDP = qcEvents_Socket::TYPE_UDP;
-    
-    /* Our assigned event-loop */
-    private $eventLoop = null;
     
     /* Our server-socket */
     private $Socket = null;
@@ -115,59 +113,6 @@
       
       // Put ourself into listenng-state
       $this->listen ($Type, $Port, $Host);
-    }
-    // }}}
-    
-    // {{{ getEventBase
-    /**
-     * Retrive the handle of the current event-loop-handler
-     * 
-     * @access public
-     * @return qcEvents_Base May be NULL if none is assigned
-     **/
-    public function getEventBase () {
-      return $this->eventLoop;
-    }  
-    // }}}
-    
-    // {{{ setEventBase
-    /**
-     * Set a new event-loop-handler
-     * 
-     * @param qcEvents_Base $Base
-     * 
-     * @access public
-     * @return void  
-     **/
-    public function setEventBase (qcEvents_Base $Base) {
-      // Check if the event-loop if different from the current one
-      if ($Base === $this->eventLoop)
-        return;
-      
-      // Remove ourself from the current event loop
-      if ($this->eventLoop)
-        $this->eventLoop->removeEvent ($this);
-      
-      // Assign the new event-loop
-      $this->eventLoop = $Base;   
-      
-      $Base->addEvent ($this);
-    }
-    // }}}
-    
-    // {{{ unsetEventBase
-    /**
-     * Remove any assigned event-loop-handler
-     * 
-     * @access public
-     * @return void  
-     **/
-    public function unsetEventBase () {
-      if (!$this->eventLoop)
-        return;
-      
-      $this->eventLoop->removeEvent ($this);
-      $this->eventLoop = null;
     }
     // }}}
     
@@ -463,8 +408,8 @@
       $this->Listening = $Listening;
       
       // Update our parent
-      if ($this->eventLoop)
-        $this->eventLoop->updateEvent ($this);
+      if ($eventBase = $this->getEventBase ())
+        $eventBase->updateEvent ($this);
     }
     // }}}
     
@@ -518,8 +463,8 @@
           $this->Clients [$Remote] = $Client = $this->serverCreateChild ($Remote);
           
           // Make sure we have a timer
-          if (!$this->udpTimer && $this->eventLoop) {
-            $this->udpTimer = $this->eventLoop->addTimeout (max (2, intval (self::CHILD_UDP_TIMEOUT / 4)), true);
+          if (!$this->udpTimer && ($eventBase = $this->getEventBase ())) {
+            $this->udpTimer = $eventBase->addTimeout (max (2, intval (self::CHILD_UDP_TIMEOUT / 4)), true);
             $this->udpTimer->then (
               function () {
                 // Retrive the actual time

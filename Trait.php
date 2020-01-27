@@ -18,9 +18,12 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
+  require_once ('qcEvents/Trait/Parented.php');
+  
   trait qcEvents_Trait {
+    use qcEvents_Trait_Parented;
+    
     private $FD = null;
-    private $EventBase = null;
     private $isBound = false;
     
     // {{{ getFD
@@ -32,55 +35,6 @@
      **/
     public function getFD () {
       return $this->FD;
-    }
-    // }}}
-    
-    // {{{ haveEventBase
-    /**
-     * Check if we have an event-base assigned
-     * 
-     * @access public
-     * @return bool
-     **/  
-    public function haveEventBase () {
-      return is_object ($this->EventBase);
-    }
-    // }}}
-    
-    // {{{ getEventBase
-    /**
-     * Retrive our event-base
-     * 
-     * @access public
-     * @return qcEvents_Base
-     **/
-    public function getEventBase () {
-      return $this->EventBase;
-    }
-    // }}}
-    
-    // {{{ setEventBase
-    /**
-     * Store the Event-Base-Hanlder on this event
-     * 
-     * @param qcEvents_Base $Base
-     * @param bool $setBound (optional) Mark this event as bound
-     * 
-     * @access public
-     * @return void  
-     **/
-    public function setEventBase (qcEvents_Base $Base, $setBound = false) {
-      // Make sure we are registered on this handler
-      if (!$Base->haveEvent ($this))
-        return $Base->addEvent ($this);
-      
-      // Set this handler
-      $this->EventBase = $Base;
-      
-      if ($setBound)
-        $this->isBound = true;
-      
-      return true;
     }
     // }}}
     
@@ -99,8 +53,8 @@
       // Now really unbind
       $this->isBound = false;
       
-      if (is_object ($this->EventBase))
-        $this->EventBase->removeEvent ($this);
+      if ($eventBase = $this->getEventBase ())
+        $eventBase->removeEvent ($this);
       
       return true;
     }

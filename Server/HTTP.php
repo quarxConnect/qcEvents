@@ -599,7 +599,7 @@
         $this->keepAliveTimer->cancel ();
       }
       
-      // Make sure we have a source
+      // Make sure we have a source with getEventBase() and close()
       if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Common))
         return;
       

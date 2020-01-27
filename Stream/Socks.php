@@ -518,8 +518,7 @@
         function (callable $Resolve, callable $Reject) use ($Timeout) {
           // Try to create a timeout-function if requested
           if (($Timeout > 0) &&
-              (($this->Stream instanceof qcEvents_Interface_Common) ||
-               ($this->Stream instanceof qcEvents_Interface_Loop)) &&
+              ($this->Stream instanceof qcEvents_Interface_Based) &&
               is_object ($eventBase = $this->Stream->getEventBase ())) {
             $Timeout = $eventBase->addTimeout ($Timeout);
             

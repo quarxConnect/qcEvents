@@ -22,6 +22,7 @@
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Interface/Source.php');
   require_once ('qcEvents/Trait/Hookable.php');
+  require_once ('qcEvents/Trait/Parented.php');
   require_once ('qcEvents/Trait/Pipe.php');
   require_once ('qcEvents/Stream/HTTP/Header.php');
   require_once ('qcEvents/Promise.php');
@@ -38,7 +39,7 @@
    **/
   abstract class qcEvents_Stream_HTTP extends qcEvents_Stream_HTTP_Header implements qcEvents_Interface_Consumer, qcEvents_Interface_Stream_Consumer, qcEvents_Interface_Source {
     // Just use everything from the trait
-    use qcEvents_Trait_Hookable, qcEvents_Trait_Pipe;
+    use qcEvents_Trait_Hookable, qcEvents_Trait_Parented, qcEvents_Trait_Pipe;
     
     /* HTTP States */
     const HTTP_STATE_CONNECTING = 0;
@@ -621,10 +622,6 @@
       return $this->Source->watchRead ($Set);
     }
     // }}}
-    
-    public function getEventBase () { }
-    
-    public function setEventBase (qcEvents_Base $Base) { }
     
     // {{{ read
     /**

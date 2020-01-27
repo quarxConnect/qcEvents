@@ -20,11 +20,11 @@
   
   require_once ('qcEvents/Abstract/Pipe.php');
   require_once ('qcEvents/Interface/Source.php');
+  require_once ('qcEvents/Trait/Parented.php');
   require_once ('qcEvents/Promise.php');
   
   class qcEvents_Abstract_Source extends qcEvents_Abstract_Pipe implements qcEvents_Interface_Source {
-    /* Assigned event-base */
-    private $eventBase = null;
+    use qcEvents_Trait_Parented;
     
     /* Local buffer of abstract source */
     private $Buffer = '';
@@ -42,13 +42,14 @@
     /**
      * Create a new abstract source
      * 
-     * @param  qcEvents_Base $eventBase (optional)
+     * @param qcEvents_Base $eventBase (optional)
      * 
      * @access friendly
      * @return void
      **/
     function __construct (qcEvents_Base $eventBase = null) {
-      $this->eventBase = $eventBase;
+      if ($eventBase)
+        $this->setEventBase ($eventBase);
     }
     // }}}
     
@@ -72,8 +73,8 @@
       
       // Check wheter to raise an event
       if ($this->raiseEvents) {
-        if ($this->eventBase)
-          $this->eventBase->forceCallback (array ($this, 'raiseRead'));
+        if ($eventBase = $this->getEventBase ())
+          $eventBase->forceCallback (array ($this, 'raiseRead'));
         else
           $this->___callback ('eventReadable');
       }
@@ -116,8 +117,8 @@
       
       // Check if we shall close
       if ($this->closeOnDrain && (strlen ($this->Buffer) == 0)) {
-        if ($this->eventBase)
-          $this->eventBase->forceCallback (array ($this, 'close'));
+        if ($eventBase = $this->getEventBase ())
+          $eventBase->forceCallback (array ($this, 'close'));
         else
           $this->close ();
       }
@@ -138,8 +139,8 @@
     public function watchRead ($Set = null) {
       if ($Set !== null) {
         if ($this->raiseEvents = !!$Set) {
-          if ($this->eventBase)
-            $this->eventBase->forceCallback (array ($this, 'raiseRead'));
+          if ($eventBase = $this->getEventBase ())
+            $eventBase->forceCallback (array ($this, 'raiseRead'));
           else
             $this->___callback ('eventReadable');
         }
@@ -148,32 +149,6 @@
       }
       
       return $this->raiseEvents;
-    }
-    // }}}
-    
-    // {{{ getEventBase
-    /**
-     * Retrive the assigned event-base
-     * 
-     * @access public
-     * @return qcEvents_Base
-     **/
-    public function getEventBase () {
-      return $this->eventBase;
-    }
-    // }}}
-    
-    // {{{ setEventBase
-    /**   
-     * Set the Event-Base of this source
-     * 
-     * @param qcEvents_Base $Base
-     * 
-     * @access public
-     * @return void
-     **/
-    public function setEventBase (qcEvents_Base $Base) {
-      $this->eventBase = $Base;
     }
     // }}}
     
