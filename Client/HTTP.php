@@ -207,6 +207,9 @@
           // Pipe the socket to our request
           $Socket->pipe ($Request);
           
+          // Raise event
+          $this->___callback ('httpRequestStart', $Request);
+          
           // Watch events on the request
           return $Request->once ('httpRequestResult');
         }
@@ -737,6 +740,18 @@
     }
     // }}}
     
+    
+    // {{{ httpRequestStart
+    /**
+     * Callback: HTTP-Request is stated
+     * 
+     * @param qcEvents_Stream_HTTP_Request $Request The original HTTP-Request-Object
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function httpRequestStart (qcEvents_Stream_HTTP_Request $Request) { }
+    // }}}
     
     // {{{ httpRequestRediect
     /**
