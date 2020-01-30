@@ -1584,7 +1584,7 @@
         return;
       
       // Read incoming data from socket
-      if (($Data = fread ($this->getReadFD (), $this->bufferSize)) === '') {
+      if ((($Data = fread ($this->getReadFD (), $this->bufferSize)) === '') || ($Data === false)) {
         if ($this->isConnecting ())
           return $this->socketHandleConnectFailed ($this::ERROR_NET_REFUSED, 'Connection refused');
         
