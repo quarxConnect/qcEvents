@@ -752,6 +752,8 @@
           $Name = stream_socket_get_name ($fd, false);
         elseif ($this->serverParent)
           $Name = $this->serverParent->getLocalName ();
+        else
+          $Name = '';
         
         $this->Type = $this->socketAddress [3];
         $this->localAddr = substr ($Name, 0, strrpos ($Name, ':'));
