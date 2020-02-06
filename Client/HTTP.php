@@ -254,65 +254,10 @@
           // Check for authentication
           if ($authenticationPreflight &&
               (($Username !== null) || ($Password !== null)) &&
-              (($Status == 401) || $Header->hasField ('WWW-Authenticate'))) {
-            // Retrive supported methods
-            $Methods = explode (',', $Header->getField ('WWW-Authenticate'));
-            $onMethod = false;
-            $aMethod = null;
-            
-            for ($i = 0; $i < count ($Methods); $i++) {
-              $Token = $Methods [$i];
-              $tToken = trim ($Token);
-              
-              if (($p = strpos ($tToken, ' ')) !== false) {
-                if ($aMethod !== null)
-                  $Request->addAuthenticationMethod ($aMethod, $mParams);
-                
-                $onMethod = true;
-                $aMethod = substr ($tToken, 0, $p);
-                $tToken = $Token = ltrim (substr (ltrim ($Token), $p + 1));
-                
-                $mParams = array ();
-              } elseif (!$onMethod) {
-                if ($aMethod !== null) {
-                  $Request->addAuthenticationMethod ($aMethod, $mParams);
-                  $aMethod = null;
-                }
-                
-                $Request->addAuthenticationMethod ($tToken);
-                
-                continue;
-              }
-              
-              if (($p = strpos ($tToken, '=')) !== false) {
-                $Name = substr ($tToken, 0, $p);
-                $Value = substr (ltrim ($Token), $p + 1);
-                
-                // Check for quotation
-                if ((strlen ($Value) > 0) && (($Value [0] == '"') || ($Value [0] == "'"))) {
-                  $Stop = $Value [0];
-                  $Value = substr ($Value, 1);
-                  
-                  if (($p = strpos ($Value, $Stop)) === false) {
-                    for ($j = $i + 1; $j < count ($Methods); $j++) {
-                      if (($p = strpos ($Methods [++$i], $Stop)) !== false) {
-                        $Value .= substr ($Methods [$i], 0, $p) . substr ($Methods [$i], $p + 1);
-                        
-                        break;
-                      } else
-                        $Value .= $Methods [$i];
-                    }
-                  } else
-                    $Value = substr ($Value, 0, $p) . substr ($Value, $p + 1);
-                }
-                
-                $mParams [$Name] = $Value;
-              } else
-                $mParams [] = $Token;
-            }
-            
-            if ($aMethod !== null)
-              $Request->addAuthenticationMethod ($aMethod, $mParams);
+              is_array ($authenticationSchemes = $Header->getAuthenticationInfo ())) {
+            // Push schemes to request
+            foreach ($authenticationSchemes as $authenticationScheme)
+              $Request->addAuthenticationMethod ($authenticationScheme ['scheme'], $authenticationScheme ['params']);
             
             // Restore the request's state
             $Request->setMethod ($Method);

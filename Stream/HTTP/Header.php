@@ -465,6 +465,163 @@
     }
     // }}}
     
+    // {{{ getAuthenticationInfo
+    /**
+     * Retrive parsed information about possible authentication-methods from this header
+     * 
+     * @access public
+     * @return array
+     **/
+    public function getAuthenticationInfo () : ?array {
+      // Check if we have the header available
+      if (!$this->hasField ('WWW-Authenticate'))
+        return null;
+      
+      // Parse all WWW-Authenticate-Headers
+      $authenticationInfos = array ();
+      
+      foreach ($this->getField ('WWW-Authenticate', true) as $wwwAuthenticate) {
+        $wwwAuthenticate = trim ($wwwAuthenticate);
+        $authScheme = null;
+        $authParams = array ();
+        $authParamsLength = strlen ($wwwAuthenticate);
+        
+        $parserState = 0; // 0 white-space, 1 token, 2 quoted-string
+        $authTokens = array ();
+        $lastToken = '';
+        
+        for ($i = 0; $i <= $authParamsLength; $i++) {
+          // Check for end-of-token
+          if (($i == $authParamsLength) || (($parserState == 0) && ($wwwAuthenticate [$i] == ','))) {
+            // Check wheter to push the token
+            if ($authTokens === null)
+              $authTokens = array ();
+            
+            if ($parserState != 0)
+              $authTokens [] = $lastToken;
+            
+            // Make sure we have a scheme
+            if ($authScheme === null) {
+              if (count ($authTokens) < 1)
+                continue;
+              
+              $authScheme = array_shift ($authTokens);
+            }
+            
+            if (count ($authTokens) < 2) {
+              // Process a single token
+              if (count ($authTokens) == 1) {
+                // Push data to params
+                if (strlen ($authTokens [0]) > 0) {
+                  if (count ($authParams) == 0)
+                    $authParams ['data'] = $authTokens [0];
+                  else {
+                    if ($authScheme !== null)
+                      $authenticationInfos [] = array (
+                        'scheme' => $authScheme,
+                        'params' => $authParams,
+                      );
+                    
+                    $authScheme = $authTokens [0];
+                    $authParams = array ();
+                    $authTokens = null;
+                  }
+                }
+              }  
+              
+              
+            } else {
+              $authParams [array_shift ($authTokens)] = implode (' ', $authTokens);
+            }
+            
+            $authTokens = null;
+            $lastToken = '';
+            $parserState = 0;
+            
+          // Check for whitespace
+          } elseif (($wwwAuthenticate [$i] == ' ') || ($wwwAuthenticate [$i] == "\t")) {
+            // Push white-spaces to quoted strings
+            if ($parserState == 2)
+              $lastToken .= $wwwAuthenticate [$i];
+            
+            // Skip white-space-processing if not parsing a token
+            if ($parserState != 1)
+              continue;
+            
+            // End-of-token
+            if (($authScheme === null) || ($authTokens === null)) {
+              if ($authScheme !== null)
+                $authenticationInfos [] = array (
+                  'scheme' => $authScheme,
+                  'params' => $authParams,
+                );
+              
+              $authScheme = $lastToken;
+              $authParams = array ();
+              $authTokens = array ();
+            } else
+              $authTokens [] = $lastToken;
+            
+            $parserState = 0;
+          
+          // Start a new token
+          } elseif ($parserState == 0) {
+            if ($wwwAuthenticate [$i] == '"') {
+              $lastToken = '';
+              $parserState = 2;
+            } else {
+              $lastToken = $wwwAuthenticate [$i];
+              $parserState = 1;
+            }
+          
+          // Start/End of quoted string
+          } elseif ($wwwAuthenticate [$i] == '"') {
+            if ($parserState != 2) {
+              $lastToken = '';
+              $parserState = 2;
+            } else {
+              $authTokens [] = $lastToken;
+              $parserState = 0;
+            }
+            
+          // Push to token
+          } elseif ($parserState == 1) {
+            if ($wwwAuthenticate [$i] == '=') {
+              // Look for end of token68
+              $t68 = false;
+              
+              for ($j = $i + 1; $j <= $authParamsLength; $j++)
+                if (($j == $authParamsLength) || ($wwwAuthenticate [$j] == ',')) {
+                  $t68 = true;
+                  break;
+                } elseif ($wwwAuthenticate [$j] != '=')
+                  break;
+              
+              if ($t68) {
+                $lastToken .= substr ($wwwAuthenticate, $i, $j - $i);
+                $i = $j - 1;
+              }
+              
+              $authTokens [] = $lastToken;
+              $parserState = 0;
+            } else
+              $lastToken .= $wwwAuthenticate [$i];
+          }else
+            $lastToken .= $wwwAuthenticate [$i];
+        }
+        
+        if ($authScheme !== null)
+          $authenticationInfos [] = array (
+            'scheme' => $authScheme,
+            'params' => $authParams,
+          );
+      }
+      
+      // Return the result
+      return $authenticationInfos;
+    }
+    // }}}
+    
     // {{{ hasBody
     /**
      * Check if a body is expected
