@@ -209,8 +209,8 @@
       
       $this->___callback ('eventReadable');
       
-      if ($this->eventBase)
-        $this->eventBase->forceCallback (array ($this, 'raiseRead'));
+      if ($eventBase = $this->getEventBase ())
+        $eventBase->forceCallback (array ($this, 'raiseRead'));
     }
     // }}}
     
