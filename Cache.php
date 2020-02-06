@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Runtime Cache
-   * Copyright (C) 2015 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2015-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/Trait/Parented.php');
   require_once ('qcEvents/Hookable.php');
+  require_once ('qcEvents/Promise.php');
   
   /**
    * Cache
@@ -87,43 +88,47 @@
      * Lookup a key on this cache
      * 
      * @param string $Key
-     * @param callable $Callback
-     * @param mixed $Private
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Cache $Cache, string $Key, mixed $Value, mixed $Private) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function lookupKey ($Key, callable $Callback, $Private = null) {
+    public function lookupKey ($lookupKey) : qcEvents_Promise {
       // Check if the key is already known
-      if ($this->haveKey ($Key)) {
-        $this->___raiseCallback ($Callback, $Key, $this->getKey ($Key), $Private);
-        
-        return true;
-      }
+      if ($this->haveKey ($lookupKey))
+        return qcEvents_Promise::resolve ($this->getKey ($lookupKey));
       
       // Forward to lookup-function
-      if ($this->___raiseCallback ($this->lookupFunc, $Key, $this->defaultTTL, function (qcEvents_Cache $Cache, $cKey, $Value, $TTL) use ($Key, $Callback, $Private) {
-        // Just make sure the parameters are value
-        if (($Cache !== $this) || ($Key !== $cKey))
-          return;
-        
-        // Store the value if one was found
-        if ($Value !== null)
-          $this->setKey ($Key, $Value, $TTL);
-        
-        // Fire the callback
-        $this->___raiseCallback ($Callback, $Key, $Value, $Private);
-      }) === false) {
-        $this->___raiseCallback ($Callback, $Key, null, $Private);
-        
-        return false;
-      }
-      
-      return true;
+      return new qcEvents_Promise (
+        function (callable $resolve, callable $reject) use ($lookupKey) {
+          $rc = $this->___raiseCallback (
+            $this->lookupFunc,
+            $loopupKey,
+            $this->defaultTTL,
+            function (qcEvents_Cache $cacheInstance, $lookedupKey, $keyValue, $keyTTL)
+            use ($lookupKey) {
+              // Sanity-Check the result
+              if ($cacheInstance !== $this)
+                throw new exception ('Sanity-Check on cache-instance failed');
+              
+              if ($lookupKey !== $lookedupKey)
+                throw new exception ('Failed to check looked up key');
+              
+              // Check if a key was returned
+              if ($keyValue === null)
+                $reject ('Lookup failed');
+              
+              // Store the key
+              $this->setKey ($lookupKey, $keyValue, $keyTTL);
+              
+              // Forward the result
+              $resolve ($keyValue);
+            }
+          );
+          
+          if ($rc === false) 
+            $reject ('Loopup-Funciton failed');
+        }
+      );
     }
     // }}}
     
