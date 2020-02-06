@@ -1132,6 +1132,24 @@
       } elseif (($Message instanceof qcEvents_Stream_SSH_UserAuthBanner) && ($this->State == self::STATE_AUTH)) {
         $this->___callback ('authBanner', $Message->Message, $Message->Language);
       
+      // Process disconnect
+      } elseif ($Message instanceof qcEvents_Stream_SSH_Disconnect) {
+        // Check if we were initiating
+        if ($this->connectPromise) {
+          // Reject the promise
+          call_user_func ($this->connectPromise [1], 'Disconnect received');
+          $this->connectPromise = null;
+        }
+        
+        // Check for an auth-promise
+        if ($this->authPromise) {
+          // Reject the promise
+          $authPromise = $this->authPromise;
+          $this->authPromise = null;
+          
+          call_user_func ($authPromise [1], 'Disconnect received');
+        }
+      
       // Process global request
       } elseif (($Message instanceof qcEvents_Stream_SSH_GlobalRequest) && ($this->State == self::STATE_READY)) {
         trigger_error ('Unhandled global request: ' . $Message->Name);
@@ -1241,9 +1259,12 @@
           $this->Channels [$Message->RecipientChannel]->receiveMessage ($Message);
         else
           trigger_error ('Message for unknown channel received');
-      } elseif ($Message !== null)
-        trigger_error ('Unhandled message: ' . get_class ($Message));
-      elseif ($Length > 0)
+      } elseif ($Message !== null) {
+        if ($Message instanceof qcEvents_Stream_SSH_Debug)
+          var_dump ($Message);
+        else
+          trigger_error ('Unhandled message: ' . get_class ($Message));
+      } elseif ($Length > 0)
         trigger_error ('Unparsed message: ' . ord ($Packet [0]));
     }
     // }}}
