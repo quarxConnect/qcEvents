@@ -272,7 +272,7 @@
      **/
     public function close () : qcEvents_Promise {
       // Unregister the source
-      $this->Source->removeHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
+      $this->Source->removeHook ('eventClosed', array ($this, 'httpStreamClosed'));
       $this->Source = null;
       
       // Reset ourself
@@ -321,7 +321,7 @@
           $this->Source = $Source;
           
           // Register hooks there
-          $Source->addHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
+          $Source->addHook ('eventClosed', array ($this, 'httpStreamClosed'));
           
           // Raise an event for this
           $this->___raiseCallback ($Callback, true, $Private);
@@ -362,7 +362,7 @@
           $this->Source = $Source;
           
           // Register hooks there
-          $Source->addHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
+          $Source->addHook ('eventClosed', array ($this, 'httpStreamClosed'));
           
           // Raise an event for this
           $this->___callback ('eventPipedStream', $Source);
@@ -388,10 +388,9 @@
         return qcEvents_Promise::reject ('Invalid source');
       
       // Remove our hooks
-      $Source->removeHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
+      $Source->removeHook ('eventClosed', array ($this, 'httpStreamClosed'));
       
       // Unset the source
-      $this->Source->removeHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
       $this->Source = null;
       
       // Raise an event for this
@@ -542,7 +541,7 @@
       
       // Fire the callback
       if ($this->isPiped ()) {
-        $this->Source->removeHook ('socketDisconnected', array ($this, 'httpStreamClosed'));
+        $this->Source->removeHook ('eventClosed', array ($this, 'httpStreamClosed'));
         $this->Source = null;
         $this->___callback ('eventClosed');
       }
