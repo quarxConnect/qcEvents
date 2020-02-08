@@ -124,7 +124,7 @@
           
           // Enqueue connection-timeout
           if (($connectionTimeout > 0) &&
-              ($sshStream = $Stream->getStream ()) &&
+              ($sshStream = $this->Stream->getStream ()) &&
               ($eventBase = $sshStream->getEventBase ()))
             $eventBase->addTimeout ($connectionTimeout)->then (
               function () {
