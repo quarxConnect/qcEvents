@@ -440,11 +440,12 @@
      * @param string $DestinationHost
      * @param int $DestinationPort
      * @param bool $Forwarded (optional)
+     * @param int $connectTimeout (optional)
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function requestConnection ($OriginatorHost, $OriginatorPort, $DestinationHost, $DestinationPort, $Forwarded = false) : qcEvents_Promise {
+    public function requestConnection ($OriginatorHost, $OriginatorPort, $DestinationHost, $DestinationPort, $Forwarded = false, $connectTimeout = 120) : qcEvents_Promise {
       // Make sure our state is good
       if ($this->State != $this::STATE_READY)
         return qcEvents_Promise::reject ('Invalid state');
@@ -462,7 +463,7 @@
       $this->writeMessage ($Message);
     
       // Prepare the channel
-      $this->Channels [$Message->SenderChannel] = $Channel = new qcEvents_Stream_SSH_Channel ($this, $Message->SenderChannel, $Message->Type);
+      $this->Channels [$Message->SenderChannel] = $Channel = new qcEvents_Stream_SSH_Channel ($this, $Message->SenderChannel, $Message->Type, $connectTimeout);
       
       // Run a callback
       $this->___callback ('channelCreated', $Channel);

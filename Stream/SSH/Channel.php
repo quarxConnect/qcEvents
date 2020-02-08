@@ -92,13 +92,14 @@
      * @param qcEvents_Stream_SSH $Stream
      * @param int $localID
      * @param string $Type
+     * @param int $connectionTimeout (optional) Reject the channel when it takes longer than this to establish
      * @param int $windowSize (optional)
      * @param int $maximumPacketSize (optional)
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Stream_SSH $Stream, $localID, $Type, $windowSize = self::DEFAULT_WINDOW_SIZE, $maximumPacketSize = self::DEFAULT_MAXIMUM_PACKET_SIZE) {
+    function __construct (qcEvents_Stream_SSH $Stream, $localID, $Type, $connectionTimeout = null, $windowSize = self::DEFAULT_WINDOW_SIZE, $maximumPacketSize = self::DEFAULT_MAXIMUM_PACKET_SIZE) {
       // Store initial settings
       $this->Stream = $Stream;
       $this->Type = $Type;
@@ -109,7 +110,7 @@
       // Create a connection-promise
       $this->ConnectionPromise = array (null);
       $this->ConnectionPromise [0] = new qcEvents_Promise (
-        function (callable $Resolve, callable $Reject) {
+        function (callable $Resolve, callable $Reject) use ($connectionTimeout) {
           // Check for a race-condition
           if ($this->remoteID === -1)
             return call_user_func ($Reject, 'Unknown reason (race condition)');
@@ -120,6 +121,25 @@
           // Store the callbacks
           $this->ConnectionPromise [1] = $Resolve;
           $this->ConnectionPromise [2] = $Reject;
+          
+          // Enqueue connection-timeout
+          if (($connectionTimeout > 0) &&
+              ($sshStream = $Stream->getStream ()) &&
+              ($eventBase = $sshStream->getEventBase ()))
+            $eventBase->addTimeout ($connectionTimeout)->then (
+              function () {
+                // Check if the promise is already processed
+                if (!isset ($this->ConnectionPromise [2]))
+                  return;
+                
+                // Rewrite the promise
+                $rejectCallback = $this->ConnectionPromise [2];
+                $this->ConnectionPromise = array ($this->ConnectionPromise [0]);
+                
+                // Reject the channel
+                call_user_func ($rejectCallback, 'Timeout');
+              }
+            );
         }
       );
     }
