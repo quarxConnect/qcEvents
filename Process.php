@@ -333,10 +333,12 @@
     /**
      * Close the stream at the handler
      * 
+     * @param resource $closeFD (optional)
+     * 
      * @access protected
      * @return bool
      **/
-    protected function ___close () {
+    protected function ___close ($closeFD = null) {
       if ($this->Mode == self::MODE_PROCOPEN) {
         // Close our pipes first
         if (is_resource ($fd = $this->getReadFD ()))

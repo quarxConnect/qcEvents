@@ -267,14 +267,14 @@
     /**
      * Close the stream at the handler
      * 
+     * @param resource $closeFD (optional)
+     * 
      * @access protected
      * @return bool
      **/
-    protected function ___close () {
+    protected function ___close ($closeFD) {
       // Retrive our descriptor and close it
-      if ((is_resource ($fd = $this->getReadFD ()) ||
-           is_resource ($fd = $this->getWriteFD ())) &&
-          !fclose ($fd))
+      if ($closeFD && !fclose ($closeFD))
         return false;
       
       // Check wheter to set modification-time

@@ -342,32 +342,45 @@
      **/
     public function close ($Force = false) : qcEvents_Promise {
       // Check if there is a pending close
-      if ($this->isClosing instanceof qcEvents_Promise)
+      if ($this->isClosing instanceof qcEvents_Promise) {
+        // Clear write-buffer if forced
+        if ($Force) {
+          foreach ($this->writeBuffer as $writeBuffer)
+            call_user_func ($writeBuffer [2], 'Close was forced');
+          
+          $this->writeBuffer = array ();
+          
+          $this->___callback ('eventDrained');
+        }
+        
         return $this->isClosing;
+      }
       
       // Check if there are writes pending
       if (!$Force && (count ($this->writeBuffer) > 0))
-        return ($this->isClosing = new qcEvents_Promise (function ($resolve, $reject) {
-          $this->addHook (
-            'eventDrained',
-            function () use ($resolve) {
-              // Do the low-level-close
+        return ($this->isClosing = $this->once ('eventDrained')->then (
+          function () {
+            // Do the low-level-close
+            if ($this->readFD)
+              $this->___close ($this->readFD);
+            elseif (!$this->writeFD)
               $this->___close ();
-              $this->isWatching (false);
-              
-              // Remove closing-state
-              $this->isClosing = false;
-              
-              // Raise callbacks
-              $this->___callback ('eventClosed');
-              
-              $resolve ();
-            },
-            null,
-            true
-          );
-          # $this->isClosing = array ($resolve, $reject);
-        }));
+            
+            if ($this->writeFD && ($this->writeFD !== $this->readFD))
+              $this->___close ($this->writeFD);
+            
+            
+            $this->readFD = null;
+            $this->writeFD = null;
+            $this->isWatching (false);
+            
+            // Remove closing-state
+            $this->isClosing = false;
+            
+            // Raise callbacks
+            $this->___callback ('eventClosed');
+          }
+        ));
       
       // Mark ourself as closing
       $this->isClosing = true;
@@ -379,7 +392,17 @@
       $this->writeBuffer = array ();
       
       // Do the low-level-close
-      $this->___close ();
+      if ($this->readFD)
+        $this->___close ($this->readFD);
+      elseif (!$this->writeFD)
+        $this->___close ();
+      
+      if ($this->writeFD && ($this->writeFD !== $this->readFD))
+        $this->___close ($this->writeFD);
+      
+      $this->readFD = null;
+      $this->writeFD = null;
+      
       $this->isWatching (false);
       
       // Remove closing-state
@@ -396,10 +419,12 @@
     /**
      * Close the stream at the handler
      * 
+     * @param mixed $closeFD
+     * 
      * @access protected
      * @return bool
      **/
-    abstract protected function ___close ();
+    abstract protected function ___close ($closeFD);
     // }}}
     
     
@@ -460,6 +485,11 @@
         // Resolve promise
         call_user_func ($Finished [1]);
       }
+      
+      // Check wheter to remove write-watching
+      if (!$this->watchWrites &&
+          ($eventBase = $this->getEventBase ()))
+        $eventBase->updateEvent ($this);
       
       // Fire the event when
       $this->___callback ('eventDrained');

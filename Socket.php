@@ -52,6 +52,8 @@
     const READ_TCP_BUFFER = 4096;
     const READ_UDP_BUFFER = 1500;
     
+    const READ_BUFFER_SIZE = 10485760;
+    
     /* Defaults */
     const DEFAULT_TYPE = qcEvents_Socket::TYPE_TCP;
     const DEFAULT_PORT = null;
@@ -1082,10 +1084,12 @@
     /**
      * Gracefully close our connection
      * 
+     * @param resource $closeFD (optional)
+     * 
      * @access public
      * @return bool
      **/
-    public function ___close () {
+    public function ___close ($closeFD = null) {
       // Check if we are connected/connecting
       if ($this->isDisconnected ())
         return true;
@@ -1099,7 +1103,8 @@
       
       // Close our own connection
       } else {
-        @fclose ($this->getReadFD ());
+        if ($closeFD)
+          fclose ($closeFD);
         
         if (is_object ($this->serverParent))
           $this->serverParent->disconnectChild ($this);
@@ -1333,7 +1338,14 @@
       if ($this->Type == self::TYPE_UDP_SERVER)
         return stream_socket_sendto ($fd, $Data, 0, $this->remoteName);
       
-      return @fwrite ($fd, $Data);
+      $lengthWritten = fwrite ($fd, $Data);
+      
+      if ((($lengthWritten === false) ||
+           ($lengthWritten === 0)) &&
+          feof ($fd))
+        $this->close (true);
+      
+      return $lengthWritten;
     }
     // }}}
     
@@ -1522,9 +1534,9 @@
         else
           $Method = STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;
         
-        $tlsRequest = @stream_socket_enable_crypto ($fd, $this->tlsStatus, $Method);
+        $tlsRequest = stream_socket_enable_crypto ($fd, $this->tlsStatus, $Method);
       } else
-        $tlsRequest = @stream_socket_enable_crypto ($fd, $this->tlsStatus);
+        $tlsRequest = stream_socket_enable_crypto ($fd, $this->tlsStatus);
       
       // Check if the request succeeded
       if ($tlsRequest === true) {
@@ -1568,6 +1580,20 @@
     }
     // }}}
     
+    // {{{ getReadFD
+    /**
+     * Retrive the stream-resource to watch for reads
+     * 
+     * @access public
+     * @return resource May return NULL if no reads should be watched
+     **/
+    public function getReadFD () {
+      if ($this->readBufferLength >= $this::READ_BUFFER_SIZE)
+        return null;
+      
+      return parent::getReadFD ();
+    }
+    // }}}
     
     // {{{ raiseRead
     /**
@@ -1582,8 +1608,12 @@
         return $this->setTLSMode ();
       
       // Check if our buffer reached the watermark
-      if ($this->readBufferLength >= 10485760)
+      if ($this->readBufferLength >= $this::READ_BUFFER_SIZE) {
+        if ($eventBase = $this->getEventBase ())
+          $eventBase->updateEvent ($this);
+        
         return;
+      }
       
       // Read incoming data from socket
       if ((($Data = fread ($this->getReadFD (), $this->bufferSize)) === '') || ($Data === false)) {
@@ -1659,7 +1689,10 @@
      * @return string
      **/
     protected function ___read ($Length = null) {
-      // Check if a length was requested
+      // Check if the buffer was full before reading
+      $readBufferFull = ($this->readBufferLength >= $this::READ_BUFFER_SIZE);
+      
+      // Check how many bytes to read
       if (($Length === null) || ($Length >= $this->readBufferLength)) {
         $Buffer = $this->readBuffer;
         $this->readBuffer = '';
@@ -1669,6 +1702,11 @@
         $this->readBuffer = substr ($this->readBuffer, $Length);
         $this->readBufferLength -= $Length;
       }
+      
+      // Restart reading if buffer was full but has space now
+      if ($readBufferFull && ($this->readBufferLength < $this::READ_BUFFER_SIZE) &&
+          ($eventBase = $this->getEventBase ()))
+        $eventBase->updateEvent ($this);
       
       return $Buffer;
     }
