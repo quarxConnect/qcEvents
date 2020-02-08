@@ -1153,7 +1153,7 @@
       
       // Process global request
       } elseif (($Message instanceof qcEvents_Stream_SSH_GlobalRequest) && ($this->State == self::STATE_READY)) {
-        trigger_error ('Unhandled global request: ' . $Message->Name);
+        $this->___callback ('sshGlobalRequest', $Message);
       
       } elseif ((($Message instanceof qcEvents_Stream_SSH_RequestSuccess) ||
                  ($Message instanceof qcEvents_Stream_SSH_RequestFailure)) &&
@@ -1169,7 +1169,7 @@
         if ($Message instanceof qcEvents_Stream_SSH_RequestSuccess)
           call_user_func ($RequestInfo [1], $Message);
         else
-          call_user_func ($RequestInfo [2], $Message->Message, $Message);
+          call_user_func ($RequestInfo [2], 'Request failed', $Message);
         
         // Check wheter to write out the next request
         if (count ($this->Requests) > 0)
@@ -1263,12 +1263,11 @@
           $this->Channels [$Message->RecipientChannel]->receiveMessage ($Message);
         else
           trigger_error ('Message for unknown channel received');
-      } elseif ($Message !== null) {
-        if ($Message instanceof qcEvents_Stream_SSH_Debug)
-          var_dump ($Message);
-        else
-          trigger_error ('Unhandled message: ' . get_class ($Message));
-      } elseif ($Length > 0)
+      } elseif ($Message instanceof qcEvents_Stream_SSH_Debug)
+        $this->___callback ('sshDebugMessage', $Message);
+      elseif ($Message !== null)
+        $this->___callback ('sshUnhandledMessage', $Message);
+      elseif ($Length > 0)
         trigger_error ('Unparsed message: ' . ord ($Packet [0]));
     }
     // }}}
@@ -1505,6 +1504,42 @@
      * @return void
      **/
     protected function authSuccessfull () { }
+    // }}}
+    
+    // {{{ sshGlobalRequest
+    /**
+     * Callback: Global request was received
+     * 
+     * @param qcEvents_Stream_SSH_GlobalRequest $globalRequest
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function sshGlobalRequest (qcEvents_Stream_SSH_GlobalRequest $globalRequest) { }
+    // }}}
+    
+    // {{{ sshDebugMessage
+    /**
+     * Callback: A debug-message was received
+     * 
+     * @param qcEvents_Stream_SSH_Debug $debugMessage
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function sshDebugMessage (qcEvents_Stream_SSH_Debug $debugMessage) { }
+    // }}}
+    
+    // {{{ sshUnhandledMessage
+    /**
+     * Callback: An unhandled SSH-Message was received
+     * 
+     * @param qcEvents_Stream_SSH_Message $unhandledMessage
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function sshUnhandledMessage (qcEvents_Stream_SSH_Message $unhandledMessage) { }
     // }}}
     
     // {{{ channelCreated
