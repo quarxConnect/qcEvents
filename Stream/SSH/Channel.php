@@ -561,12 +561,12 @@
         // Remove this channel
         $this->Stream->removeChannel ($this);
         
-        // Try to resolve the promise
+        // Try to reject the promise
         if (isset ($this->ConnectionPromise [2])) {
-          $Resolve = $this->ConnectionPromise [2];
+          $rejectCallback = $this->ConnectionPromise [2];
           $this->ConnectionPromise = array ($this->ConnectionPromise [0]);
           
-          call_user_func ($Resolve, $Message->Code, $Message->Reason);
+          call_user_func ($rejectCallback, $Message->Reason, $Message);
         }
       
       // Receive-Window-Should be adjusted

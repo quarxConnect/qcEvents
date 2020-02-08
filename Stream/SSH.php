@@ -1165,7 +1165,10 @@
         $RequestInfo = array_shift ($this->Requests);
         
         // Resolve or reject the promise
-        call_user_func ($RequestInfo [($Message instanceof qcEvents_Stream_SSH_RequestSuccess ? 1 : 2)], $Message);
+        if ($Message instanceof qcEvents_Stream_SSH_RequestSuccess)
+          call_user_func ($RequestInfo [1], $Message);
+        else
+          call_user_func ($RequestInfo [2], $Message->Message, $Message);
         
         // Check wheter to write out the next request
         if (count ($this->Requests) > 0)
