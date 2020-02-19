@@ -296,8 +296,8 @@
             function () { $this->finish ($this::DONE_FULLFILL, func_get_args ()); },
             function () { $this->finish ($this::DONE_REJECT,   func_get_args ()); }
           );
-        } catch (Exception $E) {
-          $this->finish ($this::DONE_REJECT, ($E instanceof qcEvents_Promise_Solution ? $E->getArgs () : array ($E)));
+        } catch (Throwable $errorException) {
+          $this->finish ($this::DONE_REJECT, ($errorException instanceof qcEvents_Promise_Solution ? $errorException->getArgs () : array ($errorException)));
         }
       };
       
@@ -448,9 +448,9 @@
         $ResultType = $this::DONE_FULLFILL;
         $Result = call_user_func_array ($callback, $this->result);
         $Result = ($Result instanceof qcEvents_Promise_Solution ? $Result->getArgs () : array ($Result));
-      } catch (Exception $E) {
+      } catch (Throwable $errorException) {
         $ResultType = $this::DONE_REJECT;
-        $Result = ($E instanceof qcEvents_Promise_Solution ? $E->getArgs () : array ($E));
+        $Result = ($errorException instanceof qcEvents_Promise_Solution ? $errorException->getArgs () : array ($errorException));
       }
       
       // Quit if there is no child-promise to fullfill
