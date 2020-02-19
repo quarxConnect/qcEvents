@@ -39,7 +39,10 @@
    * @revision 02
    **/
   class qcEvents_inotify extends qcEvents_Hookable implements qcEvents_Interface_Loop {
-    use qcEvents_Trait_Parented;
+    use qcEvents_Trait_Parented {
+      setEventBase as private traitSetEventBase;
+      unsetEventBase as private traitUnsetEventBase;
+    }
     
     /* File-Operations */
     const MASK_ACCESS = 1; // File was accessed (read)
@@ -264,7 +267,7 @@
       
       // Let our parent to the work first
       $this->unsetEventBase ();
-      parent::setEventBase ($eventBase);
+      $this->traitSetEventBase ($eventBase);
       
       // Check if our target exists
       if (!file_exists ($this->inotifyPath))
@@ -302,7 +305,7 @@
       $this->inotifyDescriptor = null;
       $this->inotify = null;
       
-      return parent::unsetEventBase ();
+      return $this->traitUnsetEventBase ();
     }
     // }}}
     
