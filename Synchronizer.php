@@ -3,7 +3,7 @@
   /**
    * qcEvents - Call asynchronous functions in a syncronous manner
    * 
-   * Copyright (C) 2015 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2015-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -185,7 +185,7 @@
             if ($Loop)
               $Base->loopBreak ();
             
-            if (($Error instanceof Exception) || ($Error instanceof Error))
+            if ($Error instanceof Throwable)
               $Exception = $Error;
           }
         );
