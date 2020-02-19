@@ -55,6 +55,8 @@
       
       if ($throwExceptions !== null)
         $this->throwExceptions = !!$throwExceptions;
+      else
+        $this->throwExceptions = (!defined ('QCEVENTS_EXCEPTIONS') || constant ('QCEVENTS_EXCEPTIONS'));
     }
     // }}}
     
@@ -248,7 +250,7 @@
     static $Syncronizer = null;
     
     if ($Syncronizer === null)
-      $Syncronizer = new qcEvents_Synchronizer (qcEvents_Synchronizer::RESULT_FIRST, false);
+      $Syncronizer = new qcEvents_Synchronizer (qcEvents_Synchronizer::RESULT_FIRST);
     
     return call_user_func_array ($Syncronizer, func_get_args ());
   }
