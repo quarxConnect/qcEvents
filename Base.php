@@ -693,14 +693,10 @@
       // Try to run
       try {
         $Result = call_user_func_array ($Callback, $Parameters);
-      } catch (Exception $Exception) {
-        echo
-          'Uncought exception:', "\n",
-          ($Result = $Exception), "\n";
-      } catch (Error $Error) {
-        echo
-          'Uncought error:', "\n",
-          ($Result = $Error), "\n";
+      } catch (Throwable $errorException) {
+        error_log ('Uncought' . $errorException);
+        
+        $Result = $errorException;
       }
       
       // Forward the result
