@@ -460,7 +460,7 @@
       $this->bufferCompleteBody = false;
       $this->Header = null;
       $this->bodyEncodings = array ();
-      $this->httpSetState ($this::HTTP_STATE_CONNECTING);
+      $this->httpSetState ($this::HTTP_STATE_CLOSED);
     }
     // }}}
     
