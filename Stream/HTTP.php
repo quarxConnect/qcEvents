@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - HTTP-Stream Implementation
-   * Copyright (C) 2012 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2012-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -42,17 +42,18 @@
     use qcEvents_Trait_Hookable, qcEvents_Trait_Parented, qcEvents_Trait_Pipe;
     
     /* HTTP States */
-    const HTTP_STATE_CONNECTING = 0;
-    const HTTP_STATE_WAITING    = 1;
-    const HTTP_STATE_HEADER     = 2;
-    const HTTP_STATE_BODY       = 3;
-    const HTTP_STATE_FINISHED   = 4;
+    const HTTP_STATE_CLOSED     = 0;
+    const HTTP_STATE_CONNECTING = 1;
+    const HTTP_STATE_WAITING    = 2;
+    const HTTP_STATE_HEADER     = 3;
+    const HTTP_STATE_BODY       = 4;
+    const HTTP_STATE_FINISHED   = 5;
     
     /* Source for this HTTP-Stream */
     private $Source = null;
     
     /* Our current state */
-    private $State = qcEvents_Stream_HTTP::HTTP_STATE_CONNECTING;
+    private $State = qcEvents_Stream_HTTP::HTTP_STATE_CLOSED;
     
     /* Don't try to read any body-data */
     private $bodySuppressed = false;
@@ -120,7 +121,7 @@
         
         return;
       }
-       
+      
       // Append data to our internal buffer
       $this->bufferRead .= $Data;
       unset ($Data);
@@ -275,6 +276,9 @@
       $this->Source->removeHook ('eventClosed', array ($this, 'httpStreamClosed'));
       $this->Source = null;
       
+      // Call our own handler
+      $this->httpStreamClosed ();
+      
       // Reset ourself
       $this->reset ();
       
@@ -316,6 +320,7 @@
         function () use ($Source, $Callback, $Private) {
           // Reset ourself
           $this->reset ();
+          $this->httpSetState ($this::HTTP_STATE_CONNECTING);
           
           // Set the new source
           $this->Source = $Source;
@@ -357,6 +362,7 @@
         function () use ($Source) {
           // Reset ourself
           $this->reset ();
+          $this->httpSetState ($this::HTTP_STATE_CONNECTING);
           
           // Set the new source
           $this->Source = $Source;
@@ -559,7 +565,7 @@
      **/
     private function httpUnexpectedClose () {
       // Check if we are processing a request
-      if (($this->State != $this::HTTP_STATE_FINISHED) && ($this->State != $this::HTTP_STATE_CONNECTING))
+      if (($this->State != $this::HTTP_STATE_FINISHED) && ($this->State != $this::HTTP_STATE_CLOSED))
         $this->___callback ('httpFailed', $this->Header, $this->bufferBody);
       
       // Reset ourself
@@ -571,12 +577,10 @@
     /** 
      * Internal Callback: Connection was closed
      * 
-     * @param qcEvents_Socket $Socket
-     * 
      * @access public
      * @return void
      **/
-    public function httpStreamClosed (qcEvents_Socket $Socket) {
+    public function httpStreamClosed () {
       # TODO: Sanity-Check the socket
       
       // Check if the stream closes as expected
