@@ -247,9 +247,80 @@
     }
     // }}}
     
+    // {{{ walk
+    /**
+     * NON-STANDARD: Walk an array with a callback
+     * 
+     * @param mixed $walkArray
+     * @param callable $itemCallback
+     * @param bool $justSettle (optional) Don't stop on rejections, but enqueue them as result
+     * @param qcEvents_Base $eventBase (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public static function walk ($walkArray, callable $itemCallback, $justSettle = false, qcEvents_Base $eventBase = null) : qcEvents_Promise {
+      // Make sure we have an iterator
+      if (is_array ($walkArray))
+        $arrayIterator = new ArrayIterator ($walkArray);
+      elseif ($walkArray instanceof IteratorAggregate)
+        $arrayIterator = $walkArray->getIterator ();
+      elseif ($walkArray instanceof Iterator)
+        $arrayIterator = $walkArray;
+      # elseif (is_iterable ($walkArray))
+      #   TODO
+      else
+        return qcEvents_Promise::reject ('First parameter must be an iterable');
+      
+      // Move to start
+      $arrayIterator->rewind ();
+      
+      return new qcEvents_Promise (
+        function (callable $resolve, callable $reject)
+        use ($arrayIterator, $itemCallback, $justSettle, $eventBase) {
+          $walkResults = array ();
+          $walkItem = null;
+          $walkItem = function () use (&$walkResults, &$walkItem, $arrayIterator, $itemCallback, $justSettle, $eventBase, $resolve, $reject) {
+            // Check wheter to stop
+            if (!$arrayIterator->valid ())
+              return $resolve ($walkResults);
+            
+            // Invoke the callback
+            $itemKey = $arrayIterator->key ();
+            $itemResult = $itemCallback ($arrayIterator->current ());
+            
+            // Move to next element
+            $arrayIterator->next ();
+            
+            // Process the result
+            if (!($itemResult instanceof qcEvents_Promise))
+              $itemResult = ($eventBase ? qcEvents_Promise::resolve ($itemResult, $eventBase) : qcEvents_Promise::resolve ($itemResult));
+            
+            $itemResult->then (
+              function () use ($itemKey, &$walkResults, &$walkItem) {
+                $walkResults [$itemKey] = (func_num_args () == 1 ? func_get_arg (0) : func_get_args ());
+                $walkItem ();
+              },
+              function () use ($justSettle, $itemKey, $reject, &$walkResults, &$walkItem) {
+                if (!$justSettle)
+                  return call_user_func_array ($reject, func_get_args ());
+                
+                $walkResults [$itemKey] = (func_num_args () == 1 ? func_get_arg (0) : func_get_args ());
+                $walkItem ();
+              }
+            );
+          };
+          
+          $walkItem ();
+        },
+        $eventBase
+      );
+    }
+    // }}}
+    
     // {{{ ensure
     /**
-     * Make sure the input is a promise or return a rejected one
+     * NON-STANDARD: Make sure the input is a promise or return a rejected one
      * 
      * @param mixed $Input
      * 
