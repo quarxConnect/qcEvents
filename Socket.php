@@ -813,14 +813,20 @@
         if (!isset (self::$Unreachables [$Key]))
           self::$Unreachables [$Key] = time ();
         
-        // Check wheter to retry using IPv6
-        if (($this::$nat64Prefix !== null) &&
+        // Check wheter to retry using IPv6/NAT64
+        if ($this::$nat64Prefix !== null)
+          $nat64Prefix = $this::$nat64Prefix;
+        elseif ((($nat64Prefix = getenv ('NAT64_PREFIX')) === false) ||
+                (strlen ($nat64Prefix) == 0))
+          $nat64Prefix = null;
+        
+        if (($nat64Prefix !== null) &&
             (($IPv4 = $this::isIPv4 ($Address [1])) || (strtolower (substr ($Address [1], 0, 8)) == '[::ffff:'))) {
           if ($IPv4) {
             $IP = explode ('.', $Address [1]);
-            $IP = sprintf ('[%s%02x%02x:%02x%02x]', $this::$nat64Prefix, (int)$IP [0], (int)$IP [1], (int)$IP [2], (int)$IP [3]);
+            $IP = sprintf ('[%s%02x%02x:%02x%02x]', $nat64Prefix, (int)$IP [0], (int)$IP [1], (int)$IP [2], (int)$IP [3]);
           } else
-            $IP = '[' . $this::$nat64Prefix . substr ($Address [1], 8);
+            $IP = '[' . $nat64Prefix . substr ($Address [1], 8);
           
           $this->socketAddresses [] = array (
             $Address [0],
