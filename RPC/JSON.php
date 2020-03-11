@@ -160,7 +160,7 @@
     // }}}
   }
   
-  class qcEvents_RPC_JSON_Error {
+  class qcEvents_RPC_JSON_Error extends Exception {
     const CODE_PARSE_ERROR = -32700;
     
     const CODE_RESPONSE_SERVER_ERROR = -33000;
@@ -169,14 +169,12 @@
     const CODE_RESPONSE_MISSING_PARAMS = -33601;
     const CODE_RESPONSE_INVALID_PARAMS = -33602;
     
-    private $code = null;
-    private $message = null;
     private $data = null;
     
     function __construct ($code, $message = null, $data = null) {
-      $this->code = $code;
-      $this->message = $message;
       $this->data = $data;
+      
+      return parent::__construct ($message, $code);
     }
   }
 
