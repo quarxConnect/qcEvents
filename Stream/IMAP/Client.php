@@ -1,8 +1,8 @@
 <?PHP
 
   /**
-   * qcEvents - Asyncronous IMAP Client
-   * Copyright (C) 2013 Bernd Holzmueller <bernd@quarxconnect.de>
+   * qcEvents - Asyncronous IMAP Stream
+   * Copyright (C) 2013-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@
    *       RFC 5464 METADATA
    *       RFC 6855 UTF-8
    **/
-  class qcEvents_Socket_Client_IMAP extends qcEvents_Socket_Client {
+  class qcEvents_Stream_IMAP_Client extends qcEvents_Socket_Client {
     /* Defaults for IMAP */
     const DEFAULT_PORT = 143;
     const DEFAULT_TYPE = qcEvents_Socket::TYPE_TCP;
