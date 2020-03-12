@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Asyncronous Process/Application I/O
-   * Copyright (C) 2012 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2012-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
    **/
   
   require_once ('qcEvents/IOStream.php');
+  require_once ('qcEvents/Defered.php');
   
   /**
    * Process
@@ -31,6 +32,7 @@
    * @revision 02
    **/
   class qcEvents_Process extends qcEvents_IOStream {
+    /* Default size of read-buffer */
     const READ_BUFFER = 40960;
     
     /* Internal method to spawn a command */
@@ -38,7 +40,7 @@
     const MODE_POPEN = 2;
     const MODE_FORKED = 3;
     
-    private $Mode = qcEvents_Process::MODE_PROCOPEN;
+    private $processMode = qcEvents_Process::MODE_PROCOPEN;
     
     /* Internal process-handle */
     private $Process = null;
@@ -46,16 +48,11 @@
     /* Exit-Code to process */
     private $exitCode = null;
     
-    /* Callback after process finished */
-    private $Callback = null;
-    private $Private = null;
+    /* Promise for process settlement */
+    private $processPromise = null;
     
     /* PID of our child */
     private $childPID = 0;
-    
-    /* Path to child-fifos */
-    private $childReadPath = '';
-    private $childWritePath = '';
     
     private $hasRead = false;
     
@@ -63,24 +60,20 @@
     /**
      * Create an Event-Handler and spawn a process
      * 
-     * @param qcEvents_Base $Base (optional)
-     * @param string $Command (optional)
-     * @param mixed $Params (optional)
+     * @param qcEvents_Base $eventBase
+     * @param string $commandName (optional)
+     * @param array $commandParams (optional)
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Base $Base = null, $Command = null, $Params = null, callable $Callback = null, $Private = null) {
-      // Don't do anything withour an events-base
-      if ($Base === null)
-        return;
-      
+    function __construct (qcEvents_Base $eventBase, $commandName = null, array $commandParams = null) {
       // Set our handler
-      $this->setEventBase ($Base);
+      $this->setEventBase ($eventBase);
       
       // Spawn the command if requested
-      if ($Command !== null)
-        $this->spawnCommand ($Command, $Params, $Callback, $Private);
+      if ($commandName !== null)
+        $this->spawnCommand ($commandName, $commandParams);
     }
     // }}}
     
@@ -88,25 +81,22 @@
     /**
      * Create a full commandline from separated args
      * 
-     * @param string $Command
-     * @param mixed $Params
+     * @param string $commandName
+     * @param array $commandParams (optional)
      * 
      * @access private
      * @return string
      **/
-    private function toCommandline ($Command, $Params = null) {
+    private static function toCommandline ($commandName, array $commandParams = null) {
       // Create the command-line
-      $cmdline = escapeshellcmd ($Command);
+      $commandLine = escapeshellcmd ($commandName);
       
       // Append parameters
-      if (is_array ($Params))
-        foreach ($Params as $P)
-          $cmdline .= ' ' . escapeshellarg ($P);
+      if ($commandParams)
+        foreach ($commandParams as $commandParam)
+          $commandLine .= ' ' . escapeshellarg ($commandParam);
       
-      elseif (is_string ($Params))
-        $cmdline .= ' ' . escapeshellarg ($Params);
-      
-      return $cmdline;
+      return $commandLine;
     }
     // }}}
     
@@ -114,15 +104,14 @@
     /**
      * Execute the command
      * 
-     * @param string $Command
-     * @param array $Params (optional)
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
+     * @param string $commandName
+     * @param array $commandParams (optional)
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
+     * @throws Error
      **/
-    public function spawnCommand ($Command, $Params = null, callable $Callback = null, $Private = null) {
+    public function spawnCommand ($commandName, array $commandParams = null) : qcEvents_Promise {
       // Spawn using proc_open
       if (function_exists ('proc_open')) {
         // Try to spawn the command
@@ -132,136 +121,119 @@
           2 => STDERR,
         );
         
-        if (!is_resource ($this->Process = proc_open ($this->toCommandline ($Command, $Params), $Descriptors, $Pipes))) {
-          trigger_error ('Could not spawn command');
-          
-          return false;
-        }
+        if (!is_resource ($this->Process = proc_open ($this::toCommandline ($commandName, $commandParams), $Descriptors, $Pipes)))
+          throw new Error ('Could not spawn command (proc_open)');
         
-        $this->Mode = self::MODE_PROCOPEN;
+        $this->processMode = self::MODE_PROCOPEN;
         $this->exitCode = null;
-        $this->Callback = $Callback;
-        $this->Private = $Private;
         
         // Register FDs
         if (!$this->setStreamFDs ($Pipes [1], $Pipes [0]))
-          return false;
+          throw new Error ('Failed to set stream-fds');
       
       // Spawn using popen
       } elseif (function_exists ('popen')) {
         // Start the command
-        if (!is_resource ($fd = popen ($this->toCommandline ($Command, $Params), 'r')))
-          return false;
+        if (!is_resource ($fd = popen ($this::toCommandline ($commandName, $commandParams), 'r')))
+          throw new Error ('Could not spawn command (popen)');
         
-        $this->Mode = self::MODE_POPEN;
+        $this->processMode = self::MODE_POPEN;
         $this->exitCode = null;
         
         // Register FDs
         if (!$this->setStreamFD ($fd))
-          return false;
+          throw new Error ('Failed to set stream-fd');
       
       // Try to spawn forked
-      } elseif (!$this->spawnCommandForked ($Command, $Params))
-        return false;
+      } elseif (function_exists ('pcntl_fork')) {
+        // Setup FIFOs
+        $fifo_in = tempnam (sys_get_temp_dir (), 'qcEventsProcess');
+        $fifo_out = tempnam (sys_get_temp_dir (), 'qcEventsProcess');
+        
+        if (function_exists ('posix_mkfifo')) {
+          posix_mkfifo ($fifo_in, 600);
+          posix_mkfifo ($fifo_out, 600);
+        } else {
+          touch ($fifo_in);
+          touch ($fifo_out);
+        }
+        
+        if (!is_resource ($fd_in = fopen ($fifo_in, 'r')) ||
+            !is_resource ($fd_out = fopen ($fifo_out, 'w'))) {
+          @unlink ($fifo_in);
+          @unlink ($fifo_out);
+          
+          throw new Error ('Failed to setup fifo');
+        }
+        
+        // try to fork
+        if (($pid = pcntl_fork ()) < 0) {
+          fclose ($fd_in);
+          fclose ($fd_out);
+        
+          @unlink ($fifo_in);
+          @unlink ($fifo_out);
+          
+          throw new Error ('Failed to fork()');
+        }
+        
+        // We are the child
+        if ($pid == 0) {
+          $rc = 0;
+          
+          // Redirect the output
+          global $STDOUT, $STDIN;
+          
+          fclose ($fd_in);
+          fclose ($fd_out);
+          
+          fclose (STDOUT);
+          $STDOUT = fopen ($fifo_in, 'w');
+          
+          fclose (STDIN);
+          $STDIN = fopen ($fifo_out, 'r');
+          
+          @unlink ($fifo_in);
+          @unlink ($fifo_out);
+          
+          if (!is_resource ($STDOUT) ||
+              !is_resource ($STDIN))
+            exit (1);
+          
+          // Spawn the process
+          if (function_exists ('pcntl_exec')) {
+            pcntl_exec ($commandName, $commandParams);
+            $rc = 1; // If we get here pcntl_exec failed!
+          
+          } elseif (function_exists ('passthru'))
+            passthru ($this::toCommandline ($commandName, $commandParams), $rc);
+          
+          elseif (function_exists ('system'))
+            system ($this::toCommandline ($commandName, $commandParams), $rc);
+          
+          exit ($rc);
+        }
+        
+        // Setup the parent
+        $this->processMode = self::MODE_FORKED;
+        $this->childPID = $pid;
+        
+        if (!$this->setStreamFDs ($fd_in, $fd_out)) {
+          fclose ($fd_in);
+          fclose ($fd_out);
+          
+          @unlink ($fifo_in);
+          @unlink ($fifo_out);
+          
+          throw new Error ('Failed to set stream-fds');
+        }
+      } else
+        return qcEvents_Promise::reject ('Missing pcntl_fork()');
       
-      return true;
-    }
-    // }}}
-    
-    // {{{ spawnCommandForked
-    /**
-     * Execute a command using fork()
-     * 
-     * @param string $Command
-     * @param array $Params (optional)
-     * 
-     * @access private
-     * @return bool
-     **/
-    private function spawnCommandForked ($Command, $Params = null) {
-      // Check if we are able to fork
-      if (!function_exists ('pcntl_fork'))
-        return false;
+      // Create a new defered promise
+      $this->processPromise = new qcEvents_Defered ();
       
-      // Setup FIFOs
-      # TODO: Don't hardcode /tmp here
-      $fifo_in = tempnam ('/tmp', 'qcEventProcess');
-      $fifo_out = tempnam ('/tmp', 'qcEventProcess');
-      
-      if (function_exists ('posix_mkfifo')) {
-        posix_mkfifo ($fifo_in, 600);
-        posix_mkfifo ($fifo_out, 600);
-      }
-      
-      if (!is_resource ($fd_in = @fopen ($fifo_in, 'r')) ||
-          !is_resource ($fd_out = @fopen ($fifo_out, 'w'))) {
-        @unlink ($fifo_in);
-        @unlink ($fifo_out);
-        
-        return false;
-      }
-      
-      // Do the fork
-      if (($pid = pcntl_fork ()) < 0) {
-        fclose ($fd_in);
-        fclose ($fd_out);
-        
-        @unlink ($fifo_in);
-        @unlink ($fifo_out);
-        
-        return false;
-      }
-      
-      // We are the child
-      if ($pid == 0) {
-        $rc = 0;
-        
-        // Redirect the output
-        global $STDOUT, $STDIN;
-        
-        fclose ($fd_in);
-        fclose ($fd_out);
-        fclose (STDOUT);
-        fclose (STDIN);
-        
-        if (!is_resource ($STDOUT = fopen ($fifo_in, 'w')))
-          exit (1);
-        
-        if (!is_resource ($STDIN = fopen ($fifo_out, 'r')))
-          exit (1);
-        
-        // Spawn the process
-        if (function_exists ('pcntl_exec')) {
-          pcntl_exec ($Command, $Params);
-          $rc = 1; // If we get here pcntl_exec failed!
-        
-        } elseif (function_exists ('passthru'))
-          passthru ($this->toCommandline ($Command, $Params), $rc);
-        
-        elseif (function_exists ('system'))
-          system ($this->toCommandline ($Command, $Params), $rc);
-        
-        exit ($rc);
-      }
-      
-      // Setup the parent
-      $this->Mode = self::MODE_FORKED;
-      
-      if (!$this->setStreamFDs ($fd_in, $fd_out)) {
-        fclose ($fd_in);
-        fclose ($fd_out);
-        
-        @unlink ($fifo_in);
-        @unlink ($fifo_out);
-        
-        return false;
-      }
-      
-      $this->childPID = $pid;
-      $this->childReadPath = $fifo_in;
-      $this->childWritePath = $fifo_out;
-      
-      return true;
+      return $this->processPromise->getPromise ();
     }
     // }}}
     
@@ -298,8 +270,12 @@
         return false;
       
       // Try to read from process
-      if (is_string ($Data = fread ($fd, $Length)) && (strlen ($Data) == 0) && feof ($fd))
-        return $this->close ();
+      if (is_string ($Data = fread ($fd, $Length)) && (strlen ($Data) == 0) && feof ($fd)) {
+        if ($this->hasRead !== null)
+          $this->close ();
+        
+        return false;
+      }
       
       // Return the read data
       $this->hasRead = true;
@@ -339,7 +315,8 @@
      * @return bool
      **/
     protected function ___close ($closeFD = null) {
-      if ($this->Mode == self::MODE_PROCOPEN) {
+      if (($this->processMode == self::MODE_PROCOPEN) ||
+          ($this->processMode == self::MODE_FORKED)) {
         // Close our pipes first
         if (is_resource ($fd = $this->getReadFD ()))
           fclose ($fd);
@@ -348,67 +325,90 @@
           fclose ($fd);
         
         // Try to terminate normally
-        proc_terminate ($this->Process);
+        if ($this->processMode == self::MODE_PROCOPEN)
+          proc_terminate ($this->Process);
+        
+        elseif (($this->childPID > 0) && function_exists ('posix_kill'))
+          posix_kill ($this->childPID, SIGTERM);
         
         // Wait for the process to exit
-        # TODO: Make this async
-        for ($i = 0; $i < 1000; $i++) {
-          // Retrive the status of the process
-          $status = proc_get_status ($this->Process);
-          
-          // Try to remember an exit-code for this process
-          if ($status ['exitcode'] >= 0)
-            $this->exitCode = $status ['exitcode'];
-          
-          // Check if the process is still running
-          if (!$status ['running'])
-            break;
-          
-          // Spend a little time waiting
-          usleep (2000);
-        }
+        if (!is_object ($eventBase = $this->getEventBase ()))
+          return true;
         
-        // Check if the process is still running
-        if ($status ['running']) {
-          proc_terminate ($this->Process, SIGKILL);
-          
-          // Try to get an exit-code
-          $status = proc_get_status ($this->Process);
-          
-          if ($status ['exitcode'] >= 0)
-            $this->exitCode = $status ['exitcode'];
-        }
+        $closeTimer = $eventBase->addTimeout (0.25, true);
+        $closeTimer->then (
+          function () use ($closeTimer) {
+            static $closeCounter = 0;
+            
+            // Retrive the status of the process
+            if ($this->processMode != self::MODE_PROCOPEN) {
+              $childRC = pcntl_waitpid ($this->childPID, $childStatus, WNOHANG|WUNTRACED);
+              
+              $childStatus = array (
+                'exitcode' => pcntl_wexitstatus ($childStatus),
+                'running' => ($childRC <= 0),
+              );
+            } else
+              $childStatus = proc_get_status ($this->Process);
+            
+            // Try to remember an exit-code for this process
+            if ($childStatus ['exitcode'] >= 0)
+              $this->exitCode = $childStatus ['exitcode'];
+            
+            // Check if the process is still running
+            if ($childStatus ['running'] && ($closeCounter++ < 1000))
+              return;
+            
+            // Cancel the timer
+            $closeTimer->cancel ();
+            
+            // Check if the process is still running
+            if ($childStatus ['running']) {
+              if ($this->processMode != self::MODE_PROCOPEN) {
+                if (function_exists ('posix_kill'))
+                  posix_kill ($this->childPID, SIGKILL);
+                
+                $childRC = pcntl_waitpid ($this->childPID, $childStatus, WNOHANG|WUNTRACED);
+                $childStatus = array (
+                  'exitcode' => pcntl_wexitstatus ($childStatus),
+                  'running' => ($childRC <= 0),
+                );
+              } else {
+                // Send SIGKILL
+                proc_terminate ($this->Process, SIGKILL);
+                
+                // Try to get an exit-code
+                $childStatus = proc_get_status ($this->Process);
+              }
+              
+              if ($childStatus ['exitcode'] >= 0)
+                $this->exitCode = $childStatus ['exitcode'];
+            }
+            
+            // Resolve the promise
+            if ($this->processPromise)
+              $this->processPromise->resolve ($this->exitCode);
+          }
+        );
         
-        if ($this->Callback)
-          call_user_func ($this->Callback, $this, $this->exitCode, $this->Private);
+        // Don't loose time
+        $closeTimer->run ();
         
         return true;
       }
       
-      if ($this->Mode == self::MODE_POPEN) {
+      // Stop popen()ed processes
+      if ($this->processMode == self::MODE_POPEN) {
         $this->exitCode = pclose ($this->getReadFD ());
         
-        if ($this->Callback)
-          call_user_func ($this->Callback, $this, $this->exitCode, $this->Private);
+        // Resolve the promise
+        if ($this->processPromise)
+          $this->processPromise->resolve ($this->exitCode);
         
         return ($this->exitCode >= 0);
       }
-    
-      if ($this->Mode == self::MODE_FORKED) {
-        if (($this->childPID > 0) && function_exists ('posix_kill'))
-          posix_kill ($this->childPID);
-        
-        // Close our pipes first
-        if (is_resource ($fd = $this->getReadFD ()))
-          fclose ($fd);
-          
-        if (is_resource ($fd = $this->getWriteFD ()))
-          fclose ($fd);
-        
-        @unlink ($this->childReadPath); 
-        @unlink ($this->childWritePath);
-      }
       
+      // Nothing to do
       return true;
     }
     // }}}
@@ -422,17 +422,26 @@
      **/
     public function raiseRead () {
       // Check if we can detect a finished process
-      if ($this->Mode == self::MODE_PROCOPEN) {
-        $Status = proc_get_status ($this->Process);
+      if (($this->processMode == self::MODE_PROCOPEN) ||
+          ($this->processMode == self::MODE_FORKED)) {
+        if ($this->processMode != self::MODE_PROCOPEN) {
+           $childRC = pcntl_waitpid ($this->childPID, $childStatus, WNOHANG|WUNTRACED);
+        
+          $childStatus = array (
+            'exitcode' => pcntl_wexitstatus ($childStatus),
+            'running' => ($childRC <= 0),
+          );
+        } else
+          $childStatus = proc_get_status ($this->Process);
         
         // Exit if the process is not running anymore
-        if (!$Status ['running']) {
+        if (!$childStatus ['running']) {
           // Store exit-code if there is a valid one
-          if ($Status ['exitcode'] >= 0)
-            $this->exitCode = $Status ['exitcode'];
+          if ($childStatus ['exitcode'] >= 0)
+            $this->exitCode = $childStatus ['exitcode'];
           
           // Make sure the read-buffer is empty
-          $this->hasRead = false;
+          $this->hasRead = null;
           
           parent::raiseRead ();
           
@@ -440,6 +449,8 @@
           // The read()-Handler will trigger a close on its own when no data is available any more
           if ($this->hasRead)
             return;
+          
+          $this->hasRead = false;
           
           // Close if nothing was read
           return $this->close ();
