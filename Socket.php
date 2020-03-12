@@ -769,12 +769,12 @@
         $this->socketAddresses = null;
         
         // Check wheter to enable TLS
-        if (($this->tlsStatus === true) && !$this->tlsEnable ())
+        if (($this->tlsStatus === true) && !$this->isTLS ())
           return $this->tlsEnable (true, array ($this, 'socketHandleConnected'));
       }
       
       // Check our TLS-Status and treat as connection failed if required
-      if (($this->tlsStatus === true) && !$this->tlsEnable ())
+      if (($this->tlsStatus === true) && !$this->isTLS ())
         return $this->socketHandleConnectFailed ($this::ERROR_NET_TLS_FAILED, 'Failed to enable TLS');
       
       // Fire custom callback
@@ -1461,8 +1461,11 @@
      **/
     public function tlsEnable ($Toggle = null, callable $Callback = null, $Private = null) {
       // Check wheter only to return the status
-      if ($Toggle === null)
+      if ($Toggle === null) {
+        trigger_error ('Use isTLS() to query TLS-Status', E_USER_DEPRECATED);
+        
         return ($this->tlsEnabled == true);
+      }
       
       // Clean up the flag
       $Toggle = ($Toggle ? true : false);
@@ -1518,6 +1521,18 @@
       $this->setTLSMode ();
       
       return true;
+    }
+    // }}}
+    
+    // {{{ isTLS
+    /**
+     * Check if TLS is enabled
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isTLS () {
+      return ($this->tlsEnabled == true);
     }
     // }}}
     
