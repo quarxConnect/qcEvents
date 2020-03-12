@@ -424,21 +424,11 @@
      * @param int $Port
      * @param enum $Type (optional) TCP is used by default
      * @param bool $enableTLS (optional) Enable TLS-Encryption on connect
-     * @param callable $Callback (optional) Fire this callback once this operation was finished
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be fired in the form of
-     * 
-     *   function (qcEvents_Socket $Self, bool $Status, mixed $Private) { }
-     * 
-     * $Status will be TRUE if the connection succeeded
-     * 
-     * @remark This function is asyncronous! If it returns true this does not securly mean that a connection was established!
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function connect ($Hosts, $Port = null, $Type = null, $enableTLS = false, callable $Callback = null, $Private = null) : qcEvents_Promise {
+    public function connect ($Hosts, $Port = null, $Type = null, $enableTLS = false) : qcEvents_Promise {
       // Check wheter to use the default socket-type
       if ($Type === null)
         $Type = $this::DEFAULT_TYPE;
@@ -478,68 +468,45 @@
       $this->tlsStatus = ($enableTLS ? true : null);
       
       // Create a new promise
-      $Promise = new qcEvents_Promise (function ($resolve, $reject) use ($Hosts, $Port, $Type) {
-        // Remember promises
-        $this->socketConnectResolve = $resolve;
-        $this->socketConnectReject = $reject;
-        
-        // Make sure hosts is an array
-        if (!is_array ($Hosts))
-          $Hosts = array ($Hosts);
-        
-        $Resolve = array ();
-        
-        foreach ($Hosts as $Host) {
-          // Check for IPv6
-          if (($IPv6 = $this::isIPv6 ($Host)) && ($Host [0] != '['))
-            $Host = '[' . $Host . ']';
+      return new qcEvents_Promise (
+        function (callable $resolve, callable $reject) use ($Hosts, $Port, $Type) {
+          // Remember promises
+          $this->socketConnectResolve = $resolve;
+          $this->socketConnectReject = $reject;
           
-          // Check for IPv4/v6 or wheter to skip the resolver
-          if (($this->Resolving < 0) || $this::isIPv4 ($Host) || $IPv6)
-            $this->socketAddresses [] = array ($Host, $Host, $Port, $Type);
-          else
-            $Resolve [] = $Host;
-        }
-        
-        // Put ourself into connected-state
-        $this->Connected = null;
-        
-        // Check if we have addresses to connect to
-        if ($this->socketAddresses && (count ($this->socketAddresses) > 0))
-          $this->socketConnectMulti ();
-        
-        // Sanity-Check if to use internal resolver
-        if (($this->Resolving < 0) || (count ($Resolve) == 0))
-          return;
-        
-        // Perform asyncronous resolve
-        return $this->socketResolveDo ($Host, $Port, $Type);
-      });
-      
-      // Patch promise with callback
-      if ($Callback) {
-        trigger_error ('Callback on qcEvents_Socket::connect() is deprecated');
-        
-        $Promise = $Promise->then (
-          function () use ($Callback, $Private) {
-            // Run the callback
-            call_user_func ($Callback, $this, true, $Private);
+          // Make sure hosts is an array
+          if (!is_array ($Hosts))
+            $Hosts = array ($Hosts);
+          
+          $Resolve = array ();
+          
+          foreach ($Hosts as $Host) {
+            // Check for IPv6
+            if (($IPv6 = $this::isIPv6 ($Host)) && ($Host [0] != '['))
+              $Host = '[' . $Host . ']';
             
-            // Forward all results
-            return new qcEvents_Promise_Solution (func_get_args ());
-          },
-          function () use ($Callback, $Private) {
-            // Run the callback
-            call_user_func ($Callback, $this, false, $Private);
-            
-            // Forward the exception
-            throw new qcEvents_Promise_Solution (func_get_args ());
+            // Check for IPv4/v6 or wheter to skip the resolver
+            if (($this->Resolving < 0) || $this::isIPv4 ($Host) || $IPv6)
+              $this->socketAddresses [] = array ($Host, $Host, $Port, $Type);
+            else
+              $Resolve [] = $Host;
           }
-        );
-      }
-      
-      // Return the promise
-      return $Promise;
+          
+          // Put ourself into connected-state
+          $this->Connected = null;
+          
+          // Check if we have addresses to connect to
+          if ($this->socketAddresses && (count ($this->socketAddresses) > 0))
+            $this->socketConnectMulti ();
+          
+          // Sanity-Check if to use internal resolver
+          if (($this->Resolving < 0) || (count ($Resolve) == 0))
+            return;
+          
+          // Perform asyncronous resolve
+          return $this->socketResolveDo ($Host, $Port, $Type);
+        }
+      );
     }
     // }}}
     
