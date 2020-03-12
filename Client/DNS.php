@@ -127,32 +127,28 @@
     /**
      * Perform DNS-Resolve
      * 
-     * @param string $Hostname
-     * @param enum $Type (optional)
-     * @param enum $Class (optional)
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @remark The callback is specified in enqueueQuery()
+     * @param string $dnsName
+     * @param enum $dnsType (optional)
+     * @param enum $dnsClass (optional)
      * 
      * @access public
      * @return void
      **/
-    public function resolve ($Hostname, $Type = null, $Class = null, callable $Callback = null, $Private = null) : qcEvents_Promise {
+    public function resolve ($dnsName, $dnsType = null, $dnsClass = null) : qcEvents_Promise {
       // Create a DNS-Query
-      $Message = new qcEvents_Stream_DNS_Message;
-      $Message->isQuestion (true);
+      $dnsMessage = new qcEvents_Stream_DNS_Message;
+      $dnsMessage->isQuestion (true);
       
-      if ($Type === null)
-        $Type = qcEvents_Stream_DNS_Message::TYPE_A;
+      if ($dnsType === null)
+        $dnsType = qcEvents_Stream_DNS_Message::TYPE_A;
       
-      if ($Class === null)
-        $Class = qcEvents_Stream_DNS_Message::CLASS_INTERNET;
+      if ($dnsClass === null)
+        $dnsClass = qcEvents_Stream_DNS_Message::CLASS_INTERNET;
       
-      $Message->addQuestion (new qcEvents_Stream_DNS_Question ($Hostname, $Type, $Class));
+      $dnsMessage->addQuestion (new qcEvents_Stream_DNS_Question ($dnsName, $dnsType, $dnsClass));
       
       // Enqueue the query
-      return $this->enqueueQuery ($Message, $Callback, $Private);
+      return $this->enqueueQuery ($dnsMessage);
     }
     // }}}
     
@@ -178,7 +174,7 @@
       $Socket = new qcEvents_Socket ($this->getEventBase ());
       $Socket->useInternalResolver (false);
       
-      $Promise = $Socket->connect (
+      return $Socket->connect (
         $this->Nameservers [0][0],
         $this->Nameservers [0][1],
         $this->Nameservers [0][2]
@@ -282,8 +278,6 @@
           throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
-      
-      return $Promise;
     }
     // }}}
     
