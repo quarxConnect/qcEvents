@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Asyncronous Sockets
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
   
   require_once ('qcEvents/IOStream.php');
   require_once ('qcEvents/Promise.php');
+  require_once ('qcEvents/Defered.php');
   
   /**
    * Event Socket
@@ -118,8 +119,8 @@
     /* Our desired TLS-Status */
     private $tlsStatus = null;
     
-    /* Callbacks fired when tls-status was changed */
-    private $tlsCallbacks = array ();
+    /* Promise for TLS-Initialization */
+    private $tlsPromise = null;
     
     /* Size for Read-Requests */
     private $bufferSize = 0;
@@ -770,7 +771,14 @@
         
         // Check wheter to enable TLS
         if (($this->tlsStatus === true) && !$this->isTLS ())
-          return $this->tlsEnable (true, array ($this, 'socketHandleConnected'));
+          return $this->tlsEnable (true)->then (
+            function () {
+              $this->socketHandleConnected ();
+            },
+            function () {
+              $this->socketHandleConnectFailed ($this::ERROR_NET_TLS_FAILED, 'Failed to enable TLS');
+            }
+          );
       }
       
       // Check our TLS-Status and treat as connection failed if required
@@ -1453,56 +1461,43 @@
      * Check/Set TLS on this connection
      * 
      * @param bool $Toggle (optional) Set the TLS-Status
-     * @param callable $Callback (optional) Fire this callback after negotiation
-     * @param mixed $Private (optional) Private data passed to the callback
      * 
      * @access public
      * @return bool  
      **/
-    public function tlsEnable ($Toggle = null, callable $Callback = null, $Private = null) {
+    public function tlsEnable ($enableTLS = null) {
       // Check wheter only to return the status
-      if ($Toggle === null) {
+      if ($enableTLS === null) {
         trigger_error ('Use isTLS() to query TLS-Status', E_USER_DEPRECATED);
         
         return ($this->tlsEnabled == true);
       }
       
-      // Clean up the flag
-      $Toggle = ($Toggle ? true : false);
+      // Clean up the switch
+      $enableTLS = !!$enableTLS;
+      
+      // Make sure we have promise for this
+      if (!$this->tlsPromise)
+        $this->tlsPromise = new qcEvents_Defered;
       
       // Check if we are in an unclean status at the moment
-      if ($this->tlsEnabled === null) {
-        if ($Callback)
-          $this->tlsCallbacks [] = array ($Callback, $Private);
-        
-        # TODO: What to do if desired status does not match the requested one?
-        
-        return ($this->tlsStatus == $Toggle);
-      }
+      if ($this->tlsEnabled === null)
+        return $this->tlsPromise->getPromise ();
       
       # TODO: No clue at the moment how to do this on UDP-Server
       # TODO: Check if this simply works - we are doing this in non-blocking mode,
       #       so it might be possible to distinguish by normal peer-multiplexing
-      if ($this->Type == self::TYPE_UDP_SERVER) {
-        $this->___raiseCallback ($Callback, false, $Private);
-        
-        return false;
-      }
+      if ($this->Type == self::TYPE_UDP_SERVER)
+        return qcEvents_Promise::reject ('Unable to negotiate TLS in UDP-Server-Mode');
       
       // Check wheter to do anything
-      if ($Toggle === $this->tlsEnabled) {
-        $this->___raiseCallback ($Callback, $this->tlsEnabled, $Private);
-        
-        return true;
-      }
+      if ($enableTLS === $this->tlsEnabled)
+        return qcEvents_Promise::resolve ();
       
       // Set internal status
       $this->tlsEnabled = null;
       
-      if ($Callback)
-        $this->tlsCallbacks [] = array ($Callback, $Private);
-      
-      if ($this->tlsStatus = $Toggle)
+      if ($this->tlsStatus = $enableTLS)
         stream_context_set_option ($this->getReadFD (), array (
           'ssl' => array (
             // Server-Name-Indication
@@ -1520,7 +1515,7 @@
       // Forward the request
       $this->setTLSMode ();
       
-      return true;
+      return $this->tlsPromise->getPromise ();
     }
     // }}}
     
@@ -1563,28 +1558,22 @@
       if ($tlsRequest === true) {
         $this->tlsEnabled = $this->tlsStatus;
         
-        $tlsCallbacks = $this->tlsCallbacks;
-        $this->tlsCallbacks = array ();
-        
         if ($this->tlsEnabled)
           $this->___callback ('tlsEnabled');
         else
           $this->___callback ('tlsDisabled');
         
-        foreach ($tlsCallbacks as $tlsCallback)
-          $this->___raiseCallback ($tlsCallback [0], $this->tlsStatus, $tlsCallback [1]);
+        if ($this->tlsPromise)
+          $this->tlsPromise->resolve ();
       
       // Check if the request failed
       } elseif ($tlsRequest === false) {
         $this->tlsEnabled = false;
         
-        $tlsCallbacks = $this->tlsCallbacks;
-        $this->tlsCallbacks = array ();
-        
         $this->___callback ('tlsFailed');
         
-        foreach ($tlsCallbacks as $tlsCallback)
-          $this->___raiseCallback ($tlsCallback [0], null, $tlsCallback [1]);
+        if ($this->tlsPromise)
+          $this->tlsPromise->reject ('Failed to change TLS-Status');
       }
     }
     // }}}
