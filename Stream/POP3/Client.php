@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Asyncronous POP3 Client-Stream
-   * Copyright (C) 2015 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2015-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Promise.php');
+  require_once ('qcEvents/Defered.php');
   
   /**
    * POP3 Client (Stream)
@@ -38,11 +39,11 @@
     const DEFAULT_TYPE = qcEvents_Socket::TYPE_TCP;
     
     /* POP3-Protocol-States */
-    const POP3_STATE_CONNECTING = 1;
-    const POP3_STATE_CONNECTED = 2; 
-    const POP3_STATE_AUTHORIZED = 3;
-    const POP3_STATE_DISCONNECTING = 4;
     const POP3_STATE_DISCONNECTED = 0;
+    const POP3_STATE_DISCONNECTING = 1;
+    const POP3_STATE_CONNECTING = 2;
+    const POP3_STATE_CONNECTED = 3; 
+    const POP3_STATE_AUTHORIZED = 4;
     
     /* Our current protocol-state */
     private $State = qcEvents_Stream_POP3_Client::POP3_STATE_DISCONNECTED;
@@ -51,10 +52,10 @@
     private $serverTimestamp = null;
     
     /* Current command being executed */
-    private $Command = null;
+    private $activeCommand = null;
     
     /* Queued commands */
-    private $Commands = array ();
+    private $pendingCommands = array ();
     
     /* Receive-Buffer */
     private $Buffer = '';
@@ -63,45 +64,71 @@
     private $Response = array ();
     
     /* Server-Capabilities */
-    private $Capabilities = null;
+    private $serverCapabilities = null;
     
     /* Handle of the attached stream */
     private $Stream = null;
+    
+    /* Promise for stream-initialization */
+    private $initPromise = null;
     
     // {{{ getCapabilities
     /**
      * Retrive the capabilities from server
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, array $Capabilities, bool $Status, mixed $Private) { }
-     * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise Resoles to array of capabilities
      **/
-    public function getCapabilities (callable $Callback = null, $Private = null) {
+    public function getCapabilities () : qcEvents_Promise {
       // Check if we already know this is unsupported
-      if ($this->Capabilities !== null) {
-        $this->___raiseCallback ($Callback, (is_array ($this->Capabilities) ? $this->Capabilities : null), is_array ($this->Capabilities), $Private);
-        
-        return true;
-      }
+      if ($this->serverCapabilities !== null)
+        return qcEvents_Promise::resolve ($this->serverCapabilities);
       
       // Issue the command
-      return $this->popCommand ('CAPA', array ($Index), false, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Callback, $Private) {
-        // Check if the server supports capabilities
-        if ($Success) {
-          $this->Capabilities = array_slice ($Response, 1);
-          $this->___callback ('popCapabilities', $this->Capabilities);
-        } else
-          $this->Capabilities = false;
-        
-        // Fire callback
-        $this->___raiseCallback ($Callback, (is_array ($this->Capabilities) ? $this->Capabilities : null), $Success, $Private);
-      });
+      return $this->popCommand (
+        'CAPA',
+        null,
+        true
+      )->then (
+        function ($responseBody) {
+          // Store received capabilities
+          $this->serverCapabilities = array_slice ($responseBody, 1);
+          
+          // Raise a callback
+          $this->___callback ('popCapabilities', $this->serverCapabilities);
+          
+          // Forward the result
+          return $this->serverCapabilities;
+        },
+        function () {
+          // Mark capabilities as received
+          $this->serverCapabilities = array ();
+          
+          // Forward the rejection
+          throw new qcEvents_Promise_Solution (func_get_args ());
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ checkCapability
+    /**
+     * Safely check if the server supports a given capability
+     * 
+     * @param string $Capability
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function checkCapability ($Capability) : qcEvents_Promise {
+      return $this->getCapabilities ()->then (
+        function (array $serverCapabilities) use ($Capability) {
+          if (count ($serverCapabilities) == 0)
+            return null;
+          
+          return in_array ($Capability, $serverCapabilities);
+        }
+      );
     }
     // }}}
     
@@ -116,10 +143,11 @@
      **/
     public function haveCapability ($Capability) {
       // Check if we have server-capabilities
-      if (!is_array ($this->Capabilities))
+      if (!is_array ($this->serverCapabilities) ||
+          (count ($this->serverCapabilities) == 0))
         return null;
       
-      return in_array ($Capability, $this->Capabilities);
+      return in_array ($Capability, $this->serverCapabilities);
     }
     // }}}
     
@@ -127,56 +155,43 @@
     /**
      * Try to enable encryption on this connection
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function startTLS (callable $Callback = null, $Private = null) {
-      // Check our state
-      if ($this->State != self::POP3_STATE_CONNECTED) {
-        $this->___raiseCallback ($Callback, false, $Private);
-        
-        return false;
-      }
-      
-      // Check if the server supports this
-      if ($this->haveCapability ('STLS') === false) {
-        $this->___raiseCallback ($Callback, false, $Private);
-        
-        return false;
-      }
-      
-      // Issue the command
-      return $this->popCommand ('STLS', null, false, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Callback, $Private) {
-        // Check if the server accepted TLS-negotiation
-        if (!$Success) {
+    public function startTLS () : qcEvents_Promise {
+      return $this->checkCapability ('STLS')->then (
+        function ($haveCapability) {
+          // Check if the server supports StartTLS
+          if ($haveCapability === false)
+            throw new Error ('Server does not support StartTLS');
+          
+          // Issue the command
+          return $this->popCommand ('STLS');
+        }
+      )->then (
+        function () {
+          // Lock the command-pipeline
+          $this->activeCommand = true;
+          
+          return $this->Stream->tlsEnable (true)->then (
+            function () {
+              // Unlock the command-pipeline
+              if ($this->activeCommand === true)
+                $this->activeCommand = null;
+              
+              // Restart the pipeline
+              $this->popCommandNext ();
+            }
+          );
+        },
+        function () {
+          // Raise a callback
           $this->___callback ('tlsFailed');
           
-          return $this->___raiseCallback ($Callback, false, $Private);
+          // Forward the rejection
+          throw new qcEvents_Promise_Solution (func_get_args ());
         }
-        
-        // Lock the command-pipeline
-        $this->Command = true;
-        
-        // Proceed with TLS-negotiation
-        $this->Stream->tlsEnable (true, function (qcEvents_Socket $Socket, $Status) {
-          // Unlock the command-pipeline
-          if ($this->Command === true)
-            $this->Command = null;
-          
-          // Raise the callback
-          $this->___raiseCallback ($Callback, $Status === true, $Private);
-          
-          // Restart the pipeline
-          $this->popCommandNext ();
-        });
-      });
+      );
     }
     // }}}
     
@@ -186,52 +201,35 @@
      * 
      * @param string $Username
      * @param string $Password
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, string $Username, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function login ($Username, $Password, callable $Callback = null, $Private = null) {
-      // Check our state
-      if ($this->State != self::POP3_STATE_CONNECTED) {
-        $this->___raiseCallback ($Callback, $Username, false, $Private);
-        
-        return false;
-      }
-      
+    public function login ($Username, $Password) : qcEvents_Promise {
       // Check if the server supports this
-      if ($this->haveCapability ('USER') === false) {
-        $this->___raiseCallback ($Callback, $Username, false, $Private);
-        
-        return false;
-      }
-      
-      // Issue the command
-      return $this->popCommand ('USER', array ($Username), false, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Username, $Password, $Callback, $Private) {
-        // Check if the server accepted the USER-Command
-        if (!$Success)
-          return $this->___raiseCallback ($Callback, $Username, false, $Private);
-        
-        // Forward the password to the server
-        $this->popCommand ('PASS', array ($Password), false, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Username, $Password, $Callback, $Private) {
-          // Handle success
-          if ($Success) {
-            // Change our state
-            $this->popSetState (self::POP3_STATE_AUTHORIZED);
-            
-            // Fire generic callback
-            $this->___callback ('popAuthenticated', $Username);
-          }
+      return $this->checkCapability ('USER')->then (
+        function ($haveCapability) use ($Username) {
+          // Check if the server supports StartTLS
+          if ($haveCapability === false)
+            throw new Error ('Server does not support USER/PASS login-method');
           
-          // Raise the final callback
-          $this->___raiseCallback ($Callback, $Username, $Success, $Private);
-        });
-      });
+          // Issue the command
+          return $this->popCommand ('USER', array ($Username));
+        }
+      )->then (
+        function () use ($Password) {
+          // Forward the password to the server
+          return $this->popCommand ('PASS', array ($Password));
+        }
+      )->then (
+        function () use ($Username) {
+          // Change our state
+          $this->popSetState (self::POP3_STATE_AUTHORIZED);
+          
+          // Fire generic callback
+          $this->___callback ('popAuthenticated', $Username);
+        }
+      );
     }
     // }}}
     
@@ -241,46 +239,28 @@
      * 
      * @param string $Username
      * @param string $Password
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, string $Username, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function apop ($Username, $Password, callable $Callback = null, $Private = null) {
-      // Check our state
-      if ($this->State != self::POP3_STATE_CONNECTED) {
-        $this->___raiseCallback ($Callback, $Username, false, $Private);
-        
-        return false;
-      }
-        
+    public function apop ($Username, $Password) : qcEvents_Promise {
       // Check if the server supports this
-      if ($this->serverTimestamp === null) {
-        $this->___raiseCallback ($Callback, $Username, false, $Private);
-        
-        return false;
-      }
+      if ($this->serverTimestamp === null)
+        return qcEvents_Promise::reject ('Missing timestamp for APOP');
       
       // Issue the command
-      return $this->popCommand ('APOP', array ($Username, md5 ($this->serverTimestamp . $Password)),  false, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Username, $Password, $Callback, $Private) {
-        // Check if the server accepted the USER-Command
-        if (!$Success)
-          return $this->___raiseCallback ($Callback, $Username, false, $Private);
-        
-        // Change our state
-        $this->popSetState (self::POP3_STATE_AUTHORIZED);
-        
-        // Fire generic callback
-        $this->___callback ('popAuthenticated', $Username);
-        
-        // Raise the final callback
-        $this->___raiseCallback ($Callback, $Username, $Success, $Private);
-      });
+      return $this->popCommand (
+        'APOP',
+        array ($Username, md5 ($this->serverTimestamp . $Password))
+      )->then (
+        function () use ($Username) {
+          // Change our state
+          $this->popSetState (self::POP3_STATE_AUTHORIZED);
+          
+          // Fire generic callback
+          $this->___callback ('popAuthenticated', $Username);
+        }
+      );
     }
     // }}}
     
@@ -290,17 +270,11 @@
      * 
      * @param string $Username
      * @param string $Password
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
      * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, string $Username, bool $Status, mixed $Private = null) { }
-     * 
-     * @access public 
-     * @return bool   
+     * @access public
+     * @return qcEvents_Promise
      **/
-    public function authenticate ($Username, $Password, $Callback = null, $Private = null) {
+    public function authenticate ($Username, $Password) : qcEvents_Promise {
       // Check our state
       if ($this->State != self::POP3_STATE_CONNECTED) {
         $this->___raiseCallback ($Callback, $Username, false, $Private);
@@ -311,87 +285,74 @@
       // Create a SASL-Client
       require_once ('qcAuth/SASL/Client.php');
 
-      $Client = new qcAuth_SASL_Client;
-      $Client->setUsername ($Username);
-      $Client->setPassword ($Password);
+      $saslClient = new qcAuth_SASL_Client;
+      $saslClient->setUsername ($Username);
+      $saslClient->setPassword ($Password);
       
       // Check capabilities
-      if (is_array ($this->Capabilities)) {
-        $Mechs = array ();
-        
-        foreach ($this->Capabilities as $Capability)  
-          if (substr ($Capability, 0, 5) == 'SASL ') {
-            $Mechs = explode (' ', substr ($Capability, 5));
-            break;
-          } 
-      } else
-        $Mechs = $Client->getMechanisms ();
-      
-      if (count ($Mechs) == 0) {
-        $this->___raiseCallback ($Callback, $Username, false, $Private);
-        
-        return false;
-      }
-      
-      // Initialize the authentication
-      $Mech = array_shift ($Mechs);
-      
-      while (!$Client->setMechanism ($Mech)) {
-        if (count ($Mechs) == 0) {
-          $this->___raiseCallback ($Callback, $Username, false, $Private);
+      return $this->getCapabilities ()->then (
+        function (array $serverCapabilities) use ($saslClient, $Username) {
+          // Find mechanisms to try
+          $saslMechanisms = $saslClient->getMechanisms ();
           
-          return false;
-        }
-        
-        $Mech = array_shift ($Mechs);
-      }
-       
-      $Initial = true;
-      $saslFunc = null;
-      
-      $saslFunc = function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Username, $Password, $Callback, $Private, $Client, &$Initial, &$Mech, &$Mechs, &$saslFunc) {
-        // Check for a SASL-Continuation
-        if ($Success === null) {
-          if ($Initial) {
-            $Initial = false;
-            
-            return base64_encode ($Client->getInitialResponse ());
-          }
-        
-          return base64_encode ($Client->getResponse ());
-        
-        // Check if SASL-Negotiation failed
-        } elseif ($Success === false) {
-          // Check if there are more SASL-Mechanisms available
-          if ($Initial && (count ($Mechs) > 0)) {
-            // Try to pick the next SASL-Mechanism
-            $Mech = array_shift ($Mechs);
-            
-            while (!$Client->setMechanism ($Mech)) {
-              if (count ($Mechs) == 0)
-                return $this->___raiseCallback ($Callback, $Username, false, $Private);
+          foreach ($serverCapabilities as $serverCapability)
+            if (substr ($serverCapability, 0, 5) == 'SASL ') {
+              $saslMechanisms = explode (' ', substr ($serverCapability, 5));
               
-              $Mech = array_shift ($Mechs);
+              break;
+            }
+          
+          if (count ($saslMechanisms) == 0)
+            throw new Error ('No SASL-Mechanisms available');
+          
+          $saslAuthenticate = null;
+          $saslAuthenticate = function () use (&$saslAuthenticate, &$saslMechanisms, $saslClient, $Username) {
+            // Initialize the authentication
+            $saslMechanism = array_shift ($saslMechanisms);
+            
+            while (!$saslClient->setMechanism ($saslMechanism)) {
+              if (count ($saslMechanisms) == 0)
+                throw new Error ('No acceptable SASL-Mechanism found');
+              
+              $saslMechanism = array_shift ($saslMechanisms);
             }
             
-            // Switch to other SASL-Mechanism
-            return $this->popCommand ('AUTH', array ($Mech), false, $saslFunc, null, $saslFunc);
-          }
+            $saslInitial = true;
+            
+            return $this->popCommand (
+              'AUTH',
+              array ($saslMechanism),
+              false,
+              function () use (&$saslInitial, $saslClient) {
+                if (!$saslInitial)
+                  return base64_encode ($saslClient->getResponse ());
+                
+                $saslInitial = false;
+                
+                return base64_encode ($saslClient->getInitialResponse ());
+              }
+            )->then (
+              function () use ($Username) {
+                // Change our state
+                $this->popSetState (self::POP3_STATE_AUTHORIZED);
+                
+                // Fire generic callback
+                $this->___callback ('popAuthenticated', $Username);
+              },
+              function () use (&$saslInitial, $saslAuthenticate) {
+                // Check for hard authentication-failure
+                if (!$saslInitial)
+                  throw new qcEvents_Promise_Solution (func_get_args ());
+                
+                // Try next SASL-Method
+                return $saslAuthenticate ();
+              }
+            );
+          };
           
-          return $this->___raiseCallback ($Callback, $Username, false, $Private);
+          return $saslAuthenticate ();
         }
-        
-        // Change our state
-        $this->popSetState (self::POP3_STATE_AUTHORIZED);
-        
-        // Fire generic callback
-        $this->___callback ('popAuthenticated', $Username);
-        
-        // Raise the final callback
-        $this->___raiseCallback ($Callback, $Username, $Success, $Private);
-      };
-      
-      return $this->popCommand ('AUTH', array ($Mech), false, $saslFunc, null, $saslFunc);
+      );
     }
     // }}}
     
@@ -399,36 +360,22 @@
     /**
      * Retrive statistical data about this mailbox
      * 
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, int $Messages, int $Size, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function stat (callable $Callback, $Private = null) {
-      // Check our state
-      if ($this->State != self::POP3_STATE_AUTHORIZED) {
-        $this->___raiseCallback ($Callback, null, null, false, $Private);
-        
-        return false;
-      }
-      
+    public function stat () : qcEvents_Promise {
       // Issue the command
-      return $this->popCommand ('STAT', null, false, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Callback, $Private) {
-        // Parse the result
-        $Count = null;
-        $Size = null; 
-        
-        if ($Success)
-          list ($Count, $Size) = explode (' ', $Response [0]);
-        
-        // Raise the callback
-        $this->___raiseCallback ($Callback, ($Count !== null ? (int)$Count : null), ($Size != null ? (int)$Size : null), false, $Private);
-      });
+      return $this->popCommand ('STAT')->then (
+        function (array $responseBody) {
+          // Parse the result
+          $Count = null;
+          $Size = null; 
+          
+          list ($Count, $Size) = explode (' ', $responseBody [0]);
+          
+          return new qcEvents_Promise_Solution (array ((int)$Count, (int)$Size));
+        }
+      );
     }
     // }}}
     
@@ -437,29 +384,20 @@
      * Retrive the size of a given message
      * 
      * @param int $Index
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, int $Index, int $Size, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function messageSize ($Index, callable $Callback, $Private = null) {
-      // Check our state
-      if ($this->State != self::POP3_STATE_AUTHORIZED) {
-        $this->___raiseCallback ($Callback, (int)$Index, null, false, $Private);
-        
-        return false;
-      }
-      
+    public function messageSize ($Index) : qcEvents_Promise {
       // Issue the command
-      return $this->popCommand ('LIST', array ((int)$Index), false, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Index, $Callback, $Private) {
-        // Raise the callback
-        $this->___raiseCallback ($Callback, (int)$Index, ($Success ? (int)explode (' ', $Response [0])[1] : null), $Success, $Private);
-      });
+      return $this->popCommand (
+        'LIST',
+        array ((int)$Index)
+      )->then (
+        function (array $responseBody) {
+          return (int)explode (' ', $responseBody [0])[1];
+        }
+      );
     }
     // }}}
     
@@ -467,39 +405,28 @@
     /**
      * Retrive the sizes of all messages
      * 
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, array $Sizes, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function messageSizes (callable $Callback, $Private = null) {
-      // Check our state
-      if ($this->State != self::POP3_STATE_AUTHORIZED) {
-        $this->___raiseCallback ($Callback, null, false, $Private);
-        return false;
-      }
-       
+    public function messageSizes () : qcEvents_Promise {
       // Issue the command
-      return $this->popCommand ('LIST', null, true, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Callback, $Private) {
-        // Process the result
-        if ($Success) {
-          $Result = array ();
+      return $this->popCommand (
+        'LIST',
+        null,
+        true
+      )->then (
+        function (array $responseBody) {
+          // Process the result
+          $messageSizes = array ();
           
-          for ($i = 1; $i < count ($Response); $i++) {
-            $Data = explode (' ', $Response [$i]);
-            $Result [(int)$Data [0]] = (int)$Data [1];
+          foreach (array_slice ($responseBody, 1) as $responseLine) {
+            $Data = explode (' ', $responseLine);
+            $messageSizes [(int)$Data [0]] = (int)$Data [1];
           }
-        } else
-          $Result = null;
-        
-        // Raise the callback
-        $this->___raiseCallback ($Callback, $Result, $Success, $Private);
-      });
+          
+          return $messageSizes;
+        }
+      );
     }
     // }}}
     
@@ -508,29 +435,20 @@
      * Retrive the UID of a given message
      * 
      * @param int $Index
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, int $Index, string $UID, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function getUID ($Index, callable $Callback, $Private = null) {
-      // Check our state
-      if ($this->State != self::POP3_STATE_AUTHORIZED) {
-        $this->___raiseCallback ($Callback, (int)$Index, null, false, $Private);
-        
-        return false;
-      }
-      
+    public function getUID ($Index) : qcEvents_Promise {
       // Issue the command
-      return $this->popCommand ('UIDL', array ((int)$Index), false, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Index, $Callback, $Private) {
-        // Raise the callback
-        $this->___raiseCallback ($Callback, (int)$Index, ($Success ? explode (' ', $Response [0])[1] : null), $Success, $Private);
-      });
+      return $this->popCommand (
+        'UIDL',
+        array ((int)$Index)
+      )->then (
+        function (array $responseBody) {
+          return explode (' ', $responseBody [0])[1];
+        }
+      );
     }
     // }}}
     
@@ -538,40 +456,27 @@
     /**
      * Retrive the UIDs of all messages
      *  
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, array $UIDs, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
-     * @return bool   
+     * @return qcEvents_Promise
      **/
-    public function getUIDs (callable $Callback, $Private = null) {
-      // Check our state
-      if ($this->State != self::POP3_STATE_AUTHORIZED) {
-        $this->___raiseCallback ($Callback, null, false, $Private);
-        
-        return false;
-      }
-    
+    public function getUIDs () : qcEvents_Promise {
       // Issue the command
-      return $this->popCommand ('UILD', null, true, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Callback, $Private) {
-        // Process the result
-        if ($Success) {
-          $Result = array ();
-       
-          for ($i = 1; $i < count ($Response); $i++) {
-            $Data = explode (' ', $Response [$i]);
-            $Result [(int)$Data [0]] = $Data [1];
+      return $this->popCommand (
+        'UIDL',
+        null,
+        true
+      )->then (
+        function (array $responseBody) {
+          $messageUIDs = array ();
+          
+          foreach (array_slice ($responseBody, 1) as $responseLine) {
+            $Data = explode (' ', $responseLine);
+            $messageUIDs [(int)$Data [0]] = $Data [1];
           }
-        } else
-          $Result = null;
-        
-        // Raise the callback
-        $this->___raiseCallback ($Callback, $Result, $Success, $Private);
-      });
+          
+          return $messageUIDs;
+        }
+      );
     }
     // }}}
     
@@ -580,36 +485,21 @@
      * Retrive a message by index
      * 
      * @param int $Index
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, int $Index, string $Message, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function getMessage ($Index, callable $Callback, $Private = null) {
-      // Check our state
-      if ($this->State != self::POP3_STATE_AUTHORIZED) {
-        $this->___raiseCallback ($Callback, (int)$Index, null, false, $Private);
-        
-        return false;
-      }
-        
+    public function getMessage ($Index) : qcEvents_Promise {
       // Issue the command
-      return $this->popCommand ('RETR', array ((int)$Index), true, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Index, $Callback, $Private) {
-        // Retrive the whole message
-        if ($Success) {
-          array_shift ($Response);
-          $Message = implode ("\r\n", $Response);
-        } else
-          $Message = null;
-        
-        // Raise the callback
-        $this->___raiseCallback ($Callback, (int)$Index, $Message, $Success, $Private);
-      });
+      return $this->popCommand (
+        'RETR',
+        array ((int)$Index),
+        true
+      )->then (
+        function (array $responseBody) {
+          return implode ("\r\n", array_slice ($responseBody, 1));
+        }
+      );
     }
     // }}}
     
@@ -619,43 +509,29 @@
      * 
      * @param int $Index
      * @param int $Lines
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, int $Index, int $Lines, string $Message, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    public function getMessageLines ($Index, $Lines, $Callback = null) {
-      // Check our state
-      if ($this->State != self::POP3_STATE_AUTHORIZED) {
-        $this->___raiseCallback ($Callback, (int)$Index, (int)$Lines, null, false, $Private);
-        
-        return false;
-      }
-      
-      // Check if the server supports this
-      if ($this->haveCapability ('TOP') === false) {
-        $this->___raiseCallback ($Callback, (int)$Index, (int)$Lines, null, false, $Private);
-        
-        return false;
-      }
-      
-      // Issue the command
-      return $this->popCommand ('TOP', array ((int)$Index, (int)$Lines), true, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) use ($Index, $Lines, $Callback, $Private) {
-        // Retrive the whole message
-        if ($Success) {
-          array_shift ($Response);
-          $Message = implode ("\r\n", $Response);
-        } else
-          $Message = null;
-        
-        // Raise the callback
-        $this->___raiseCallback ($Callback, (int)$Index, (int)$Lines, $Message, $Success, $Private);
-      });
+    public function getMessageLines ($Index, $Lines) : qcEvents_Promise {
+      return $this->checkCapability ('TOP')->then (
+        function ($checkResult) use ($Index, $Lines) {
+          // Check if the server supports this
+          if ($checkResult === false)
+            throw new Error ('Server does not support TOP');
+          
+          // Issue the command
+          return $this->popCommand (
+            'TOP',
+            array ((int)$Index, (int)$Lines),
+            true
+          );
+        }
+      )->then (
+        function (array $responseBody) {
+          return implode ("\r\n", array_slice ($responseBody, 1));
+        }
+      );
     }     
     // }}}
     
@@ -664,28 +540,18 @@
      * Remove a message from server
      * 
      * @param int $Index
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
      * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, int $Index, bool $Status, mixed $Private = null) { }
-     * 
-     * @access public     
-     * @return bool
+     * @access public
+     * @return qcEvents_Promise
      **/
-    public function deleteMessage ($Index, callable $Callback = null, $Private = null) {
-      // Check our state  
-      if ($this->State != self::POP3_STATE_AUTHORIZED) {
-        $this->___raiseCallback ($Callback, (int)$Index, false, $Private);
-        
-        return false;
-      }
-      
+    public function deleteMessage ($Index) : qcEvents_Promise {
       // Issue the command
-      return $this->popCommand ('DELE', array ($Index), false, function (qcEvents_Stream_POP3_Client $Self, $Success) use ($Index, $Callback, $Private) {
-        $this->___raiseCallback ($Callback, (int)$Index, $Success, $Private);
-      });
+      return $this->popCommand (
+        'DELE',
+        array ($Index)
+      )->then (
+        function () { }
+      );
     } 
     // }}}
     
@@ -693,28 +559,14 @@
     /**
      * Merely keep the connection alive
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
-     * @return void  
+     * @return qcEvents_Promise
      **/
-    public function noOp (callable $Callback = null, $Private = null) {
-      // Check our state
-      if ($this->State != self::POP3_STATE_AUTHORIZED) {
-        $this->___raiseCallback ($Callback, false, $Private);
-        
-        return false;
-      }
-      
+    public function noOp () : qcEvents_Promise {
       // Issue the command
-      return $this->popCommand ('NOOP', null, false, function (qcEvents_Stream_POP3_Client $Self, $Success) use ($Callback, $Private) {
-        $this->___raiseCallback ($Callback, $Success, $Private);
-      });
+      return $this->popCommand ('NOOP')->then (
+        function () { }
+      );
     }
     // }}}
     
@@ -722,28 +574,14 @@
     /**   
      * Reset Message-Flags
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_POP3_Client $Self, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function reset (callable $Callback = null, $Private = null) {
-      // Check our state 
-      if ($this->State != self::POP3_STATE_AUTHORIZED) {
-        $this->___raiseCallback ($Callback, false, $Private);
-        
-        return false;
-      }
-      
+    public function reset () : qcEvents_Promise {
       // Issue the command
-      return $this->popCommand ('RSET', null, false, function (qcEvents_Stream_POP3_Client $Self, $Success) use ($Callback, $Private) {
-        $this->___raiseCallback ($Callback, $Success, $Private);
-      });
+      return $this->popCommand ('RSET')->then (
+        function () { }
+      );
     }  
     // }}}
     
@@ -759,22 +597,21 @@
       if (!is_object ($this->Stream)) {
         // Check if we are in disconnected state
         if ($this->State != self::POP3_STATE_DISCONNECTED) {
+          // Update our state
           $this->popSetState (self::POP3_STATE_DISCONNECTED);
+          
+          // Raise events
           $this->___callback ('popDisconnected');
+          $this->___callback ('eventClosed');
         }
         
         return qcEvents_Promise::resolve ();
       }
       
       // Query a stream-close on server-side
-      return new qcEvents_Promise (function ($resolve, $reject) {
-        return $this->popCommand ('QUIT', null, false, function (qcEvents_Stream_POP3_Client $Self, $Success) use ($resolve, $reject) {
-          if ($Success)
-            $resolve ();
-          else
-            $reject ('Command failed');
-        });
-      });
+      return $this->popCommand ('QUIT')->then (
+        function () { }
+      );
     }
     // }}}
         
@@ -786,21 +623,27 @@
      * @param string $Keyword
      * @param array $Args (optional)
      * @param bool $Multiline (optional)
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
+     * @param callable $intermediateCallback (optional)
      * 
      * @access private
-     * @return bool
+     * @return qcEvents_Promise
      **/
-    private function popCommand ($Keyword, $Args = null, $Multiline = false, callable $Callback = null, $Private = null) {
+    private function popCommand ($Keyword, $Args = null, $Multiline = false, callable $intermediateCallback = null) : qcEvents_Promise {
+      // Check our state
+      if ($this->State < self::POP3_STATE_CONNECTED)
+        return qcEvents_Promise::reject ('Not connected');
+      
+      // Create a new defered promise
+      $deferedPromise = new qcEvents_Defered;
+      
       // Put the command on our pipeline
-      $this->Commands [] = func_get_args ();
+      $this->pendingCommands [] = array ($deferedPromise, $Keyword, $Args, $Multiline, $intermediateCallback);
       
       // Check wheter to issue the next command directly
       $this->popCommandNext ();
       
       // Always return true
-      return true;
+      return $deferedPromise->getPromise ();
     }
     // }}}
     
@@ -813,24 +656,24 @@
      **/
     private function popCommandNext () {
       // Check if there is another command active
-      if ($this->Command !== null)
+      if ($this->activeCommand !== null)
         return;
       
       // Check if there are commands waiting
-      if (count ($this->Commands) == 0)
+      if (count ($this->pendingCommands) == 0)
         return;
       
       // Retrive the next command
-      $this->Command = array_shift ($this->Commands);
+      $this->activeCommand = array_shift ($this->pendingCommands);
   
       // Parse arguements
-      if (is_array ($this->Command [1]) && (count ($this->Command [1]) > 0) && (strlen ($Args = $this->popArgs ($this->Command [1])) > 0))
-        $Args = ' ' . $Args;
+      if (is_array ($this->activeCommand [2]) && (count ($this->activeCommand [2]) > 0) && (strlen ($commandArguments = $this->popArgs ($this->activeCommand [2])) > 0))
+        $commandArguments = ' ' . $commandArguments;
       else
-        $Args = '';
+        $commandArguments = '';
       
       // Write out the command
-      $this->Stream->write ($this->Command [0] . $Args . "\r\n");
+      $this->Stream->write ($this->activeCommand [1] . $commandArguments . "\r\n");
     }
     // }}}
     
@@ -877,34 +720,42 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+    public function initStreamConsumer (qcEvents_Interface_Stream $streamSource) : qcEvents_Promise {
       // Check if this is really a new stream
-      if ($this->Stream === $Source)
+      if ($this->Stream === $streamSource)
         return qcEvents_Promise::resolve ();
       
       // Check if we have a stream assigned
       if (is_object ($this->Stream))
-        $Promise = $this->Stream->unpipe ($this)->catch (function () { });
+        $waitPromise = $this->Stream->unpipe ($this)->catch (function () { });
       else
-        $Promise = qcEvents_Promise::resolve ();
+        $waitPromise = qcEvents_Promise::resolve ();
       
-      return $Promise->then (
-        function () use ($Source) {
+      return $waitPromise->then (
+        function () use ($streamSource) {
           // Reset our state
-          $this->Stream = $Source;
+          $this->Stream = $streamSource;
           $this->Buffer = '';
-          $this->Command = null;
-          $this->Commands = array ();
+          $this->activeCommand = null;
+          $this->pendingCommands = array ();
           $this->Response = array ();
-          $this->Capabilities = null;
+          $this->serverCapabilities = null;
           
           $this->popSetState (self::POP3_STATE_CONNECTING);
           
           // Raise callbacks
-          $this->___callback ('eventPipedStream', $Source);
           $this->___callback ('popConnecting');
           
-          return true;
+          // Setup init-promise
+          $this->initPromise = new qcEvents_Defered;
+          
+          $this->initPromise->getPromise ()->then (
+            function () {
+              $this->___callback ('eventPipedStream', $this->Stream);
+            }
+          );
+          
+          return $this->initPromise->getPromise ();
         }
       );
     }
@@ -955,8 +806,11 @@
         $Line = substr ($this->Buffer, $s, $p - $s);
         $s = $p + 1;
         
+        if (substr ($Line, -1, 1) == "\r")
+          $Line = substr ($Line, 0, -1);
+        
         // Process multi-line-responses
-        if (($this->Command !== null) && (count ($this->Response) > 0)) {
+        if (($this->activeCommand !== null) && (count ($this->Response) > 0)) {
           if ($Line == '.')
             $this->popFinishResponse (true);
           else
@@ -975,8 +829,8 @@
         }
         
         // Check for continuation
-        if (($this->Command !== null) && ($Status == '+') && isset ($this->Command [5])) {
-          $rc = call_user_func ($this->Command [5], null, $Line, (isset ($this->Command [6]) ? $this->Command [6] : null));
+        if (($this->activeCommand !== null) && ($Status == '+') && isset ($this->activeCommand [4])) {
+          $rc = call_user_func ($this->activeCommand [4], $Line);
           
           $this->Stream->write (rtrim ($rc) . "\r\n");
           
@@ -989,7 +843,11 @@
         if ($this->State == self::POP3_STATE_CONNECTING) {
           // Check if the server does not accept new connections
           if (!$Success) {
+            if ($this->initPromise)
+              $this->initPromise->reject ('Non-Successfull response from server received');
+            
             $this->popSetState (self::POP3_STATE_DISCONNECTING);
+            $this->initPromise = null;
             
             return $this->close ();
           }
@@ -1004,19 +862,17 @@
           $this->popSetState (self::POP3_STATE_CONNECTED);
           
           // Try to determine capabilities of the server
-          $this->popCommand ('CAPA', null, true, function (qcEvents_Stream_POP3_Client $Self, $Success, $Response) {
-            // Check if the server supports capabilities
-            if ($Success)
-              $this->Capabilities = array_slice ($Response, 1);
-            else
-              $this->Capabilities = false;
-            
-            // Fire callbacks
-            $this->___callback ('popConnected');
-            
-            if ($Success)
-              $this->___callback ('popCapabilities', $this->Capabilities);
-          });
+          $this->getCapabilities ()->finally (
+            function () {
+              // Fire callbacks
+              $this->___callback ('popConnected');
+              
+              if ($this->initPromise)
+                $this->initPromise->resolve ();
+              
+              $this->initPromise = null;
+            }
+          );
           
           continue;
         }
@@ -1025,7 +881,7 @@
         $this->Response [] = $Line;
         
         // Check if the command finished
-        if (!$Success || !$this->Command [2])
+        if (!$Success || !$this->activeCommand [3])
           $this->popFinishResponse ($Success);
       }
         
@@ -1038,28 +894,42 @@
     /**
      * Finish the current command-response
      * 
-     * @param bool $Success
+     * @param bool $withSuccess
      * 
      * @access private
      * @return void
      **/
-    private function popFinishResponse ($Success) {
+    private function popFinishResponse ($withSuccess) {
       // Reset
-      $Command = $this->Command;  
+      $activeCommand = $this->activeCommand;  
       $Response = $this->Response;
       
-      $this->Command = null;
+      $this->activeCommand = null;
       $this->Response = array ();
       
       // Fire up any callback
-      if (is_callable ($Command [3]))
-        call_user_func ($Command [3], $Success, $Response, (isset ($Command [4]) ? $Command [4] : null));
+      if ($activeCommand !== null) {
+        if ($withSuccess)
+          $activeCommand [0]->resolve ($Response);
+        else
+          $activeCommand [0]->reject (implode ("\n", $Response));
+      }
       
       // Issue the next command
       $this->popCommandNext ();
     }
     // }}}
     
+    
+    // {{{ eventClosed
+    /**
+     * Callback: POP3-Stream was closed
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function eventClosed () { }
+    // }}}
     
     // {{{ popStateChanged
     /**
