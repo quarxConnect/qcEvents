@@ -62,17 +62,11 @@
      * @param int $Port (optional)
      * @param string $Username (optional)
      * @param string $Password (optional)
-     * @param callable $Callback (optional) Callback to raise once the operation was finished
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * The Callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Client, string $Hostname, int $Port, string $Username = null, bool $Status, mixed $Private) { }
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function connect ($Hostname, $Port = null, $Username = null, $Password = null, callable $Callback = null, $Private = null) : qcEvents_Promise {
+    public function connect ($Hostname, $Port = null, $Username = null, $Password = null) : qcEvents_Promise {
       // Check wheter to close an active stream first
       if ($this->Stream)
         $waitPromise = $this->Stream->close ()->catch (function () { });
@@ -126,12 +120,10 @@
           );
         }
       )->then (
-        function (qcEvents_Stream_POP3_Client $Stream) use ($Callback, $Hostname, $Port, $Username, $Private) {
+        function (qcEvents_Stream_POP3_Client $Stream) {
           $this->setStream ($Stream);
-          
-          return $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, true, $Private);
         },
-        function () use ($Callback, $Hostname, $Port, $Username, $Private) {
+        function () {
           // Remoev the stream
           if ($this->Stream)
             $this->Stream->close ();
@@ -140,7 +132,6 @@
           
           // Run all callbacks
           $this->___callback ('popConnectionFailed');
-          $this->___raiseCallback ($Callback, $Hostname, $Port, $Username, false, $Private);
           
           // Forward the error
           throw new qcEvents_Promise_Solution (func_get_args ());
@@ -234,29 +225,13 @@
     /**
      * Retrive the capabilities from server
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, array $Capabilities, bool $Status, mixed $Private) { }
-     * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function getCapabilities (callable $Callback = null, $Private = null) : qcEvents_Promise {
+    public function getCapabilities () : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) use ($Callback, $Private) {
           return $popStream->getCapabilities ();
-        }
-      )->then (
-        function (array $serverCapabilities) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, $serverCapabilities, true, $Private);
-        },
-        function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, null, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -283,29 +258,13 @@
     /**
      * Try to enable encryption on this connection
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function startTLS (callable $Callback = null, $Private = null) : qcEvents_Promise {
+    public function startTLS () : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) {
           return $popStream->startTLS ();
-        }
-      )->then (
-        function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, true, $Private);
-        },
-        function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -317,29 +276,14 @@
      * 
      * @param string $Username
      * @param string $Password
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, string $Username, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function login ($Username, $Password, callable $Callback = null, $Private = null) : qcEvents_Promise {
+    public function login ($Username, $Password) : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popClient) use ($Username, $Password) {
           return $popClient->login ($Username, $Password);
-        }
-      )->then (
-        function () use ($Username, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Username, true, $Private);
-        },
-        function () use ($Username, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Username, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -351,29 +295,14 @@
      * 
      * @param string $Username
      * @param string $Password
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, string $Username, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function apop ($Username, $Password, callable $Callback = null, $Private = null) : qcEvents_Promise {
+    public function apop ($Username, $Password) : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) use ($Username, $Password) {
           return $popStream->apop ($Username, $Password);
-        }
-      )->then (
-        function () use ($Username, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Username, true, $Private);
-        },
-        function () use ($Username, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Username, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -385,29 +314,14 @@
      * 
      * @param string $Username
      * @param string $Password
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, string $Username, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function authenticate ($Username, $Password, $Callback = null, $Private = null) : qcEvents_Promise {
+    public function authenticate ($Username, $Password) : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) use ($Username, $Password) {
           return $popStream->authenticate ($Username, $Password);
-        }
-      )->then (
-        function () use ($Username, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Username, true, $Private);
-        },
-        function () use ($Username, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Username, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -417,29 +331,13 @@
     /**
      * Retrive statistical data about this mailbox
      * 
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, int $Messages, int $Size, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function stat (callable $Callback, $Private = null) : qcEvents_Promise {
+    public function stat () : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) {
           return $popStream->stat ();
-        }
-      )->then (
-        function ($numMessages, $numBytes) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, $numMessages, $numBytes, true, $Private);
-        },
-        function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, null, null, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -450,29 +348,14 @@
      * Retrive the size of a given message
      * 
      * @param int $Index
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, int $Index, int $Size, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function messageSize ($Index, callable $Callback, $Private = null) : qcEvents_Promise {
+    public function messageSize ($Index) : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) use ($Index) {
           return $popStream->messageSize ($Index);
-        }
-      )->then (
-        function ($numBytes) use ($Index, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Index, $numBytes, true, $Private);
-        },
-        function () use ($Index, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Index, null, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -482,29 +365,13 @@
     /**
      * Retrive the sizes of all messages
      * 
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, array $Sizes, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function messageSizes (callable $Callback, $Private = null) : qcEvents_Promise {
+    public function messageSizes () : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) {
           return $popStream->messageSizes ();
-        }
-      )->then (
-        function ($messageSizes) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, $messageSizes, true, $Private);
-        },
-        function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, null, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -515,29 +382,14 @@
      * Retrive the UID of a given message
      * 
      * @param int $Index
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, int $Index, string $UID, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function getUID ($Index, callable $Callback, $Private = null) : qcEvents_Promise {
+    public function getUID ($Index) : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) use ($Index) {
           return $popStream->getUID ($Index);
-        }
-      )->then (
-        function ($messageUID) use ($Index, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Index, $messageUID, true, $Private);
-        },
-        function () use ($Index, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Index, null, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -547,29 +399,13 @@
     /**
      * Retrive the UIDs of all messages
      *  
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, array $UIDs, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function getUIDs (callable $Callback, $Private = null) : qcEvents_Promise {
+    public function getUIDs () : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) {
           return $popStream->getUIDs ();
-        }
-      )->then (
-        function ($messageUIDs) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, $messageUIDs, true, $Private);
-        },
-        function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, null, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -580,29 +416,14 @@
      * Retrive a message by index
      * 
      * @param int $Index
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, int $Index, string $Message, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function getMessage ($Index, callable $Callback, $Private = null) : qcEvents_Promise {
+    public function getMessage ($Index) : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) use ($Index) {
           return $popStream->getMessage ($Index);
-        }
-      )->then (
-        function ($messageBody) use ($Index, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Index, $messageBody, true, $Private);
-        },
-        function () use ($Index, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Index, null, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -614,29 +435,14 @@
      * 
      * @param int $Index
      * @param int $Lines
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, int $Index, int $Lines, string $Message, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function getMessageLines ($Index, $Lines, $Callback = null) : qcEvents_Promise {
+    public function getMessageLines ($Index, $Lines) : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) use ($Index, $Lines) {
           return $popStream->getMessageLines ($Index, $Lines);
-        }
-      )->then (
-        function ($messageBody) use ($Index, $Lines, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Index, $Lines, $messageBody, true, $Private);
-        },
-        function () use ($Index, $Lines, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Index, $Lines, null, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -647,29 +453,14 @@
      * Remove a message from server
      * 
      * @param int $Index
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
      * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, int $Index, bool $Status, mixed $Private = null) { }
-     * 
-     * @access public     
+     * @access public
      * @return qcEvents_Promise
      **/
-    public function deleteMessage ($Index, callable $Callback = null, $Private = null) : qcEvents_Promise {
+    public function deleteMessage ($Index) : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) use ($Index) {
           return $popStream->deleteMessage ($Index);
-        }
-      )->then (
-        function () use ($Index, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Index, true, $Private);
-        },
-        function () use ($Index, $Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Index, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -679,29 +470,13 @@
     /**
      * Merely keep the connection alive
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function noOp (callable $Callback = null, $Private = null) : qcEvents_Promise {
+    public function noOp () : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) {
           return $popStream->noOp ();
-        }
-      )->then (
-        function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, true, $Private);
-        },
-        function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -711,29 +486,13 @@
     /**   
      * Reset Message-Flags
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_POP3 $Self, bool $Status, mixed $Private = null) { }
-     * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function reset (callable $Callback = null, $Private = null) : qcEvents_Promise {
+    public function reset () : qcEvents_Promise {
       return $this->getStream ()->then (
         function (qcEvents_Stream_POP3_Client $popStream) {
           return $popStream->reset ();
-        }
-      )->then (
-        function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, true, $Private);
-        },
-        function () use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, false, $Private);
-          
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
