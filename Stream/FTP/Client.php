@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Asyncronous FTP Client-Stream
-   * Copyright (C) 2015 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2015-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Promise.php');
+  require_once ('qcEvents/Defered.php');
   
   /**
    * FTP Client Stream
@@ -59,11 +60,13 @@
    **/
   class qcEvents_Stream_FTP_Client extends qcEvents_Hookable implements qcEvents_Interface_Stream_Consumer {
     /* FTP-Protocol states */
-    const STATE_CONNECTING = 0;
-    const STATE_CONNECTED = 1;
-    const STATE_AUTHENTICATING = 2;
-    const STATE_AUTHENTICATED = 3;
-    const STATE_DISCONNECTED = 4;
+    const STATE_DISCONNECTED = 0;
+    const STATE_CONNECTING = 1;
+    const STATE_CONNECTED = 2;
+    const STATE_AUTHENTICATING = 3;
+    const STATE_AUTHENTICATED = 4;
+    
+    private $ftpState = qcEvents_Stream_FTP_Client::STATE_DISCONNECTED;
     
     /* Representation-Types */
     const TYPE_ASCII = 0;
@@ -80,33 +83,35 @@
     const MODE_BLOCK = 1;
     const MODE_COMPRESSED = 2;
     
-    /* Current protocol-state */
-    private $State = qcEvents_Stream_FTP_Client::STATE_CONNECTING;
-    
     /* Entire Input-Buffer */
-    private $Buffer = '';
+    private $inputBuffer = '';
     
-    /* Buffer for current response */
-    private $rBuffer = '';
+    /* Buffer for current response from server */
+    private $receiveBuffer = '';
     
-    private $Stream = null;
-    private $StreamCallback = null;
+    /* Defered promise for stream-initialization */
+    private $initPromise = null;
     
-    private $Command = null;
-    private $CommandQueue = array ();
+    /* Our piped source-stream */
+    private $sourceStream = null;
     
-    // {{{ noop
+    /* Currently active FTP-Command */
+    private $activeCommand = null;
+    
+    /* Pending FTP-Commands */
+    private $pendingCommands = array ();
+    
+    // {{{ noOp
     /**
      * Just do nothing, but send something over the wire
      * 
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function noop (callable $Callback = null, $Private = null) {
-      return $this->runFTPCommand ('NOOP', null, function () use ($Callback, $Private) { $this->___raiseCallback ($Callback, $Private); });
+    public function noOp () : qcEvents_Promise {
+      return $this->ftpCommand ('NOOP')->then (
+        function () { }
+      );
     }
     // }}}
     
@@ -117,44 +122,25 @@
      * @param string $Username
      * @param string $Password
      * @param string $Account (optional)
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_FTP_Client $Self, bool $Status, string $Username, string $Account = null, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promsie
      **/
-    public function authenticate ($Username, $Password, $Account = null, callable $Callback = null, $Private = null) {
-      return $this->runFTPCommand (
-        'USER', $Username,
-        function (qcEvents_Stream_FTP_Client $Self, $Status, $Code, $Response) use ($Username, $Password, $Account, $Callback, $Private) {
-          // A USER-Call here would result in      230, 530, 500, 501,      421
-          // A PASS-Call here would result in 202, 230, 530, 500, 501, 503, 421
-          // A ACCT-Call here would result in 202, 230, 530, 500, 501, 503, 421
-          
-          // Update the state
-          $this->State = ($Status ? self::STATE_AUTHENTICATED : self::STATE_CONNECTED);
-          
-          // Fire the callback
-          if ($Status)
-            $this->___callback ('ftpAuthenticated', $Username, $Account);
-          
-          $this->___raiseCallback ($Callback, $Status, $Username, $Account, $Private);
-        }, null,
+    public function authenticate ($Username, $Password, $Account = null) : qcEvents_Promise {
+      return $this->ftpCommand (
+        'USER',
+        array ($Username),
         function (qcEvents_Stream_FTP_Client $Self, $Code, $Response) use ($Password, $Account) {
           // A USER-Call here would result in 331 or 332
           // A PASS-Call here would result in        332
           // A ACCT-Call will never get here
           
           // Update our state
-          $this->State = self::STATE_AUTHENTICATING;
+          $this->ftpState = self::STATE_AUTHENTICATING;
           
           // Write out the password if it is required
           if ($Code == 331)
-            return $this->writeCommand ('PASS', $Password);
+            return $this->writeCommand ('PASS', array ($Password));
           
           // Check for a protocoll-violation
           if ($Code != 332)
@@ -164,7 +150,26 @@
           if ($Account === null)
             return false;
           
-          return $this->writeCommand ('ACCT', $Account);
+          return $this->writeCommand ('ACCT', array ($Account));
+        }
+      )->then (
+        function ($responseCode, $responseText) use ($Username, $Account) {
+          // A USER-Call here would result in      230, 530, 500, 501,      421
+          // A PASS-Call here would result in 202, 230, 530, 500, 501, 503, 421
+          // A ACCT-Call here would result in 202, 230, 530, 500, 501, 503, 421
+          
+          // Update the state
+          $this->ftpState = self::STATE_AUTHENTICATED;
+          
+          // Fire the callback
+          $this->___callback ('ftpAuthenticated', $Username, $Account);
+        },
+        function () {
+          // Update the state
+          $this->ftpState = self::STATE_CONNECTED;
+          
+          // Forward the rejection
+          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
@@ -175,23 +180,17 @@
      * Change working-directory on server
      * 
      * @param string $Path The path of the directory to change to
-     * @param callable $Callback (optional) A callback to raise once the operation is complete
-     * @param mixed $Private (optional) A private parameter to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_FTP_Client $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function changeDirectory ($Path, callable $Callback = null, $Private = null) {
-      return $this->runFTPCommand (
-        'CWD', $Path,
-        function (qcEvents_Stream_FTP_Client $Self, $Status, $Code, $Response) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Status, $Private);
-        }
-      );    
+    public function changeDirectory ($Path) : qcEvents_Promise {
+      return $this->ftpCommand (
+        'CWD',
+        array ($Path)
+      )->then (
+        function () { }
+      );
     }
     // }}}
     
@@ -199,33 +198,16 @@
     /**
      * Retrive the current working-directory from FTP-Server
      * 
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_FTP_Client $Self, string $Path, mixed $Private = null) { }
-     * 
-     * If there was an error $Path is FALSE.
-     * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function getWorkingDirectory (callable $Callback, $Private = null) {
-      return $this->runFTPCommand (
-        'PWD', null,
-        function (qcEvents_Stream_FTP_Client $Self, $Status, $Code, $Response) use ($Callback, $Private) {
-          if ($Status) {
-            $Path = $Response;
-            
-            if ($Path [0] == '"')
-              $Path = substr ($Path, 1, strpos ($Path, '"', 2) - 1);
-            
-            $this->___callback ('ftpWorkingDirectory', $Path);
-          } else
-            $Path = false;
+    public function getWorkingDirectory () : qcEvents_Promise {
+      return $this->ftpCommand ('PWD')->then (
+        function ($responseCode, $responseText) {
+          if ($responseText [0] == '"')
+            $responseText = substr ($responseText, 1, strpos ($responseText, '"', 2) - 1);
           
-          $this->___raiseCallback ($Callback, $Path, $Private);
+          $this->___callback ('ftpWorkingDirectory', $responseText);
         }
       );
     }
@@ -236,21 +218,17 @@
      * Retrive the status of FTP-Server or a file on that server
      * 
      * @param string $Path (optional) Pathname for file
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_FTP_Client $Self, string $Status = null, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function getStatus ($Path = null, callable $Callback, $Private = null) {
+    public function getStatus ($Path = null) : qcEvents_Promise {
       return $this->runFTPCommand (
-        'STAT', $Path,
-        function (qcEvents_Stream_FTP_Client $Self, $Status, $Code, $Response) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, ($Status ? $Response : null), $Private);
+        'STAT',
+        ($Path ? array ($Path) : null)
+      )->then (
+        function ($responseCode, $responseText) {
+          return $responseText;
         }
       );
     }
@@ -261,33 +239,20 @@
      * Retrive all filenames existant at a given path or the current one
      * 
      * @param string $Path (optional) The path to use, if NULL the current one will be used
-     * @param callable $Callback (optional) A callback to be raised once the operation was completed
-     * @param mixed $Private (optional) A private parameter to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_FTP_Client $Self, array $Files = null, mixed $Private = null) { }
-     * 
-     * If there was an error during the execution, $Files will be NULL.
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function getFilenames ($Path = null, callable $Callback, $Private = null) {
-      return $this->runFTPDataCommandBuffered (
-        'NLST', $Path,
+    public function getFilenames ($Path = null) : qcEvents_Promise {
+      return $this->ftpDataCommandBuffered (
+        'NLST',
+        $Path,
         self::TYPE_ASCII,
         self::STRUCTURE_FILE,
         self::MODE_STREAM,
-        
-        // Callback to be raised once the transfer was completed
-        function (qcEvents_Stream_FTP_Client $Self, $Status, $Buffer, $Code, $Response) use ($Callback, $Private) {
-          if ($Status)
-            $Files = explode ("\r\n", substr ($Buffer, 0, -2));
-          else
-            $Files = null;
-          
-          $this->___raiseCallback ($Callback, $Files, $Private);
+      )->then (
+        function ($responseCode, $responseText, $responseData) {
+          return explode ("\r\n", substr ($responseData, 0, -2));
         }
       );
     }
@@ -298,38 +263,18 @@
      * Download a file from the server, return a stream-handle for further processing
      * 
      * @param string $Filename Path of the file to download
-     * @param callable $Callback A callback to raise once the stream is ready
-     * @param mixed $Private (optional) Any private parameter to pass to the callback
-     * @param callable $finalCallback (optional) A callback to raise once the download was completed
-     * @param mixed $finalPrivate (optional) Any private parameter to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_FTP_Client $Self, string $Filename, qcEvents_Interface_Stream $Stream = null, mixed $Private = null) { }
-     * 
-     * The final callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_FTP_Client $Self, string $Filename, bool $Status, qcEvents_Interface_Stream $Stream = null, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function retriveFileStream ($Filename, callable $Callback, $Private = null, callable $finalCallback = null, $finalPrivate = null) {
-      $Input = null;
-      
+    public function retriveFileStream ($Filename) : qcEvents_Promise {
       return $this->runFTPDataCommandStream (
-        'RETR', $Filename,
+        'RETR',
+        $Filename,
         self::TYPE_IMAGE,
         self::STRUCTURE_FILE,
         self::MODE_STREAM,
-        
-        function (qcEvents_Stream_FTP_Client $Self, $Status, $Code, $Response) use ($Filename, $finalCallback, $finalPrivate, &$Input) {
-          $this->___raiseCallback ($finalCallback, $Filename, $Status, $Input, $finalPrivate);
-        }, null,
-        function (qcEvents_Stream_FTP_Client $Self, qcEvents_Interface_Stream $Stream = null)  use ($Filename, $Callback, $Private, &$Input) {
-          $Input = $Stream;
-          $this->___raiseCallback ($Callback, $Filename, $Stream, $Private);
-        }
+        true
       );
     }
     // }}}
@@ -340,25 +285,18 @@
      * 
      * @param string $remotePath Path of file on server
      * @param string $localPath Local path to write the file to
-     * @param callable $Callback (optional) A callback to raise once the operation is complete
-     * @param mixed $Private (optional) Private data to pass to the callback
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function downloadFile ($remotePath, $localPath, callable $Callback = null, $Private = null) {
+    public function downloadFile ($remotePath, $localPath) : qcEvents_Promise {
       return $this->retriveFileStream (
-        $remotePath,
-        
-        // Pipe the stream to a local file once it is ready
-        function (qcEvents_Stream_FTP_Client $Self, $Filename, qcEvents_Interface_Stream $Stream = null) use ($localPath) {
-          if ($Stream)
-            $Stream->pipe (new qcEvents_File ($Stream->getEventBase (), $localPath, false, true));
-        }, null,
-        
-        // Just forward the result once it is completed 
-        function (qcEvents_Stream_FTP_Client $Self, $Filename, $Status, qcEvents_Interface_Stream $Stream = null) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Status, $Private);
+        $remotePath
+      )->then (
+        function (qcEvents_Interface_Stream $commandStream, qcEvents_Promise $finalPromise) use ($localPath) {
+          $commandStream->pipe (new qcEvents_File ($commandStream->getEventBase (), $localPath, false, true));
+          
+          return $finalPromise;
         }
       );
     }
@@ -369,41 +307,17 @@
      * Download file from server and write to filesystem
      * 
      * @param string $remotePath Path of file on server
-     * @param callable $Callback A callback to raise once the operation is complete
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_FTP_Client $Self, string $remotePath, string $Content, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function downloadFileBuffered ($remotePath, callable $Callback, $Private = null) {
-      $Buffer = '';
-      
-      return $this->retriveFileStream (
-        $remotePath,
-        
-        // Pipe the stream to a local file once it is ready
-        function (qcEvents_Stream_FTP_Client $Self, $Filename, qcEvents_Interface_Stream $Stream = null) use (&$Buffer) {
-          if (!$Stream)
-            return;
-          
-          $Stream->addHook ('eventReadable', function (qcEvents_Interface_Stream $Stream) use (&$Buffer) {
-            $Buffer .= $Stream->read ();
-          });
-        }, null,
-        
-        // Just forward the result once it is completed 
-        function (qcEvents_Stream_FTP_Client $Self, $Filename, $Status, qcEvents_Interface_Stream $Stream = null) use (&$Buffer, $Callback, $Private) {
-          // Reset the buffer if download failed
-          if (!$Status)
-            $Buffer = null;
-          
-          // Raise the callback
-          $this->___raiseCallback ($Callback, $Filename, $Buffer, $Status, $Private);
-        }
+    public function downloadFileBuffered ($remotePath) : qcEvents_Promise {
+      return $this->ftpDataCommandBuffered (
+        'RETR',
+        $Filename,
+        self::TYPE_IMAGE,
+        self::STRUCTURE_FILE,
+        self::MODE_STREAM,
       );
     }
     // }}}
@@ -417,23 +331,21 @@
      **/
     public function close () : qcEvents_Promise {
       // Try to close gracefully
-      if (!$this->StreamCallback && $this->Stream && ($this->State != self::STATE_CONNECTING))
-        return new qcEvents_Promise (function ($resolve, $reject) {
-          $this->runFTPCommand ('QUIT', null, function () use ($resolve, $reject) {
-            if ($this->Stream) {
-              $Stream = $this->Stream;
-              $this->Stream = null;
-              
-              $Stream->close ()->then ($resolve, $reject);
-            } else
-              $resolve ();
+      if (!$this->initPromise && $this->sourceStream && ($this->ftpState != self::STATE_CONNECTING))
+        return $this->ftpCommand ('QUIT')->catch (function () { })->then (
+          function () {
+            $sourceStream = $this->sourceStream;
+            $this->sourceStream = null;
             
             $this->___callback ('eventClosed');
-          });
-        });
+            
+            if ($this->sourceStream)
+              return $sourceStream->close ();
+          }
+        );
       
-      call_user_func ($this->StreamCallback [1], 'Stream closed');
-      $this->StreamCallback = null;
+      $this->initPromise->reject ('Stream closed');
+      $this->initPromise = null;
       
       $this->___callback ('eventClosed');
       
@@ -445,23 +357,23 @@
     /**
      * Consume a set of data
      * 
-     * @param mixed $Data
-     * @param qcEvents_Interface_Source $Source
+     * @param mixed $inputData
+     * @param qcEvents_Interface_Source $sourceStream
      * 
      * @access public
      * @return void
      **/
-    public function consume ($Data, qcEvents_Interface_Source $Source) {
+    public function consume ($inputData, qcEvents_Interface_Source $sourceStream) {
       // Append to internal buffer
-      $this->Buffer .= $Data;
-      unset ($Data);
+      $this->inputBuffer .= $inputData;
+      unset ($inputData);
 
       // Check if we have received complete lines
       $s = 0;
 
-      while (($e = strpos ($this->Buffer, "\r\n", $s)) !== false) {
+      while (($e = strpos ($this->inputBuffer, "\r\n", $s)) !== false) {
         // Peek the next complete line
-        $Line = substr ($this->Buffer, $s, $e - $s);
+        $Line = substr ($this->inputBuffer, $s, $e - $s);
         
         // Move pointer to end-of-line
         $s = $e + 2;
@@ -469,18 +381,18 @@
         // Check if this is a final response
         $Code = substr ($Line, 0, 3);
 
-        if (($Line [3] == ' ') && (($iCode = intval ($Code)) == $Code) && ((strlen ($this->rBuffer) < 3) || ($Code == substr ($this->rBuffer, 0, 3)))) {
-          $this->processFTPResponse ($iCode, rtrim (substr ($this->rBuffer, 4) . substr ($Line, 4)));
-          $this->rBuffer = '';
+        if (($Line [3] == ' ') && (($iCode = intval ($Code)) == $Code) && ((strlen ($this->receiveBuffer) < 3) || ($Code == substr ($this->receiveBuffer, 0, 3)))) {
+          $this->processFTPResponse ($iCode, rtrim (substr ($this->receiveBuffer, 4) . substr ($Line, 4)));
+          $this->receiveBuffer = '';
 
         // Just append to buffer
         } else
-          $this->rBuffer .= trim ($Line) . "\n";
+          $this->receiveBuffer .= trim ($Line) . "\n";
       }
 
       // Truncate the input-buffer
       if ($s > 0)
-        $this->Buffer = substr ($this->Buffer, $s);
+        $this->inputBuffer = substr ($this->inputBuffer, $s);
     }
     // }}}
     
@@ -495,49 +407,50 @@
      * @return void
      **/
     private function processFTPResponse ($Code, $Response) {
+      // Run initial callback for this
+      if ($this->___callback ('ftpRead', $Code, $Response) === false)
+        return fasle;
+      
       // Check if we are receiving a HELO from FTP
-      if ($this->State == self::STATE_CONNECTING) {
+      if ($this->ftpState == self::STATE_CONNECTING) {
         // Check the code
         if (($Code >= 100) && ($Code < 200))
           return;
-
+        
         // Change our state
         if ($Code < 400) {
-          $this->State = self::STATE_CONNECTED;
+          $this->ftpState = self::STATE_CONNECTED;
           $this->___callback ('ftpConnected');
         } else {
-          $this->State = self::STATE_DISCONNECTED;
+          $this->ftpState = self::STATE_DISCONNECTED;
           $this->___callback ('ftpDisconnected');
         }
-
+        
         // Fire the callback
-        if ($this->StreamCallback) {
+        if ($this->initPromise) {
           if ($Code < 400)
-            call_user_func ($this->StreamCallback [0]);
+            $this->initPromise->resolve ();
           else
-            call_user_func ($this->StreamCallback [1], 'Received ' . $Code);
+            $this->initPromise->reject ('Received ' . $Code);
           
-          $this->StreamCallback = null;
+          $this->initPromise = null;
         }
-
+        
         return;
       }
       
       // Look for an active command
-      if (!$this->Command) {
-        $this->raiseProtocolError ();
-        
-        return;
-      }
+      if (!$this->activeCommand)
+        return $this->raiseProtocolError ();
       
       // Check for an intermediate reply
       if ((($Code >= 100) && ($Code < 200)) || (($Code >= 300) && ($Code < 400))) {
         // Check if the command is prepared for this
-        if (!$this->Command [4])
+        if (!$this->activeCommand [2])
           return $this->ftpFinishCommand (false, $Code, $Response);
         
         // Fire a callback for this
-        if ($this->___raiseCallback ($this->Command [4], $Code, $Response, $this->Command [5]) === false)
+        if ($this->___raiseCallback ($this->activeCommand [2], $Code, $Response) === false)
           return $this->ftpFinishCommand (false, $Code, $Response);
         
         return;
@@ -560,14 +473,17 @@
      **/
     private function ftpFinishCommand ($Status, $Code, $Response) {
       // Peek and free the current command
-      $Command = $this->Command;
-      $this->Command = null;
+      $activeCommand = $this->activeCommand;
+      $this->activeCommand = null;
       
-      // Raise the callback
-      $this->___raiseCallback ($Command [2], $Status, $Code, $Response, $Command [3]);
+      // Resolve the promise
+      if ($Status)
+        $activeCommand [3]->resolve ($Code, $Response);
+      else
+        $activeCommand [3]->reject ($Response, $Code);
       
       // Move to next command
-      $this->dispatchFTPCommand ();
+      $this->ftpStartPendingCommand ();
     }
     // }}}
     
@@ -586,36 +502,44 @@
     }
     // }}}
     
-    // {{{ runFTPCommand
+    // {{{ ftpCommand
     /**
      * Enqueue an FTP-Command for execution
      * 
-     * @param string $Command The actual command to run
-     * @param mixed $Parameters Any parameter for that command
-     * @param callable $finalCallback A callback to run once the operation was completed
-     * @param mixed $finalPrivate (optional) Any private parameter to pass to that callback
+     * @param string $commandName The actual command to run
+     * @param array $commandParameters (optional) Any parameter for that command
      * @param callable $intermediateCallback (optional) A callback to run whenever an intermediate response was received
-     * @param mixed $intermediatePrivate (optional) Any private parameter to pass to that callback
-     * 
-     * The final callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_FTP_Client $Self, bool $Status, int $Code, string $Response, mixed $Private = null) { }
      * 
      * The intermediate callback will be raised in the form of
      * 
-     *   function (qcEvents_Stream_FTP_Client $Self, int $Code, string $Response, mixed $Private = null) { }
+     *   function (qcEvents_Stream_FTP_Client $Self, int $Code, string $Response) { }
      * 
      * If the intermediate callback returns FALSE the entire operation will be canceled
      * 
      * @access private
-     * @return void
+     * @return qcEvents_Promise
      **/
-    private function runFTPCommand ($Command, $Parameters, callable $finalCallback, $finalPrivate = null, callable $intermediateCallback = null, $intermediatePrivate = null) {
+    private function ftpCommand ($commandName, array $commandParameters = null, callable $intermediateCallback = null, $forceNext = false) : qcEvents_Promise {
+      // Create a promse for that
+      $deferredPromise = new qcEvents_Defered;
+      
       // Append the command to our queue
-      $this->CommandQueue [] = array ($Command, $Parameters, $finalCallback, $finalPrivate, $intermediateCallback, $intermediatePrivate);
+      $nextCommand = array (
+        $commandName,
+        $commandParameters,
+        $intermediateCallback,
+        $deferredPromise
+      );
+      
+      if ($forceNext)
+        array_unshift ($this->pendingCommands, $nextCommand);
+      else
+        $this->pendingCommands [] = $nextCommand;
       
       // Try to issue the command
-      $this->dispatchFTPCommand ();
+      $this->ftpStartPendingCommand ();
+      
+      return $deferredPromise->getPromise ();
     }
     // }}}
     
@@ -623,28 +547,17 @@
     /**
      * Setup a data-connection and run a given command on that
      * 
-     * @param string $Command The command to issue once the connection was established
-     * @param mixed $Parameters Parameters to pass to the previous command
+     * @param string $commandName The command to issue once the connection was established
+     * @param array $commandParameters (optional) Parameters to pass to the previous command
      * @param enum $Type (optional) Character Representation-Type
      * @param enum $Structure (optional) File-Structure-Type
      * @param enum $Mode (optional) Transfer-Mode
-     * @param callable $finalCallback A callback to raise once the whole operation was completed
-     * @param mixed $finalPrivate (optional) Any parameter to pass to the final callback
-     * @param callable $intermediateCallback A callback to raise once the data-connection is ready
-     * @param mixed $intermediatePrivate (optional) Any parameter to pass to the intermediate callback
-     * 
-     * The final callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_FTP_Client $Self, bool $Status, int $Code, string $Response, mixed $Private = null) { }
-     * 
-     * The intermediate callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_FTP_Client $Self, qcEvents_Interface_Stream $Stream, mixed $Private = null) { }
+     * @param bool $waitForStream (optional) Wait for the data-stream to be finished until final promise returns
      * 
      * @access private
-     * @return void
+     * @return qcEvents_Promise
      **/
-    private function runFTPDataCommandStream ($Command, $Parameters, $Type = self::TYPE_ASCII, $Structure = self::STRUCTURE_FILE, $Mode = self::MODE_STREAM, callable $finalCallback, $finalPrivate = null, callable $intermediateCallback, $intermediatePrivate = null) {
+    private function ftpDataCommandStream ($commandName, array $commandParameters = null, $Type = self::TYPE_ASCII, $Structure = self::STRUCTURE_FILE, $Mode = self::MODE_STREAM, $waitForStream = true) : qcEvents_Promise {
       // Prepare parameters
       static $tMap = array (
         self::TYPE_ASCII => 'A',
@@ -668,164 +581,185 @@
       $Structure = (isset ($sMap [$Structure]) ? $sMap [$Structure] : self::STRUCTURE_FILE);
       $Mode = (isset ($mMap [$Mode]) ? $mMap [$Mode] : self::MODE_STREAM);
       
-      // Prepare the connection-handler
-      $Handler = null;
-      $Handler = function (qcEvents_Stream_FTP_Client $Self, $Status, $Code, $Response) use (&$Handler, &$Type, &$Structure, &$Mode, $Command, $Parameters, $finalCallback, $finalPrivate, $intermediateCallback, $intermediatePrivate) {
-        // Check if we failed
-        if ($Status === false)
-          return $this->___raiseCallback ($finalCallback, false, $Code, $Response, $finalPrivate);
-        
-        // Check if we have to setup connection-parameters
-        if ($Type !== null) {
-          $pCommand = 'TYPE';
-          $Parameter = $Type;
-          $Type = null;
-        } elseif ($Structure !== null) {
-          $pCommand = 'STRU';
-          $Parameter = $Structure;
-          $Structure = null;
-        } elseif ($Mode !== null) {
-          $pCommand = 'MODE';
-          $Parameter = $Mode;
-          $Mode = null;
-        } else
-          $pCommand = null;
-        
-        // Proceed with connection-setup
-        if ($pCommand !== null) {
-          // Push into normal command-queue if we do this for the first time
-          if ($Status === null)
-            return $this->runFTPCommand ($pCommand, $Parameter, $Handler);
+      if ($Type !== null)
+        $typePromise = $this->ftpCommand (
+          'TYPE',
+          array ($Type)
+        );
+      else
+        $typePromise = qcEvents_Promise::resolve ();
+      
+      return $typePromise->then (
+        function () use ($Structure) {
+          if ($Structure === null)
+            return;
           
-          array_unshift (
-            $this->CommandQueue,
-            array ($pCommand, $Parameter, $Handler, null, null, null)
+          return $this->ftpCommand (
+            'STRU',
+            array ($Structure),
+            null,
+            true
           );
-        
-        // or enter the connection
-        } else
-          array_unshift (
-            $this->CommandQueue,
-            array ('PASV', null, function (qcEvents_Stream_FTP_Client $Self, $Status, $Code, $Response) use ($Command, $Parameters, $finalCallback, $finalPrivate, $intermediateCallback, $intermediatePrivate) {
-              // Make sure the command was successfull
-              if (!$Status || (($s = strpos ($Response, '(')) === false) || (($e = strpos ($Response, ')', $s)) === false))
-                return $this->___raiseCallback ($finalCallback, false, $Code, $Response, $finalPrivate);
+        }
+      )->then (
+        function () use ($Mode) {
+          if ($Mode === null)
+            return;
+          
+          return $this->ftpCommand (
+            'MODE',
+            array ($Mode),
+            null,
+            true
+          );
+        }
+      )->then (
+        function () {
+          return $this->ftpCommand (
+            'PASV',
+            null,
+            null,
+            true
+          );
+        }
+      )->then (
+        function ($responseCode, $responseText) use ($commandName, $commandParameters, $waitForStream) {
+          // Sanatize the respose
+          if ((($s = strpos ($responseText, '(')) === false) ||
+              (($e = strpos ($responseText, ')', $s)) === false))
+            throw new Error ('Missing host-address on PASV-Response');
+          
+          // Parse the destination
+          $Host = explode (',', substr ($responseText, $s + 1, $e - $s - 1));
+          
+          $IP = $Host [0] . '.' . $Host [1] . '.' . $Host [2] . '.' . $Host [3];
+          $Port = (intval ($Host [4]) << 8) | intval ($Host [5]);
+          
+          // Block execution of further commands
+          $this->activeCommand = true;
+          
+          // Create a socket to this connection
+          $dataSocket = new qcEvents_Socket ($this->sourceStream->getEventBase ());
+          
+          return $dataSocket->connect ($IP, $Port, $Socket::TYPE_TCP)->then (
+            function () use ($dataSocket, $commandName, $commandParameters, $waitForStream) {
+              // Unblock FTP-Commands
+              if ($this->activeCommand === true)
+                $this->activeCommand = null;
               
-              // Parse the destination
-              $Host = explode (',', substr ($Response, $s + 1, $e - $s - 1));
-              
-              $IP = $Host [0] . '.' . $Host [1] . '.' . $Host [2] . '.' . $Host [3];
-              $Port = (intval ($Host [4]) << 8) | intval ($Host [5]);
-              
-              // Create a socket to this connection
-              $Socket = new qcEvents_Socket ($this->Stream->getEventBase ());
-              
-              // Try to connect to destination and forward the handle to our caller upon completion
-              $Socket->connect ($IP, $Port, $Socket::TYPE_TCP)->then (
-                function () use ($Socket, $intermediateCallback, $intermediatePrivate) {
-                  $this->___raiseCallback ($intermediateCallback, $Socket, $intermediatePrivate);
-                },
-                function () use ($intermediateCallback, $intermediatePrivate) {
-                  $this->___raiseCallback ($intermediateCallback, null, $intermediatePrivate);
+              // Issue the original command
+              $commandPromise = $this->ftpCommand (
+                $commandName,
+                $commandParameters
+              )->catch (
+                function () use ($dataSocket) {
+                  $dataSocket->close ();
+                  
+                  throw new qcEvents_Promise_Solution (func_get_args ());
                 }
               );
               
-              // Issue the original command
-              array_unshift (
-                $this->CommandQueue,
-                array (
-                  $Command,
-                  $Parameters,
-                  function (qcEvents_Stream_FTP_Client $Self, $Status, $Code, $Response) use ($Socket, $finalCallback, $finalPrivate) {
-                    // Check if the socket is still connected
-                    if ($Socket->isConnected ())
-                      return $Socket->addHook ('eventClosed', function () use ($Status, $Code, $Response, $finalCallback, $finalPrivate) {
-                        $this->___raiseCallback ($finalCallback, $Status, $Code, $Response, $finalPrivate);
-                      });
+              if ($waitForStream)
+                $commandPromise = $commandPromise->then (
+                  function ($responseCode, $responseText) use ($dataSocket) {
+                    if ($dataSocket->isConnected ())
+                      return $dataSocket->once (
+                        'eventClosed',
+                        function () use ($responseCode, $responseText) {
+                          return qcEvents_Promise_Solution (array ($responseCode, $responseText));
+                        }
+                      );
                     
-                    $this->___raiseCallback ($finalCallback, $Status, $Code, $Response, $finalPrivate);
-                  }, null,
-                  function (qcEvents_Stream_FTP_Client $Self, $Code, $Response) { /* Just let this pass */ }, null)
-              );
+                    return qcEvents_Promise_Solution (array ($responseCode, $responseText));
+                  }
+                );
               
-              // Try to issue the command 
-              $this->dispatchFTPCommand ();
+              // Forward the result
+              return new qcEvents_Promise_Solution (array ($dataSocket, $commandPromise));
             },
-            null, null, null)
+            function () {
+              // Unblock FTP-Commands
+              if ($this->activeCommand === true)
+                $this->activeCommand = null;
+              
+              // Abort the last attemp
+              $this->ftpCommand ('ABOR', null, null, true);
+              
+              // Throw an error
+              throw new Error ('Failed to establish FTP-Data-Connection');
+            }
           );
-          
-        // Try to issue the command 
-        $this->dispatchFTPCommand ();
-      };
-        
-      // Invoke the handler
-      return $Handler ($this, null, 0, '');
-    }
-    // }}}
-    
-    // {{{ runFTPDataCommandBuffered
-    /**
-     * Run an FTP-Command that retrives it results via a data-stream and return the result as whole
-     * 
-     * @param string $Command The command to issue once the connection was established
-     * @param mixed $Parameters Parameters to pass to the previous command
-     * @param enum $Type (optional) Character Representation-Type
-     * @param enum $Structure (optional) File-Structure-Type
-     * @param enum $Mode (optional) Transfer-Mode
-     * @param callable $Callback (optional) A callback to raise once the operation was completed
-     * @param mixed $Private (optional) Any private parameter to pass to that parameter
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Stream_FTP_Client $Self, bool $Status, string $Buffer = null, int $Code, string $Response, mixed $Private = null) { }
-     * 
-     * @access private
-     * @return void
-     **/
-    private function runFTPDataCommandBuffered ($Command, $Parameters, $Type = null, $Structure = null, $Mode = null, callable $Callback, $Private = null) {
-      // Create a local buffer
-      $Buffer = '';
-      
-      // Run the command with a "normal" stream
-      return $this->runFTPDataCommandStream (
-        $Command, $Parameters, $Type, $Structure, $Mode,
-        
-        // Callback to be raised once the transfer was completed
-        function (qcEvents_Stream_FTP_Client $Self, $Status, $Code, $Response) use ($Callback, $Private, &$Buffer) {
-          $this->___raiseCallback ($Callback, $Status, $Buffer, $Code, $Response, $Private);
-        }, null,
-        
-        // Callback to be raised once the data-stream is ready
-        function (qcEvents_Stream_FTP_Client $Self, qcEvents_Interface_Stream $Stream = null) use (&$Buffer) {
-          // Check if the stream is really ready
-          if (!$Stream) {
-            $Buffer = null;
-            
-            return;
-          }
-          
-          // Register our reader-thread
-          $Stream->addHook ('eventReadable', function (qcEvents_Interface_Stream $Stream) use (&$Buffer) {
-            $Buffer .= $Stream->read ();
-          });
         }
       );
     }
     // }}}
     
-    // {{{ dispatchFTPCommand
+    // {{{ ftpDataCommandBuffered
+    /**
+     * Run an FTP-Command that retrives it results via a data-stream and return the result as whole
+     * 
+     * @param string $commandName The command to issue once the connection was established
+     * @param array $commandParameters (optional) Parameters to pass to the previous command
+     * @param enum $Type (optional) Character Representation-Type
+     * @param enum $Structure (optional) File-Structure-Type
+     * @param enum $Mode (optional) Transfer-Mode
+     * 
+     * @access private
+     * @return void
+     **/
+    private function ftpDataCommandBuffered ($commandName, array $commandParameters = null, $Type = null, $Structure = null, $Mode = null) : qcEvents_Promise {
+      // Create a local buffer
+      $readBuffer = '';
+      
+      // Run the command with a "normal" stream
+      return $this->runFTPDataCommandStream (
+        $commandName,
+        $commandParameters,
+        $Type,
+        $Structure,
+        $Mode,
+        true
+      )->then (
+        function (qcEvents_Interface_Stream $commandStream, qcEvents_Promise $finalPromise) {
+          // Create a local buffer
+          $readBuffer = '';
+          
+          $commandStream->addHook (
+            'eventReadable',
+            function (qcEvents_Interface_Stream $commandStream) use (&$readBuffer) {
+              $readBuffer .= $commandStream->read ();
+            }
+          );
+          
+          return $finalPromise->then (
+            function ($responseCode, $responseText) use ($commandStream, &$readBuffer) {
+              $commandStream->removeHooks ('eventReadable');
+              
+              return $readBuffer;
+            }
+          );
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ ftpStartPendingCommand
     /**
      * Try to write the next command in queue to the wire
      * 
      * @access private
      * @return void
      **/
-    private function dispatchFTPCommand () {
-      if ($this->Command || (count ($this->CommandQueue) == 0))
+    private function ftpStartPendingCommand () {
+      // Check if another command is still active or if there are no pending commands
+      if ($this->activeCommand || (count ($this->pendingCommands) == 0))
         return;
       
-      $this->Command = array_shift ($this->CommandQueue);
-      $this->writeCommand ($this->Command [0], $this->Command [1]);
+      // Move next pending command to active
+      $this->activeCommand = array_shift ($this->pendingCommands);
+      
+      // Write the command to the wire
+      $this->writeCommand ($this->activeCommand [0], $this->activeCommand [1]);
     }
     // }}}
     
@@ -833,30 +767,30 @@
     /**
      * Write a given command to the wire
      * 
-     * @param string $Command
-     * @param mixed $Parameters
+     * @param string $commandName
+     * @param array $commandParameters
      * 
      * @access private
      * @return void
      **/
-    private function writeCommand ($Command, $Parameters) {
+    private function writeCommand ($commandName, array $commandParameters = null) {
       // Start the commandline with the command
-      $Commandline = $Command;
+      $commandLine = $commandName;
       
       // Check wheter to append some parameters
-      if ($Parameters) {
-        if (!is_array ($Parameters))
-          $Parameters = array ($Parameters);
-        
+      if ($commandParameters)
         # TODO: What if a parameter contains a space?
-        $Commandline .= ' ' . implode (' ', $Parameters);
-      }
+        $commandLine .= ' ' . implode (' ', $commandParameters);
+      
+      // Raise a callback for this
+      if ($this->___callback ('ftpWrite', $commandLine) === false)
+        return;
       
       // Terminate the commandline
-      $Commandline .= "\r\n";
+      $commandLine .= "\r\n";
       
       // Write out the command
-      $this->Stream->write ($Commandline);
+      $this->sourceStream->write ($commandLine);
     }
     // }}}
     
@@ -864,28 +798,26 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param qcEvents_Interface_Source $Source
+     * @param qcEvents_Interface_Source $sourceStream
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
-      if ($this->StreamCallback)
-        call_user_func ($this->StreamCallback [1], 'Replaced by new source');
+    public function initStreamConsumer (qcEvents_Interface_Stream $sourceStream) : qcEvents_Promise {
+      // Reject any pending initialization-promise
+      if ($this->initPromise)
+        $this->initPromise->reject ('Replaced by new source-stream');
       
       // Update our internal state
-      $this->State = self::STATE_CONNECTING;
-      $this->Buffer = '';
-      $this->rBuffer = '';
-      $this->Command = null;
-      $this->CommandQueue = array ();
-      $this->Stream = $Source;
+      $this->ftpState = self::STATE_CONNECTING;
+      $this->inputBuffer = '';
+      $this->receiveBuffer = '';
+      $this->activeCommand = null;
+      $this->pendingCommands = array ();
+      $this->sourceStream = $sourceStream;
+      $this->initPromise = new qcEvents_Defered;
       
-      return new qcEvents_Promise (
-        function () {
-          $this->StreamCallback = func_get_args ();
-        }
-      );
+      return $this->initPromise->getPromise ();
     }
     // }}}
     
@@ -899,16 +831,17 @@
      * @return qcEvents_Promise 
      **/
     public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
-      if ($this->StreamCallback) {
-        call_user_func ($this->StreamCallback [1], 'Removed as source');
-        $this->StreamCallback = null;
+      if ($this->initPromise) {
+        $this->initPromise->reject ('deinitConsumer() callbed before stream was initialized');
+        $this->initPromise = null;
       }
       
       return qcEvents_Promise::resolve ();
     }
     // }}}
     
-    
+    protected function ftpRead ($responseCode, $responseText) { }
+    protected function ftpWrite ($commandLine) { }
     protected function ftpConnected () { }
     protected function ftpDisconnected () { }
     protected function ftpAuthenticated ($Username, $Account = null) { }

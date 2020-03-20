@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - FTP-Client
-   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2019-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -129,9 +129,14 @@
           return $this->___raiseCallback ($Callback, null, $Private);
         
         // Forward the request
-        return $Stream->getFilenames ($Path, function (qcEvents_Stream_FTP_Client $Stream, array $Files = null) use ($Callback, $Private) {
-          $this->___raiseCallback ($Callback, $Files, $Private);
-        });
+        return $Stream->getFilenames ($Path)->then (
+          function (array $Files) use ($Callback, $Private) {
+            $this->___raiseCallback ($Callback, $Files, $Private);
+          },
+          function () use ($Callback, $Private) {
+            $this->___raiseCallback ($Callback, null, $Private);
+          }
+        );
       });
     }
     // }}}
@@ -170,14 +175,23 @@
         
         // Request the stream
         $Stream->retriveFileStream (
-          $Filename,
-          
-          // Rewrite both callbacks
-          function (qcEvents_Stream_FTP_Client $streamFTP, $Filename, qcEvents_Interface_Stream $Stream = null) use ($Callback, $Private) {
-            $this->___raiseCallback ($Callback, $Filename, $Stream, $Private);
-          }, null,
-          function (qcEvents_Stream_FTP_Client $streamFTP, $Filename, $Status) use ($finalCallback, $finalPrivate) {
-            $this->___raiseCallback ($finalCallback, $Filename, $Status, $finalPrivate);
+          $Filename
+        )->then (
+          function (qcEvents_Interface_Stream $fileStream, qcEvents_Promise $finalPromise) use ($Callback, $Private, $finalCallback, $finalPrivate, $Filename) {
+            $this->___raiseCallback ($Callback, $Filename, $fileStream, $Private);
+            
+            return $finalPromise->then (
+              function () use ($finalCallback, $finalPrivate, $Filename, $fileStream) {
+                $this->___raiseCallback ($finalCallback, $Filename, true, $fileStream, $finalPrivate);
+              },
+              function () use ($finalCallback, $finalPrivate, $Filename, $fileStream){
+                $this->___raiseCallback ($finalCallback, $Filename, false, $fileStream, $finalPrivate);
+              }
+            );
+          },
+          function () use ($Callback, $Private, $finalCallback, $finalPrivate, $Filename) {
+            $this->___raiseCallback ($Callback, $Filename, null, $Private);
+            $this->___raiseCallback ($finalCallback, $Filename, false, null, $finalPrivate);
           }
         );
       });
@@ -205,13 +219,18 @@
         if (!$Stream)
           return $this->___raiseCallback ($Callback, $remotePath, null, false, $Private);
         
-        return $Stream->downloadFileBuffered ($remotePath, function (qcEvents_Stream_FTP_Client $Stream, $remotePath, $Content, $Status) use ($Callback, $Private) {
-          // Release the stream
-          $this->releaseStream ($Stream);
-          
-          // Raise the callback
-          $this->___raiseCallback ($Callback, $remotePath, $Content, $Status, $Private);
-        });
+        return $Stream->downloadFileBuffered ($remotePath)->then (
+          function ($Content) use ($Stream, $Callback, $Private, $remotePath) {
+            // Release the stream
+            $this->releaseStream ($Stream);
+            
+            // Raise the callback
+            $this->___raiseCallback ($Callback, $remotePath, $Content, $Status, $Private);
+          },
+          function () use ($Callback, $remotePath, $Private) {
+            $this->___raiseCallback ($Callback, $remotePath, null, false, $Private);
+          }
+        );
       });
     }
     // }}}
