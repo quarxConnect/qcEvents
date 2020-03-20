@@ -67,17 +67,11 @@
      * @param string $Password Password to authenticate with
      * @param string $Account (optional) Account to authenticate with
      * @param int $Port (optional) FTP-Port to use
-     * @param callable $Callback (optional) A callback to raise once the first connection is available
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_FTP $Self, string $Hostname, string $Username, string $Account = null, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function connect ($Hostname, $Username, $Password, $Account = null, $Port = null, callable $Callback = null, $Private = null) {
+    public function connect ($Hostname, $Username, $Password, $Account = null, $Port = null) : qcEvents_Promise {
       // Internally store the data
       $this->Hostname = $Hostname;
       $this->Port = ($Port !== null ? intval ($Port) : 21);
@@ -87,20 +81,21 @@
       $this->Ready = false;
       
       // Try to acquire a new stream
-      return $this->requestStream (function (qcEvents_Stream_FTP_Client $Stream = null) use ($Hostname, $Username, $Account, $Callback, $Private) {
-        // Check if the stream could be acquired or reset local information
-        if (!$Stream) {
+      return $this->requestStream ()->then (
+        function (qcEvents_Stream_FTP_Client $ftpStream) use ($Hostname, $Username, $Account) {
+          // Release the stream again
+          $this->releaseStream ($ftpStream);
+          
+          // Fire the final callbacks
+          $this->___callback ('ftpConnected', $Hostname, $Username, $Account);
+        },
+        function () {
           $this->Hostname = $this->Username = $this->Password = '';
           $this->Account = null;
-        } else
-          $this->releaseStream ($Stream);
-        
-        // Fire the final callbacks
-        $this->___raiseCallback ($Callback, $Hostname, $Username, $Account, !!$Stream, $Private);
-        
-        if ($Stream)
-          $this->___callback ('ftpConnected', $Hostname, $Username, $Account);
-      });
+          
+          throw new qcEvents_Promise_Solution (func_get_args ());
+        }
+      );
     }
     // }}}
     
@@ -109,35 +104,22 @@
      * Retrive all filenames existant at a given path or the current one
      * 
      * @param string $Path (optional) The path to use, if NULL the current one will be used
-     * @param callable $Callback (optional) A callback to be raised once the operation was completed
-     * @param mixed $Private (optional) A private parameter to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_FTP $Self, array $Files = null, mixed $Private = null) { }
-     * 
-     * If there was an error during the execution, $Files will be NULL.
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function getFilenames ($Path = null, callable $Callback, $Private = null) {
+    public function getFilenames ($Path = null) : qcEvents_Promise {
       // Acquire an FTP-Stream
-      return $this->requestStream (function (qcEvents_Stream_FTP_Client $Stream = null) use ($Path, $Callback, $Private) {
-        // Check if a stream could be acquired
-        if (!$Stream)
-          return $this->___raiseCallback ($Callback, null, $Private);
-        
-        // Forward the request
-        return $Stream->getFilenames ($Path)->then (
-          function (array $Files) use ($Callback, $Private) {
-            $this->___raiseCallback ($Callback, $Files, $Private);
-          },
-          function () use ($Callback, $Private) {
-            $this->___raiseCallback ($Callback, null, $Private);
-          }
-        );
-      });
+      return $this->requestStream ()->then (
+        function (qcEvents_Stream_FTP_Client $ftpStream) use ($Path) {
+          // Forward the request
+          return $ftpStream->getFilenames ($Path)->finally (
+            function () use ($ftpStream) {
+              $this->releaseStream ($ftpStream);
+            }
+          );
+        }
+      );
     }
     // }}}
     
@@ -146,55 +128,20 @@
      * Download a file from the server, return a stream-handle for further processing
      * 
      * @param string $Filename Path of the file to download
-     * @param callable $Callback A callback to raise once the stream is ready
-     * @param mixed $Private (optional) Any private parameter to pass to the callback
-     * @param callable $finalCallback (optional) A callback to raise once the download was completed
-     * @param mixed $finalPrivate (optional) Any private parameter to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_FTP $Self, string $Filename, qcEvents_Interface_Stream $Stream = null, mixed $Private = null) { }
-     * 
-     * The final callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_FTP $Self, string $Filename, bool $Status, qcEvents_Interface_Stream $Stream = null, mixed $Private = null) { }
      * 
      * @access public
-     * @return void  
+     * @return qcEvents_Promise
      **/
-    public function retriveFileStream ($Filename, callable $Callback, $Private = null, callable $finalCallback = null, $finalPrivate = null) {
-      // Acquire an FTP-Stream
-      return $this->requestStream (function (qcEvents_Stream_FTP_Client $Stream = null) use ($Filename, $Callback, $Private, $finalCallback, $finalPrivate) {
-        // Check if a stream could be acquired
-        if (!$Stream) {
-          $this->___raiseCallback ($Callback, $Filename, null, $Private);
-          $this->___raiseCallback ($finalCallback, $Filename, false, null, $finalPrivate);
-          
-          return;
+    public function retriveFileStream ($Filename) : qcEvents_Promise {
+      return $this->requestStream ()->then (
+        function (qcEvents_Stream_FTP_Client $ftpStream = null) use ($Filename) {
+          return $ftpStream->retriveFileStream ($Filename)->finally (
+            function () use ($ftpStream) {
+              $this->releaseStream ($ftpStream);
+            }
+          );
         }
-        
-        // Request the stream
-        $Stream->retriveFileStream (
-          $Filename
-        )->then (
-          function (qcEvents_Interface_Stream $fileStream, qcEvents_Promise $finalPromise) use ($Callback, $Private, $finalCallback, $finalPrivate, $Filename) {
-            $this->___raiseCallback ($Callback, $Filename, $fileStream, $Private);
-            
-            return $finalPromise->then (
-              function () use ($finalCallback, $finalPrivate, $Filename, $fileStream) {
-                $this->___raiseCallback ($finalCallback, $Filename, true, $fileStream, $finalPrivate);
-              },
-              function () use ($finalCallback, $finalPrivate, $Filename, $fileStream){
-                $this->___raiseCallback ($finalCallback, $Filename, false, $fileStream, $finalPrivate);
-              }
-            );
-          },
-          function () use ($Callback, $Private, $finalCallback, $finalPrivate, $Filename) {
-            $this->___raiseCallback ($Callback, $Filename, null, $Private);
-            $this->___raiseCallback ($finalCallback, $Filename, false, null, $finalPrivate);
-          }
-        );
-      });
+      );
     }
     // }}}
     
@@ -203,35 +150,20 @@
      * Download a File from FTP-Server to local buffer
      * 
      * @param string $remotePath Path of file to retrive
-     * @param callable $Callback A callback to raise once the operation is complete
-     * @param mixed $Private (optional) Private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (qcEvents_Client_FTP $Self, string $remotePath, string $Content, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function downloadFileBuffered ($remotePath, callable $Callback, $Private = null) {
-      return $this->requestStream (function (qcEvents_Stream_FTP_Client $Stream = null) use ($remotePath, $Callback, $Private) {
-        // Check if a stream could be acquired
-        if (!$Stream)
-          return $this->___raiseCallback ($Callback, $remotePath, null, false, $Private);
-        
-        return $Stream->downloadFileBuffered ($remotePath)->then (
-          function ($Content) use ($Stream, $Callback, $Private, $remotePath) {
-            // Release the stream
-            $this->releaseStream ($Stream);
-            
-            // Raise the callback
-            $this->___raiseCallback ($Callback, $remotePath, $Content, $Status, $Private);
-          },
-          function () use ($Callback, $remotePath, $Private) {
-            $this->___raiseCallback ($Callback, $remotePath, null, false, $Private);
-          }
-        );
-      });
+    public function downloadFileBuffered ($remotePath) : qcEvents_Promise {
+      return $this->requestStream ()->then (
+        function (qcEvents_Stream_FTP_Client $ftpStream) use ($remotePath) {
+          return $Stream->downloadFileBuffered ($remotePath)->finally (
+            function () use ($ftpStream) {
+              $this->releaseStream ($ftpStream);
+            }
+          );
+        }
+      );
     }
     // }}}
     
@@ -264,22 +196,20 @@
     /**
      * Acquire a free ftp-stream
      * 
-     * @param callable $Callback
-     * 
      * @access private
-     * @return void
+     * @return qcEvents_Promise
      **/
-    private function requestStream (callable $Callback) {
+    private function requestStream () : qcEvents_Promise {
       // Check if we are ready
       if ((!$this->Ready && (count ($this->pendingStreams) != 0)) ||
           (count ($this->pendingStreams) + count ($this->availableStreams) + count ($this->blockedStreams) >= $this->maxStreams))
-        return call_user_func ($Callback, null);
+        return qcEvents_Promise::reject ('No stream available');
       
       // Check if there is already one stream available
       if (count ($this->availableStreams) > 0) {
         $this->blockedStreams [] = $Stream = array_shift ($this->availableStreams);
         
-        return call_user_func ($Callback, $Stream);
+        return qcEvents_Promise::resolve ($Stream);
       }
       
       // Try to acquire a new stream
@@ -290,54 +220,46 @@
       $Socket = new qcEvents_Socket ($this->eventBase);
       
       return $Socket->connect ($this->Hostname, $this->Port, $Socket::TYPE_TCP)->then (
-        function () use ($Socket, $Key, $Stream, $Callback) {
+        function () use ($Socket, $Key, $Stream) {
           // Connect Stream with socket
-          return $Socket->pipeStream ($Stream, true)->then (
-            function () use ($Stream, $Callback, $Key) {
-              // Try to authenticate
-              return $Stream->authenticate ($this->Username, $this->Password, $this->Account, function (qcEvents_Stream_FTP_Client $Stream, $Status) use ($Callback, $Key, $Socket) {
-                // Check if FTP could be authenticated
-                if (!$Status) {
-                  $Socket->close ();
-                  
-                  unset ($this->pendingStreams [$Key]);
-                  return call_user_func ($Callback, null);
-                }
-                
-                // Clearify that we are ready
-                $this->Ready = true;
-                
-                // Move from pending to blocked
+          return $Socket->pipeStream ($Stream, true);
+        }
+      )->then (
+        // FTP-Connection was established
+        function () use ($Stream, $Key) {
+          // Try to authenticate
+          return $Stream->authenticate ($this->Username, $this->Password, $this->Account);
+        }
+      )->then (
+        // FTP-Connection was authenticated
+        function () use ($Stream, $Key, $Socket) {
+          // Clearify that we are ready
+          $this->Ready = true;
+          
+          // Move from pending to blocked
+          unset ($this->pendingStreams [$Key]);
+          $this->blockedStreams [] = $Stream;
+          
+          // Install event-hooks
+          $Stream->addHook (
+            'eventClosed',
+            function (qcEvents_Stream_FTP_Client $Stream) {
+              if (($Key = array_search ($Stream, $this->availableStreams, true)) !== false)
+                unset ($this->availableStreams [$Key]);
+              elseif (($Key = array_search ($Stream, $this->blockedStreams, true)) !== false)
+                unset ($this->blockedStreams [$Key]);
+              elseif (($Key = array_search ($Stream, $this->pendingStreams, true)) !== false)
                 unset ($this->pendingStreams [$Key]);
-                $this->blockedStreams [] = $Stream;
-                
-                // Install event-hooks
-                $Stream->addHook ('eventClosed', function (qcEvents_Stream_FTP_Client $Stream) {
-                  if (($Key = array_search ($Stream, $this->availableStreams, true)) !== false)
-                    unset ($this->availableStreams [$Key]);
-                  elseif (($Key = array_search ($Stream, $this->blockedStreams, true)) !== false)
-                    unset ($this->blockedStreams [$Key]);
-                  elseif (($Key = array_search ($Stream, $this->pendingStreams, true)) !== false)
-                    unset ($this->pendingStreams [$Key]);
-                });
-                
-                // Forward the stream
-                return call_user_func ($Callback, $Stream);
-              });
-            }
-          )->catch (
-            function () use ($Socket, $Callback) {
-              $Socket->close ();
-              
-              call_user_func ($Callback, null);
-              
-              throw new qcEvents_Promise_Solution (func_get_args ());
             }
           );
+          
+          // Forward the stream
+          return $Stream;
         },
-        function () use ($Key, $Callback) {
+        function () use ($Socket, $Key) {
+          $Socket->close ();
+          
           unset ($this->pendingStreams [$Key]);
-          call_user_func ($Callback, null);
           
           throw new qcEvents_Promise_Solution (func_get_args ());
         }
