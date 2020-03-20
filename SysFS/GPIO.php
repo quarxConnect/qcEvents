@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - GPIO-Interface
-   * Copyright (C) 2016 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2016-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
   require_once ('qcEvents/Trait/Parented.php');
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/File.php');
+  require_once ('qcEvents/Defered.php');
   
   class qcEvents_SysFS_GPIO extends qcEvents_Hookable implements qcEvents_Interface_Loop {
     /* Re-use common functions for our interface */
@@ -83,170 +84,147 @@
     /**
      * Switch the used GPIO-Pin
      * 
-     * @param int $Number
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
+     * @param int $gpioNumber
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function setGPIO ($Number, callable $Callback = null, $Private = null) {
+    public function setGPIO ($gpioNumber) : qcEvents_Promise {
       // Make sure its a number
-      $Number = (int)$Number;
+      $gpioNumber = (int)$gpioNumber;
       
       // Check if the GPIO is already exported
-      if (is_dir ('/sys/class/gpio/gpio' . $Number))
-        return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+      if (is_dir ('/sys/class/gpio/gpio' . $gpioNumber))
+        return $this->gpioAttach ($gpioNumber, $this->gpioDirection, $this->gpioEdge);
       
       // Try to export the Pin
-      return qcEvents_File::writeFileContents ($this->getEventBase (), '/sys/class/gpio/export', (string)$Number)->then (
-        function () use ($Number, $Callback, $Private) {
+      return qcEvents_File::writeFileContents (
+        $this->getEventBase (),
+        '/sys/class/gpio/export', (string)$gpioNumber
+      )->then (
+        function () use ($gpioNumber) {
           // Wait for directiory to appear
-          if (!is_dir ('/sys/class/gpio/gpio' . $Number))
-            return $this->setGPIOWait (0, $Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+          if (!is_dir ('/sys/class/gpio/gpio' . $gpioNumber))
+            return $this->gpioWait (0, $gpioNumber, $this->gpioDirection, $this->gpioEdge);
           
           // Check modes
           if (!is_array ($Ctrl = @stat ('/sys/class/gpio/export')))
-            return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+            return $this->gpioAttach ($gpioNumber, $this->gpioDirection, $this->gpioEdge);
           
-          if (!is_array ($Stat = stat ('/sys/class/gpio/gpio' . $Number . '/direction')) ||
-            (!is_writable ('/sys/class/gpio/gpio' . $Number . '/direction') &&
+          if (!is_array ($Stat = stat ('/sys/class/gpio/gpio' . $gpioNumber . '/direction')) ||
+            (!is_writable ('/sys/class/gpio/gpio' . $gpioNumber . '/direction') &&
              (($Ctrl ['mode'] != $Stat ['mode']) ||
               ($Ctrl ['gid'] != $Stat ['gid']))))
-            return $this->setGPIOWait (0, $Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+            return $this->gpioWait (0, $gpioNumber, $this->gpioDirection, $this->gpioEdge);
           
           // Attach ourself to that GPIO
-          return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
-        },
-        function () use ($Callback, $Number, $Private) {
-          trigger_error ('Failed to query GPIO-Export');
-          
-          return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
+          return $this->gpioAttach ($gpioNumber, $this->gpioDirection, $this->gpioEdge);
         }
       );
     }
     // }}}
     
-    // {{{ setGPIOWait
+    // {{{ gpioWait
     /**
      * Wait for GPIO-Pin to be setup by system
      * 
      * @param int $Iteration
-     * @param int $Number
+     * @param int $gpioNumber
      * @param enum $Direction
      * @param enum $Edge
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
      * 
      * @access private
-     * @return void
+     * @return qcEvents_Promise
      **/
-    private function setGPIOWait ($Iteration, $Number, $Direction, $Edge, callable $Callback = null, $Private = null) {
+    private function gpioWait ($Iteration, $gpioNumber, $Direction, $Edge) : qcEvents_Promise {
       // Empty cache
-      clearstatcache (false, '/sys/class/gpio/gpio' . $Number);
+      clearstatcache (false, '/sys/class/gpio/gpio' . $gpioNumber);
       
       // Check if the directory appeared
-      if (!is_dir ('/sys/class/gpio/gpio' . $Number)) {
+      if (!is_dir ('/sys/class/gpio/gpio' . $gpioNumber)) {
         // Check for a timeout
-        if ($Iteration > 100) {
-          trigger_error ('GPIO was not exported');
-          
-          return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
-        }
+        if ($Iteration > 100)
+          return qcEvents_Promise::reject ('GPIO was not exported');
         
         // Wait a while
         return $this->getEventBase ()->addTimeout (0.01)->then (
-          function () use ($Iteration, $Number, $Direction, $Edge, $Callback, $Private) {
-            return $this->setGPIOWait (++$Iteration, $Number, $Direction, $Edge, $Callback, $Private);
+          function () use ($Iteration, $gpioNumber, $Direction, $Edge) {
+            return $this->gpioWait (++$Iteration, $gpioNumber, $Direction, $Edge);
           }
         );
       }
       
       // Try to check modes
       if (!is_array ($Ctrl = @stat ('/sys/class/gpio/export')))
-        return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+        return $this->gpioAttach ($gpioNumber, $this->gpioDirection, $this->gpioEdge);
       
-      if (!is_array ($Stat = stat ('/sys/class/gpio/gpio' . $Number . '/direction')) ||
-          (!is_writable ('/sys/class/gpio/gpio' . $Number . '/direction') &&
+      if (!is_array ($Stat = stat ('/sys/class/gpio/gpio' . $gpioNumber . '/direction')) ||
+          (!is_writable ('/sys/class/gpio/gpio' . $gpioNumber . '/direction') &&
            (($Ctrl ['mode'] != $Stat ['mode']) ||
             ($Ctrl ['gid'] != $Stat ['gid'])))) {
         // Check for a timeout
-        if ($Iteration > 100) {
-          trigger_error ('GPIO-Modes were not changed');
-          
-          return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
-        }
+        if ($Iteration > 100)
+          return qcEvents_Promise::reject ('GPIO-Modes were not changed');
         
         // Wait a while
         return $this->getEventBase ()->addTimeout (0.01)->then (
-          function () use ($Iteration, $Number, $Direction, $Edge, $Callback, $Private) {
-            return $this->setGPIOWait (++$Iteration, $Number, $Direction, $Edge, $Callback, $Private);
+          function () use ($Iteration, $gpioNumber, $Direction, $Edge) {
+            return $this->gpioWait (++$Iteration, $gpioNumber, $Direction, $Edge);
           }
         );
       }
       
       // Just try to attach
-      return $this->setGPIOAttach ($Number, $this->gpioDirection, $this->gpioEdge, $Callback, $Private);
+      return $this->gpioAttach ($gpioNumber, $this->gpioDirection, $this->gpioEdge);
     }
     // }}}
     
-    // {{{ setGPIOAttach
+    // {{{ gpioAttach
     /**
      * Attach ourself to an already exported GPIO-Pin
      * 
-     * @param int $Number
+     * @param int $gpioNumber
      * @param enum $Direction
      * @param enum $Edge
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
      * 
      * @access private
-     * @return void
+     * @return qcEvents_Promise
      **/
-    private function setGPIOAttach ($Number, $Direction, $Edge, callable $Callback = null, $Private = null) {
+    private function gpioAttach ($gpioNumber, $Direction, $Edge) : qcEvents_Promise {
       // Setup the direction of the GPIO
-      qcEvents_File::writeFileContents (
+      return qcEvents_File::writeFileContents (
         $this->getEventBase (),
-        '/sys/class/gpio/gpio' . $Number . '/direction',
+        '/sys/class/gpio/gpio' . $gpioNumber . '/direction',
         ($Direction == $this::GPIO_IN ? 'in' : 'out')
       )->then (
-        function () use ($Number, $Direction, $Edge) {
+        function () use ($gpioNumber, $Direction, $Edge) {
           // Setup edges
           return qcEvents_File::writeFileContents (
             $this->getEventBase (),
-            '/sys/class/gpio/gpio' . $Number . '/edge',
+            '/sys/class/gpio/gpio' . $gpioNumber . '/edge',
             (($Direction == $this::GPIO_OUT) || ($Edge == $this::GPIO_EDGE_NONE) ? 'none' : ($Edge == $this::GPIO_EDGE_FALLING ? 'falling' : ($Edge == $this::GPIO_EDGE_RISING ? 'rising' : 'both')))
           );
         }
       )->then (
-        function () use ($Number, $Direction, $Edge, $Callback, $Private) {
+        function () use ($gpioNumber, $Direction, $Edge) {
           // Try to open the value-reader
-          $gpioFD = fopen ('/sys/class/gpio/gpio' . $Number . '/value', ($Direction == $this::GPIO_IN ? 'r' : 'w+'));
+          $gpioFD = fopen ('/sys/class/gpio/gpio' . $gpioNumber . '/value', ($Direction == $this::GPIO_IN ? 'r' : 'w+'));
           
-          if (!is_resource ($gpioFD)) {
-            trigger_error ('Failed to open GPIO-Pin');
-            
-            return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
-          }
+          if (!is_resource ($gpioFD))
+            throw new Error ('Failed to open GPIO-Pin');
           
           // Close old FD
           if (is_resource ($this->gpioFD))
             fclose ($this->gpioFD);
           
           // Setup new FD
-          $this->gpioNumber = $Number;
+          $this->gpioNumber = $gpioNumber;
           $this->gpioFD = $gpioFD;
           $this->gpioDirection = $Direction;
           $this->gpioEdge = $Edge;
           
           if ($Base = $this->getEventBase ())
             $Base->updateEvent ($this);
-          
-          // Raise the callback
-          return $this->___raiseCallback ($Callback, $this, $Number, true, $Private);
-        },
-        function () use ($Callback, $Number, $Private) {
-          return $this->___raiseCallback ($Callback, $this, $Number, false, $Private);
         }
       );
     }
@@ -257,33 +235,28 @@
      * Switch Direction of GPIO-Pin
      * 
      * @param enum $Direction
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function setDirection ($Direction, callable $Callback = null, $Private = null) {
+    public function setDirection ($Direction) : qcEvents_Promise {
       // Make sure the direction is correct
-      if (!in_array ($Direction, array ($this::GPIO_IN, $this::GPIO_OUT))) {
-        trigger_error ('Invalid direction');
-        
-        return $this->___raiseCallback ($Callback, false, $Private);
-      }
+      if (!in_array ($Direction, array ($this::GPIO_IN, $this::GPIO_OUT)))
+        return qcEvents_Promise::reject ('Invalid direction');
       
       // Check if the direction is already set
       if ($this->gpioDirection == $Direction)
-        return $this->___raiseCallback ($Callback, true, $Private);
+        return qcEvents_Promise::resolve ();
       
       // Check if we are already bound
       if ($this->gpioNumber)
-        return $this->setGPIOAttach ($this->gpioNumber, $Direction, $this->gpioEdge, $Callback, $Private);
+        return $this->gpioAttach ($this->gpioNumber, $Direction, $this->gpioEdge);
       
       // Just store the new direction
       $this->gpioDirection = $Direction;
       
       // Raise callback
-      return $this->___raiseCallback ($Callback, true, $Private);
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -292,33 +265,27 @@
      * Switch Event-Edge of GPIO-Pin
      * 
      * @param enum $Edge
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promsie
      **/
-    public function setEdge ($Edge, callable $Callback = null, $Private = null) {
+    public function setEdge ($Edge) : qcEvents_Promise {
       // Make sure the edge is correct
-      if (!in_array ($Edge, array ($this::GPIO_EDGE_NONE, $this::GPIO_EDGE_RISING, $this::GPIO_EDGE_FALLING, $this::GPIO_EDGE_BOTH))) {
-        trigger_error ('Invalid edge');
-          
-        return $this->___raiseCallback ($Callback, false, $Private);
-      }
-       
+      if (!in_array ($Edge, array ($this::GPIO_EDGE_NONE, $this::GPIO_EDGE_RISING, $this::GPIO_EDGE_FALLING, $this::GPIO_EDGE_BOTH)))
+        return qcEvents_Promise::reject ('Invalid edge');
+      
       // Check if the edge is already set
       if ($this->gpioEdge == $Edge)
-        return $this->___raiseCallback ($Callback, true, $Private);
+        return qcEvents_Promise::resolve ();
       
       // Check if we are already bound 
       if ($this->gpioNumber)
-        return $this->setGPIOAttach ($this->gpioNumber, $this->gpioDirection, $Edge, $Callback, $Private);
+        return $this->gpioAttach ($this->gpioNumber, $this->gpioDirection, $Edge);
       
       // Just store the new edge
       $this->gpioEdge = $Edge;
       
-      // Raise callback
-      return $this->___raiseCallback ($Callback, true, $Private);
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -327,27 +294,27 @@
      * Set the State of our GPIO-Pin (if direction is OUT)
      * 
      * @param bool $Status
-     * @param callable $Callback (optional)
-     * @param mixed $Private (optional)
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
-    public function setStatus ($Status, callable $Callback = null, $Private = null) {
+    public function setStatus ($Status) : qcEvents_Promise {
       // Make sure its a boolean
       $Status = !!$Status;
       
       // Check if the state is already up-to-date
       if ($this->gpioState === $Status)
-        return $this->___raiseCallback ($Callback, $Private);
+        return qcEvents_Promise::resolve ();
       
       // Enqueue the state
       $this->gpioSetState = $Status;
-      $this->gpioStateCallbacks [] = array ($Callback, $Private);
+      $this->gpioStateCallbacks [] = $deferedPromise = new qcEvents_Defered;
       
       // Try to write
       if ($Base = $this->getEventBase ())
         $Base->updateEvent ($this);
+      
+      return $deferedPromise->getPromise ();
     }
     // }}}
     
@@ -422,8 +389,8 @@
         $Callbacks = $this->gpioStateCallbacks;
         $this->gpioStateCallbacks = array ();
         
-        foreach ($Callbacks as $Callback)
-          $this->___raiseCallback ($Callback [0], $Callback [1]);
+        foreach ($Callbacks as $deferedPromise)
+          $deferedPromise->resolve ();
         
         $this->___callback ('gpioStateChanged', $this->gpioState);
       }
