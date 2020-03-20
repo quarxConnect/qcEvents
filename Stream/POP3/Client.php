@@ -34,7 +34,7 @@
    * @revision 02
    **/
   class qcEvents_Stream_POP3_Client extends qcEvents_Hookable implements qcEvents_Interface_Stream_Consumer {
-    /* Defaults for IMAP */
+    /* Defaults for POP3 */
     const DEFAULT_PORT = 110;
     const DEFAULT_TYPE = qcEvents_Socket::TYPE_TCP;
     

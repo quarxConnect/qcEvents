@@ -18,22 +18,20 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Socket/Client.php');
-  require_once ('qcMail/Headers.php');
+  require_once ('qcEvents/Defered.php');
+  require_once ('qcEvents/Hookable.php');
+  require_once ('qcEvents/Interface/Stream/Consumer.php');
+  require_once ('qcEvents/Stream/IMAP/Mailbox.php');
+  require_once ('qcEvents/Stream/IMAP/Literal.php');
   
   /**
    * IMAPv4r1 Client
    * ---------------
+   * Full support for RFC 3501 "Internet Mesasge Access Protocol - Version 4rev1",
+   * RFC 2088 "Literal+", RFC 2342 "IMAP Namespace", RFC 3691 "IMAP UNSELECT",
+   * RFC 4315 "UIDPLUS" and RFC 4959 "IMAP SASL-IR".
    * 
-   * @changelog 20130621 Added Support for RFC 4959 IMAP SASL-IR
-   *            20130621 Added Support for RFC 3691 IMAP UNSELECT
-   *            20130621 Added Support for RFC 2342 IMAP NAMESPACE
-   *            20130624 Completed support for RFC 3501 IMAP4r1
-   *            20130624 Added Support for RFC 2088 Literal+
-   *            20130722 Added basic Support for RFC 3348 Mailbox-Children
-   * 
-   * @todo RFC 2359 UIDPLUS
-   *       RFC 5256 SORT/THREAD
+   * @todo RFC 5256 SORT/THREAD
    *       RFC 2177 IDLE
    *       RFC 4978 COMPRESS
    *       RFC 3502 MULTIAPPEND
@@ -43,22 +41,22 @@
    *       RFC 5465 NOTIFY
    *       RFC 5464 METADATA
    *       RFC 6855 UTF-8
+   *       RFC 3348 Mailbox-Children
    **/
-  class qcEvents_Stream_IMAP_Client extends qcEvents_Socket_Client {
+  class qcEvents_Stream_IMAP_Client extends qcEvents_Hookable implements qcEvents_Interface_Stream_Consumer {
     /* Defaults for IMAP */
     const DEFAULT_PORT = 143;
     const DEFAULT_TYPE = qcEvents_Socket::TYPE_TCP;
     
-    /* Defaults for this client-protocol */
-    const USE_LINE_BUFFER = true;
-    
     /* Connection-states */
-    const IMAP_STATE_CONNECTING = 1; # Set by socketConnected-Callback
-    const IMAP_STATE_CONNECTED = 2; # Set by receivedLine if connecting
-    const IMAP_STATE_AUTHENTICATED = 3; # Set by imapAfterAuthentication
-    const IMAP_STATE_ONMAILBOX = 4;
-    const IMAP_STATE_DISCONNECTING = 5; # Set by logout
-    const IMAP_STATE_DISCONNECTED = 0; # Set by socketDisconnected
+    const IMAP_STATE_DISCONNECTED = 0;
+    const IMAP_STATE_DISCONNECTING = 1;
+    const IMAP_STATE_CONNECTING = 2;
+    const IMAP_STATE_CONNECTED = 3;
+    const IMAP_STATE_AUTHENTICATED = 4;
+    const IMAP_STATE_ONMAILBOX = 5;
+    
+    private $imapState = qcEvents_Stream_IMAP_Client::IMAP_STATE_DISCONNECTED;
     
     /* Response-status */
     const IMAP_STATUS_OK = 'OK';
@@ -68,69 +66,67 @@
     const IMAP_STATUS_PREAUTH = 'PREAUTH';
     
     /* Set/Store-Modes */
-    const MODE_SET = 0;
-    const MODE_ADD = 1;
-    const MODE_DEL = 2;
+    const STORE_MODE_SET = 0;
+    const STORE_MODE_ADD = 1;
+    const STORE_MODE_DEL = 2;
     
-    /* Our current protocol-state */
-    private $State = qcEvents_Socket_Client_IMAP::IMAP_STATE_DISCONNECTED;
+    /* Our Source-Stream */
+    private $sourceStream = null;
     
-    /* IMAP-Greeting was received */
-    private $imapGreeting = false;
-    
-    /* Command-Counter */
-    private $Commands = 0;
-    
-    /* Pipe for commands waiting for execution */
-    private $commandPipe = array ();
-    
-    /* Buffered reads for literal */
-    private $literalBuffer = '';
-    private $literalLength = null;
-    private $commandBuffer = '';
-    
-    /* Registered callbacks for commands issued */
-    private $Callbacks = array ();
+    /* Receive-Buffer */
+    private $receiveBuffer = '';
     
     /* Capabilities of our IMAP-Server */
-    private $serverCapabilities = array ();
+    private $serverCapabilities = null;
     
-    /* Callback for TLS-Negotiation */
-    private $imapTLSCallback = null;
+    /* Command Sequence */
+    private $commandSequence = 0xA000;
     
+    /* Currently active command */
+    private $activeCommand = null;
+    
+    /* Queue for pending commands */
+    private $pendingCommands = array ();
+    
+    #/* Callback for TLS-Negotiation */
+    #private $imapTLSCallback = null;
+    #
     /* Namespaces on this server */
-    private $impNamespaces = null;
+    private $imapNamespaces = null;
     
-    /* Status-Cache for Mailboxes */
-    private $imapMailboxes = array ();
+    #/* Status-Cache for Mailboxes */
+    #private $imapMailboxes = array ();
+    #
+    #/* Current Mailbox */
+    #private $imapMailbox = null;
+    #
+    #/* Predicted next mailbox */
+    #private $imapMailboxNext = null;
+    #
+    #/* Read-Only-Status of current mailbox */
+    #private $mailboxReadOnly = false;
+    #
+    #/* Message-Information */
+    #private $messages = array ();
+    #
+    #/* Sequence-to-UID mappings */
+    #private $messageIDs = array ();
+    #
+    #/* Message-IDs of last search */
+    #private $searchResult = array ();
     
-    /* Current Mailbox */
-    private $imapMailbox = null;
+    /* Promise for our stream-initialization */
+    private $initPromise = null;
     
-    /* Predicted next mailbox */
-    private $imapMailboxNext = null;
-    
-    /* Read-Only-Status of current mailbox */
-    private $mailboxReadOnly = false;
-    
-    /* Message-Information */
-    private $messages = array ();
-    
-    /* Sequence-to-UID mappings */
-    private $messageIDs = array ();
-    
-    /* Message-IDs of last search */
-    private $searchResult = array ();
-    
-    // {{{ imapIsConnected
+    // {{{ isConnected
     /**
      * Check if this IMAP-Connection is at least in connected state
      * 
      * @access public
      * @return bool
      **/
-    public function imapIsConnected () {
-      return (($this->State == self::IMAP_STATE_CONNECTED) || ($this->State == self::IMAP_STATE_AUTHENTICATED) || ($this->State == self::IMAP_STATE_ONMAILBOX));
+    public function isConnected () {
+      return ($this->imapState >= self::IMAP_STATE_CONNECTED);
     }
     // }}}
     
@@ -141,254 +137,1386 @@
      * @access public
      * @return bool
      **/
-    public function imapIsAuthenticated () {
-      return (($this->State == self::IMAP_STATE_AUTHENTICATED) || ($this->State == self::IMAP_STATE_ONMAILBOX));
+    public function isAuthenticated () {
+      return ($this->imapState >= self::IMAP_STATE_AUTHENTICATED);
     }
     // }}}
     
-    // {{{ socketReceive
+    // {{{ getCapabilities
     /**
-     * Internal Callback: Data is received over the wire
-     * Hook into this function to handle pending literals
+     * Request a list of capabilities of this server
      * 
-     * @param string $Data
+     * @see https://tools.ietf.org/html/rfc3501#section-6.1.1
      * 
-     * @access protected
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function getCapabilities () : qcEvents_Promise {
+      return $this->imapCommand ('CAPABILITY')->then (
+        function ($responseText, array $responseDatas) {
+          // Look for new capabilities
+          $serverCapabilities = null;
+          
+          foreach ($responseDatas as $responseData)
+            if ($responseData [0] == 'CAPABILITY')
+              $serverCapabilities = explode (' ', $responseData [1]);
+          
+          // Make sure we found capabilities
+          if (!is_array ($serverCapabilities))
+            throw new Error ('No capabilties received');
+          
+          // Raise a callback for this
+          $this->___callback ('imapCapabilities', $serverCapabilities);
+          
+          return ($this->serverCapabilities = $serverCapabilities);
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ haveCapabilty
+    /**
+     * Check if a given capability is supported by the server
+     * 
+     * @param string $checkCapability
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function haveCapability ($checkCapability) {
+      if ($this->serverCapabilities === null)
+        return null;
+      
+      return in_array ($checkCapability, $this->serverCapabilities);
+    }
+    // }}}
+    
+    // {{{ checkCapability
+    /**
+     * Safely check if the server supports a requested capability
+     * 
+     * @param string $checkCapability
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function checkCapability ($checkCapability) : qcEvents_Promise {
+      return $this->getCapabilities ()->then (
+        function (array $serverCapabilities) use ($checkCapability) {
+          if (!in_array ($checkCapability, $serverCapabilities))
+            throw new Error ('Requested capability not available');
+          
+          return true;
+        },
+        function () {
+          return null;
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ noOp
+    /**
+     * Issue an NoOp-Command to keep the connection alive or retrive any pending updates
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.1.2
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function noOp () : qcEvents_Promise {
+      return $this->imapCommand ('NOOP')->then (
+        function () { }
+      );
+    }
+    // }}}
+    
+    // {{{ logout
+    /**
+     * Request a logout from server
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.1.3
+     * 
+     * @access public
      * @return void
      **/
-    protected final function socketReceive ($Data) {
-      // Check if we are expecting a literal
-      if ($this->literalLength !== null) {
-        $remaining = $this->literalLength - strlen ($this->literalBuffer);
-        $l = strlen ($Data);
-        
-        // Check if there is still data pending
-        if ($l < $remaining) {
-          $this->literalBuffer .= $Data;
+    public function logout () : qcEvents_Promise {
+      $this->imapSetState ($this::IMAP_STATE_DISCONNECTING);
+      
+      return $this->imapCommand ('LOGOUT')->then (
+        function () { }
+      );
+    }
+    // }}}
+    
+    // {{{ startTLS
+    /**
+     * Enable TLS-encryption on this connection
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.2.1
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function startTLS () : qcEvents_Promise {
+      // Check if StartTLS is supported
+      return $this->checkCapability ('STARTTLS')->then (
+        function () {
+          // Request start of TLS
+          return $this->imapCommand ('STARTTLS');
+        }
+      )->then (
+        function () {
+          // Try to enable TLS on our source stream
+          return $this->sourceStream->tlsEnable (true);
+        },
+        function () {
+          // Raise a callback
+          $this->___callback ('tlsFailed');
           
-          return;
-        
-        // Check for an exact buffer-fill
-        } elseif ($l == $remaining) {
-          $this->commandBuffer .= $this->literalBuffer . $Data;
-          $this->literalBuffer = '';
-          $this->literalLength = null;
+          // Forward the result
+          throw new qcEvents_Promise_Solution (func_get_args ());
+        }
+      )->then (
+        function () {
+          // Reset capabilities
+          $this->serverCapabilities = null;
           
-          return;
+          return $this->getCapabilities ()->then (
+            function () { },
+            function () { }
+          );
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ authenticate
+    /**
+     * Try to login using AUTHENTICATE
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.2.2
+     * 
+     * @param string $Username
+     * @param string $Password
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function authenticate ($Username, $Password) : qcEvents_Promise {
+      // Create SASL-Client
+      require_once ('qcAuth/SASL/Client.php');
+      
+      $saslClient = new qcAuth_SASL_Client;
+      $saslClient->setUsername ($Username);
+      $saslClient->setPassword ($Password);
+      
+      // Create list of mechanisms to try
+      $saslMechanisms = $saslClient->getMechanisms ();
+      
+      // Create authenticator
+      $saslAuthenticate = null;
+      $saslAuthenticate = function () use (&$saslAuthenticate, &$saslMechanisms, $saslClient) {
+        if (count ($saslMechanisms) < 1)
+          return qcEvents_Promise::reject ('No more mechanisms available');
         
-        // Check if there is more data available than expected
-        } else {
-          if ($remaining > 0) {
-            $this->commandBuffer .= $this->literalBuffer . substr ($Data, 0, $remaining);
-            $Data = substr ($Data, $remaining);
+        // Peek the next usable mechanism
+        $saslMechanism = array_shift ($saslMechanisms);
+        $saslClient->cancel ();
+        
+        while (!$saslClient->setMechanism ($saslMechanism))
+          if (count ($saslMechanisms) > 0)
+            $saslMechanism = array_shift ($saslMechanisms);
+          else
+            return qcEvents_Promise::reject ('No more mechanisms available');
+        
+        // Prepare arguments
+        if ($this->haveCapability ('SASL-IR') && (($saslInitial = $saslClient->getInitialResponse ()) !== null))
+          $saslArguments = array ($saslMechanism, (strlen ($saslInitial) > 0 ? base64_encode ($saslInitial) : '='));
+        else
+          $saslArguments = array ($saslMechanism);
+        
+        $saslInitial = true;
+        
+        return $this->imapCommand (
+          'AUTHENTICATE',
+          $saslArguments,
+          function ($saslChallenge) use (&$saslInitial, $saslClient) {
+            if (!$saslInitial || $this->haveCapability ('SASL-IR'))
+              return base64_encode ($saslClient->getResponse ());
+            
+            $saslInitial = false;
+            
+            return base64_encode ($saslClient->getInitialResponse ());
+          }
+        )->then (
+          function () {
+            // Set new state
+            $this->imapSetState ($this::IMAP_STATE_AUTHENTICATED);
+            
+            // Re-request capabilties
+            return $this->getCapabilities ()->catch (
+              function () { }
+            )->then (
+              function () {
+                // Just raise a callback
+                $this->___callback ('imapAuthenticated');
+              }
+            );
+          },
+          function () use ($saslAuthenticate, &$saslInitial) {
+            // Check wheter to try the next method
+            if ($saslInitial)
+              return $saslAuthenticate ();
+            
+            // Raise a callback
+            $this->___callback ('imapAuthenticationFailed');
+            
+            // Just pass the error
+            throw new qcEvents_Promise_Solution (func_get_args ());
+          }
+        );
+      };
+      
+      // Run authenticator
+      return $saslAuthenticate ();
+    }
+    // }}}
+    
+    // {{{ login
+    /**
+     * Login on server using LOGIN
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.2.3
+     * 
+     * @param string $Username
+     * @param string $Password
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function login ($Username, $Password) : qcEvents_Promise {
+      return $this->imapCommand (
+        'LOGIN',
+        array ($Username, $Password)
+      )->then (
+        function () {
+          // Set new state
+          $this->imapSetState ($this::IMAP_STATE_AUTHENTICATED);
+          
+          // Re-request capabilties
+          return $this->getCapabilities ()->catch (
+            function () { }
+          )->then (
+            function () {
+              // Just raise a callback
+              $this->___callback ('imapAuthenticated');
+            }
+          );
+        },
+        function () {
+          // Raise a callback
+          $this->___callback ('imapAuthenticationFailed');
+          
+          // Just pass the error
+          throw new qcEvents_Promise_Solution (func_get_args ());
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ selectMailbox
+    /**
+     * Open a given mailbox
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.3.1
+     * @see https://tools.ietf.org/html/rfc3501#section-6.3.2
+     * 
+     * @param string $mailboxName
+     * @param bool $readOnly (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function selectMailbox ($mailboxName, $readOnly = false) : qcEvents_Promise {
+      // Remove current mailbox
+      $this->imapMailbox = null;
+      $this->imapSetState ($this::IMAP_STATE_AUTHENTICATED);
+      
+      // Issue the command 
+      return $this->imapCommand (
+        ($readOnly ? 'EXAMINE' : 'SELECT'),
+        array ($mailboxName)
+      )->then (
+        function ($responseText, array $responseItems, array $responseCode = null) use ($mailboxName, $readOnly) {
+          // Update our state
+          $this->imapMailbox = new qcEvents_Stream_IMAP_Mailbox ($mailboxName);
+          $this->imapMailboxReadOnly = $readOnly;
+          
+          // Process response items
+          foreach ($responseItems as $responseData) {
+            if ($responseData [0] == 'FLAGS') 
+              $this->imapMailbox->setFlags ($this::imapDecodeArguments ($responseData [1]) [0]);
+            elseif ($responseData [1] == 'EXISTS')
+              $this->imapMailbox->setMessageCount ((int)$responseData [0]);
+            elseif ($responseData [1] == 'RECENT')
+              $this->imapMailbox->setRecentCount ((int)$responseData [0]);
+            
+            if ($responseData [2] !== null)
+              for ($i = 0; $i < count ($responseData [2]); $i++)
+                if ($responseData [2][$i] == 'UNSEEN')
+                  $this->imapMailbox->setFirstUnseen ((int)$responseData [2][++$i]);
+                elseif ($responseData [2][$i] == 'PERMANENTFLAGS')
+                  $this->imapMailbox->setPermanentFlags ($responseData [2][++$i]);
+                elseif ($responseData [2][$i] == 'UIDNEXT')
+                  $this->imapMailbox->setNextUID ((int)$responseData [2][++$i]);
+                elseif ($responseData [2][$i] == 'UIDVALIDITY')
+                  $this->imapMailbox->setUIDValidity ((int)$responseData [2][++$i]);
+                elseif ($responseData [2][$i] == 'UIDNOSTICKY')
+                  $this->imapMailbox->supportsPersistentUID (false);
           }
           
-          $this->literalBuffer = '';
-          $this->literalLength = null;
+          // Change out state
+          $this->imapSetState ($this::IMAP_STATE_ONMAILBOX);
+          
+          // Fire callback
+          $this->___callback ('imapMailboxOpened', $mailboxName, $readOnly);
+        },
+        function () use ($mailboxName) {
+          $this->___callback ('imapMailboxOpenFailed', $mailboxName);
+          
+          throw new qcEvents_Promise_Solution (func_get_args ());
         }
-      }
-      
-      // Inherit to our parent function
-      return parent::socketReceive ($Data);
+      );
     }
     // }}}
     
-    // {{{ receivedLine
+    // {{{ createMailbox
     /**
-     * A single IMAP-Line was received
+     * Create a new mailbox
      * 
-     * @param string $Line
+     * @see https://tools.ietf.org/html/rfc3501#section-6.3.3
      * 
-     * @access protected
-     * @return void
+     * @param string $mailboxName
+     * 
+     * @access public
+     * @return qcEvents_Promise
      **/
-    protected final function receivedLine ($Line) {
-      // Make sure there is any data on the line
-      if (strlen ($Line) == 0)
-        return;
-      
-      // Check if a literal is expected
-      if ((substr ($Line, -1, 1) == '}') && (($p = strrpos ($Line, '{')) !== false)) {
-        $this->literalLength = intval (substr ($Line, $p + 1, -1));
-        $this->commandBuffer .= $Line . "\r\n";
-        
-        // Flush any buffered data back to our handler
-        if (strlen ($Buffer = $this->getLineBufferClean ()) > 0)
-          $this->socketReceive ($Buffer);
-        
-        return;
-      }
-      
-      // Flush any buffered command
-      $Line = $this->commandBuffer . $Line;
-      $this->commandBuffer = '';
-      
-      // Check for a continuation-command
-      if ($Line [0] == '+') {
-        // Find the next command-callback with continuation-callback
-        foreach ($this->Callbacks as $ID=>$Info)
-          if ($Info [2] !== null) {
-            $rc = call_user_func ($Info [2], $ID, ltrim (substr ($Line, 1)), $Info [3]);
-            
-            if ($rc === null)
+    public function createMailbox ($mailboxName) : qcEvents_Promise {
+      // Issue the command
+      return $this->imapCommand (
+        'CREATE',
+        array ($mailboxName)
+      )->then (
+        function () { }
+      );
+    }
+    // }}}
+    
+    // {{{ deleteMailbox
+    /**
+     * Remove a mailbox from server
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.3.4
+     * 
+     * @param string $mailboxName
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function deleteMailbox ($mailboxName) : qcEvents_Promise {
+      // Issue the command
+      return $this->imapCommand (
+        'DELETE',
+        array ($mailboxName)
+      )->then (
+        function () { }
+      );
+    }
+    // }}}
+    
+    // {{{ renameMailbox
+    /**
+     * Rename a mailbox on our server
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.3.5
+     * 
+     * @param string $mailboxName
+     * @param string $newName
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function renameMailbox ($mailboxName, $newName) : qcEvents_Promise {
+      // Issue the command
+      return $this->imapCommand (
+        'RENAME',
+        array ($mailboxName, $newName)
+      )->then (
+        function () { }
+      );
+    }
+    // }}}
+    
+    // {{{ subscribeMailbox
+    /**
+     * Subscribe to a mailbox on our server
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.3.6
+     * 
+     * @param string $mailboxName
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function subscribeMailbox ($mailboxName) : qcEvents_Promise {
+      // Issue the command
+      return $this->imapCommand (
+        'SUBSCRIBE',
+        array ($mailboxName)
+      )->then (
+        function () { }
+      );
+    }
+    // }}}
+    
+    // {{{ unsubscribeMailbox
+    /**
+     * Unsubscribe from a mailbox on our server
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.3.7
+     * 
+     * @param string $mailboxName
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function unsubscribeMailbox ($mailboxName) : qcEvents_Promise {
+      // Issue the command
+      return $this->imapCommand (
+        'UNSUBSCRIBE',
+        array ($mailboxName)
+      )->then (
+        function () { }
+      );
+    }
+    // }}}
+    
+    // {{{ listMailboxes
+    /**
+     * Retrive a list of mailboxes from the server
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.3.8
+     * @see https://tools.ietf.org/html/rfc3501#section-6.3.9
+     * 
+     * @param string $parentMailbox (optional)
+     * @param string $nameFilter (optional)
+     * @param bool $subscribedOnly (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function listMailboxes ($parentMailbox = '', $nameFilter = '%', $subscribedOnly = false) : qcEvents_Promise {
+      return $this->imapCommand (
+        ($subscribedOnly ? 'LSUB' : 'LIST'),
+        array ($parentMailbox, $nameFilter)
+      )->then (
+        function ($responseText, array $responseItems) use ($subscribedOnly) {
+          // Prepare the result
+          $resultMailboxes = array ();
+          
+          foreach ($responseItems as $responseData) {
+            // Check if we are interested in this response-item
+            if ($responseData [0] != ($subscribedOnly ? 'LSUB' : 'LIST'))
               continue;
             
-            $this->write ($rc . "\r\n");
+            // Unpack mailbox-info
+            if (!is_array ($mailboxInfo = $this::imapDecodeArguments ($responseData [1]))) {
+              trigger_error ('Failed to deserialize mailbox-info');
+              
+              continue;
+            }
             
-            return;
+            // Create a mailbox for this
+            $resultMailboxes [] = $imapMailbox = new qcEvents_Stream_IMAP_Mailbox ($mailboxInfo [2]);
+            
+            $imapMailbox->setDelimiter ($mailboxInfo [1]);
+            $imapMailbox->setAttributes ($mailboxInfo [0]);
           }
-        
-        return;
-      }
-      
-      // Extract the tag
-      if (($p = strpos ($Line, ' ')) === false)
-        return false;
-      
-      $Tag = substr ($Line, 0, $p);
-      $Line = ltrim (substr ($Line, $p + 1));
-      
-      // Extract the response
-      if (($p = strpos ($Line, ' ')) === false)
-        $p = strlen ($Line);
-      
-      $Response = substr ($Line, 0, $p);
-      $Line = ltrim (substr ($Line, $p + 1));
-      
-      // Check for an additional response-code
-      $Code = array ();
-      
-      if ((strlen ($Line) > 0) && ($Line [0] == '[') && (($p = strpos ($Line, ']', 1)) !== false)) {
-        $Code = explode (' ', substr ($Line, 1, $p - 1));
-        $Line = ltrim (substr ($Line, $p + 1));
-        
-        $this->receivedCode ($Code, $Line);
-      }
-      
-      // Handle command based on state
-      if ($this->State == self::IMAP_STATE_CONNECTING) {
-        // Check if a greeting was already received
-        if ($this->imapGreeting !== false) {
-          // Ignore tagged responses
-          if ($Tag == '*')
-            return $this->receivedUntagged ($Response, $Code, $Line);
           
-          if ($this->imapGreeting == self::IMAP_STATUS_PREAUTH)
-            $this->imapSetState (self::IMAP_STATE_AUTHENTICATED);
-          else
-            $this->imapSetState (self::IMAP_STATE_CONNECTED);
-          
-        // Connection is OK, we are in connected state
-        } elseif ($Response == self::IMAP_STATUS_OK)
-          $Callback = 'imapConnected';
-        
-        // Connection is very good, we are already authenticated
-        elseif ($Response == self::IMAP_STATUS_PREAUTH)
-          $Callback = 'imapAuthenticated';
-        
-        // Something is wrong with us or the server, we will be disconnected soon
-        elseif ($Response == self::IMAP_STATUS_BYE) {
-          $this->imapSetState (self::IMAP_STATE_DISCONNECTED);
-          
-          return $this->disconnect ();
-        
-        // RFC-Violation, leave immediatly
-        } else {
-          trigger_error ('Wrong response received: ' . $Response);
-          
-          return $this->disconnect ();
+          // Forward the result
+          return $resultMailboxes;
         }
-        
-        if ($this->imapGreeting === false) {
-          // Store the greeting-response
-          $this->imapGreeting = $Response;
-          
-          // Check wheter to ask for capabilities
-          if (count ($this->serverCapabilities) == 0)
-            return $this->imapCommand ('CAPABILITY', null, array ($this, 'imapCallback'), $Callback);
-          
-          // Chnge the state directly
-          if ($this->imapGreeting == self::IMAP_STATUS_PREAUTH)
-            $this->imapSetState (self::IMAP_STATE_AUTHENTICATED);
-          else
-            $this->imapSetState (self::IMAP_STATE_CONNECTED);
-          
-          return $this->___callback ($Callback);
+      );
+    }
+    // }}}
+    
+    // {{{ statusMailbox
+    /**
+     * Retrive the status for a given mailbox
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.3.10
+     * 
+     * @param string $mailboxName
+     * @param array $requestStatuses (optional)
+     * 
+     * @access public
+     * @return void
+     **/
+    public function statusMailbox ($mailboxName, array $requestStatuses = null) {
+      // Check wheter to retrive all statuses for this mailbox
+      if ($requestStatuses === null)
+        $requestStatuses = array (
+          'MESSAGES',
+          'RECENT',
+          'UIDNEXT',
+          'UIDVALIDITY',
+          'UNSEEN',
+        );
+      
+      // Issue the command
+      return $this->imapCommand (
+        'STATUS',
+        array ($mailboxName, $requestStatuses)
+      )->then (
+        function ($responseText, array $responseItems) use ($mailboxName) {
+          foreach ($responseItems as $responseData) {
+            // Make sure it's a STATUS-response
+            if ($responseData [0] != 'STATUS')
+              continue;
+            
+            // Try to read the response
+            if (!is_array ($mailboxStatus = $this::imapDecodeArguments ($responseData [1]))) {
+              trigger_error ('Failed to decode STATUS-response');
+              
+              continue;
+            }
+            
+            // Sanity-Check the mailbox-name
+            if (strcasecmp ($mailboxName, $mailboxStatus [0]) != 0)
+              continue;
+            
+            // Repack the result
+            $imapMailbox = new qcEvents_Stream_IMAP_Mailbox ($mailboxName);
+            
+            for ($i = 0; $i < count ($mailboxStatus [1]); $i++)
+              if ($mailboxStatus [1][$i] == 'MESSAGES')
+                $imapMailbox->setMessageCount ((int)$mailboxStatus [1][++$i]);
+              elseif ($mailboxStatus [1][$i] == 'RECENT')
+                $imapMailbox->setRecentCount ((int)$mailboxStatus [1][++$i]);
+              elseif ($mailboxStatus [1][$i] == 'UIDNEXT')
+                $imapMailbox->setNextUID ((int)$mailboxStatus [1][++$i]);
+              elseif ($mailboxStatus [1][$i] == 'UIDVALIDITY')
+                $imapMailbox->setUIDValidity ((int)$mailboxStatus [1][++$i]);
+              elseif ($mailboxStatus [1][$i] == 'UNSEEN')
+                $imapMailbox->setUnseenCount ((int)$mailboxStatus [1][++$i]);
+            
+            return $imapMailbox;
+          }
         }
-      }
+      );
+    }
+    // }}}
+    
+    // {{{ appendMailbox
+    /**
+     * Append a given message to a mailbox
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.3.11
+     * @see https://tools.ietf.org/html/rfc4315#section-3
+     * 
+     * @param string $mailboxName
+     * @param string $messageBody
+     * @param array $messageFlags (optional)
+     * @param int $messageTimestamp (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function appendMailbox ($mailboxName, $messageBody, array $messageFlags = null, $messageTimestamp = null) : qcEvents_Promise {
+      // Generate parameters
+      $commandArguments = array ($mailboxName);
       
-      // Check for an untagged response
-      if ($Tag == '*')
-        return $this->receivedUntagged ($Response, $Code, $Line);
+      if ($messageFlags !== null)
+        $commandArguments [] = $messageFlags;
       
-      // Check if we have callback for this
-      if ($Tag [0] != 'C') {
-        trigger_error ('Received response for a strange command ' . $Tag, E_USER_WARNING);
-        
-        return false;
-      }
+      if ($messageTimestamp !== null)
+        $commandArguments [] = date ('d-M-Y H:i:s O', $messageTimestamp);
       
-      $ID = hexdec (substr ($Tag, 1));
+      $commandArguments [] = new qcEvents_Stream_IMAP_Literal ($messageBody);
       
-      if (!isset ($this->Callbacks [$ID])) {
-        trigger_error ('Received response for unknown command ' . $Tag, E_USER_NOTICE);
-        
-        return false;
-      }
-      
-      switch ($Response) {
-        case self::IMAP_STATUS_OK:
-        case self::IMAP_STATUS_NO:
-        case self::IMAP_STATUS_BAD:
-          // Retrive Callback-Information
-          $Info = $this->Callbacks [$ID];
-          unset ($this->Callbacks [$ID]);
+      // Issue the command
+      return $this->imapCommand (
+        'APPEND',
+        $commandArguments
+      )->then (
+        function ($responseText, array $responseItems, array $responseCodes = null) {
+          // Check for an UIDPLUS-Response (RFC 4315)
+          $uidValidity = null;
           
-          // Check if there is a real callback registered
-          if ($Info [0] === null)
-            break;
+          if ($responseCodes)
+            for ($i = 0; $i < count ($responseCodes); $i++)
+              if ($responseCodes [$i] == 'APPENDUID') {
+                $uidValidity = $responseCodes [++$i];
+                $uidMessageSet = $responseCodes [++$i];
+              }
           
-          // Fire the callback
-          if (!is_array ($Info [0]) || ($Info [0][0] !== $this))
-            call_user_func ($Info [0], $this, $Response, $Code, $Line, $Info [1]);
-          else
-            call_user_func ($Info [0], $Response, $Code, $Line, $Info [1]);
+          # TODO: Expand the uidMessageSet
+          
+          if ($uidValidity !== null)
+            return array ($uidValidity, $uidMessageSet);
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ checkMailbox
+    /**
+     * Issue a CHECK-Command
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.4.1
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function checkMailbox () : qcEvents_Promise {
+      return $this->imapCommand ('CHECK')->then (
+        function () { }
+      );
+    }
+    // }}}
+    
+    // {{{ closeMailbox
+    /**
+     * Close the currently selected mailbox
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.4.2
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function closeMailbox () : qcEvents_Promise {
+      return $this->imapCommand ('CLOSE')->then (
+        function () {
+          // Remove current mailbox
+          $lastMailbox = $this->imapMailbox;
+          $this->imapMailbox = null;
+          
+          // Update the state
+          $this->imapSetState ($this::IMAP_STATE_AUTHENTICATED);
+          
+          // Raise a callback
+          if ($lastMailbox)
+            $this->___callback ('imapMailboxClosed', $lastMailbox);
+        },
+        function () {
+          // Raise a callback
+          if ($this->imapMailbox)
+            $this->___callback ('imapMailboxCloseFailed', $this->imapMailbox);
+          
+          // Forward the rejection
+          throw new qcEvents_Promise_Solution (func_get_args ());
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ expungeMailbox
+    /**
+     * Wipe out all mails marked as deleted on the current mailbox
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.4.3
+     * @see https://tools.ietf.org/html/rfc4315#section-2.1
+     * 
+     * @param string $uidSet (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function expungeMailbox ($uidSet = null) : qcEvents_Promise {
+      return ($uidSet !== null ? $this->checkCapability ('UIDPLUS') : qcEvents_Promise::resolve (true))->then (
+        function () use ($uidSet) {
+          return $this->imapCommand (
+            ($uidSet !== null ? 'UID ' : '') . 'EXPUNGE',
+            ($uidSet !== null ? $this->imapEncodeSequence ($uidSet) : null)
+          );
+        }
+      )->then (
+        function ($responseText, array $responseData) {
+          $sequenceNumbers = array ();
+          
+          foreach ($responseData as $responseItem)
+            if ($responseItem [1] == 'EXPUNGE')
+              $sequenceNumbers [] = (int)$responseItem [0];
+          
+          return $sequenceNumbers;
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ searchMessages
+    /**
+     * Search a set of messages
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.4.4
+     * 
+     * @param bool $byUID (optional)
+     * @param string $usedCharset (optional)
+     * @param string ... (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function searchMessages ($byUID = false, $usedCharset = null, $defaultMatch = 'ALL') : qcEvents_Promise {
+      // Extract search-arguments
+      if (count ($searchArguments = array_slice (func_get_args (), 2)) == 0)
+        $searchArguments [] = 'ALL';
+      
+      foreach ($searchArguments as $argumentIndex=>$searchArgument)
+        if (!$this->imapCheckSearchKey ($searchArgument))
+          unset ($searchArguments [$argumentIndex]);
+      
+      if (count ($searchArguments) > 1)
+        $searchArguments = array ($searchArguments);
+      
+      // Prepend Charset to arguements
+      if ($usedCharset !== null)
+        array_unshift ($AsearchArguments, 'CHARSET', $useCharset);
+      
+      // Issue the command
+      return $this->imapCommand (
+        ($byUID ? 'UID SEARCH' : 'SEARCH'),
+        $searchArguments
+      )->then (
+        function ($responseText, array $responseData, array $responseCodes = null) {
+          $searchedSequence = null;
+          
+          foreach ($responseData as $responseItem)
+            if ($responseItem [0] != 'SEARCH')
+              continue;
+            elseif ($searchedSequence !== null)
+              throw new Error ('More than one SEARCH-Response found');
+            else
+              $searchedSequence = $this::imapDecodeArguments ($responseItem [1]);
+          
+          if ($searchedSequence === null)
+            throw new Error ('No SEARCH-Response received');
+          
+          array_walk (
+            $searchedSequence,
+            function (&$sequenceNumber) {
+              $sequenceNumber = intval ($sequenceNumber);
+              
+              if ($sequenceNumber < 1)
+                throw new Error ('Invalid sequence-number received');
+            }
+          );
+          
+          return $searchedSequence;
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ fetchMessages
+    /**
+     * Fetch messages from server
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.4.5
+     * 
+     * @param bool $byUID
+     * @param sequence $IDs
+     * @param string ... (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function fetchMessages ($byUID, $IDs, $fetchSpec = 'ALL') : qcEvents_Promise {
+      // Handle all data-items
+      if (count ($fetchArguments = array_slice (func_get_args (), 2)) == 0)
+        $fetchArguments [] = 'ALL';
+      
+      foreach ($fetchArguments as $idx=>$fetchArgument)
+        // Make sure Macros are on their own
+        if ($fetchArgument == 'ALL') {
+          $fetchArguments = array ('UID', 'FLAGS', 'INTERNALDATE', 'RFC822.SIZE', 'ENVELOPE');
+          
+          break;
+        } elseif ($fetchArgument == 'FAST') {
+          $fetchArguments = array ('UID', 'FLAGS', 'INTERNALDATE', 'RFC822.SIZE');
+          
+          break;
+        } elseif ($fetchArgument == 'FULL') {
+          $fetchArguments = array ('UID', 'FLAGS', 'INTERNALDATE', 'RFC822.SIZE', 'ENVELOPE', 'BODY');
           
           break;
         
-        // An invalid response-status was received, close connection to that buggy server
-        default:
-          trigger_error ('Invalid response-status ' . $Response . ' for ' . $Tag, E_USER_WARNING);
-          $this->disconnect ();
-      }
+        // Check wheter to fetch a body-section
+        } elseif ((substr ($fetchArgument, 0, $sectionOffset = 5) == 'BODY[') ||
+                  (substr ($fetchArgument, 0, $sectionOffset = 10) == 'BODY.PEEK[')) {
+          if (($p = strpos ($fetchArgument, ']', $sectionOffset)) !== false) {
+            $bodySection = substr ($fetchArgument, $sectionOffset, $p - $sectionOffset);
+            
+            // Sanatize partial get
+            if ($p < ($l = strlen ($fetchArgument)) - 1) {
+              if (($fetchArgument [$p + 1] != '<') ||
+                  ($fetchArgument [$l - 1] != '>'))
+                $bodySection = null;
+              else
+                $partialLength = substr ($fetchArgument, $p + 2, $l - $p - 2);
+            } else
+              $partialLength = null;
+          }
+          
+          if (!$p || ($bodySection === null))
+            unset ($fetchArgument [$idx]);
+          
+          # TODO: Validate the section-value
+          # TODO: Validate partial length
+          
+        // Discard the value if it seems invalid
+        } elseif (!in_array ($fetchArgument, array ('ENVELOPE', 'FLAGS', 'UID', 'INTERNALDATE', 'RFC822', 'RFC822.HEADER', 'RFC822.SIZE', 'RFC822.TEXT', 'BODY', 'BODYSTRUCTURE')))
+          unset ($fetchArgument [$idx]);
+      
+      // Make sure always to fetch the UID
+      if (!in_array ('UID', $fetchArguments))
+        $fetchArguments [] = 'UID';
+      
+      // Prepare the args
+      if (!($messageSequence = $this->imapEncodeSequence ($IDs)))
+        return qcEvents_Promise::reject ('Invalid message-sequence');
+      
+      // Issue the command
+      return $this->imapCommand (
+        ($byUID ? 'UID FETCH' : 'FETCH'),
+        array ($messageSequence, $fetchArguments)
+      )->then (
+        function ($responseText, array $responseData, array $responseCodes = null) {
+          // Process FETCH-Responses
+          $responseMessages = array ();
+          
+          foreach ($responseData as $responseItem) {
+            if (substr ($responseItem [1], 0, 6) != 'FETCH ')
+              continue;
+            
+            $messageSequence = (int)$responseItem [0];
+            
+            if (!is_array ($messageData = $this::imapDecodeArguments ($responseItem [1])))
+              throw new Error ('Failed to decode FETCH-Response');
+            
+            $messageInfo = array ();
+            
+            for ($i = 0; $i < count ($messageData [1]); $i+=2)
+              $messageInfo [$messageData [1][$i]] = $messageData [1][$i + 1];
+            
+            $responseMessages [$messageSequence] = $messageInfo;
+          }
+          
+          // Forward the message-data
+          return $responseMessages;
+        }
+      );
     }
     // }}}
     
-    // {{{ receivedCode
+    // {{{ storeMessageFlags
     /**
-     * Special function to handle received codes
+     * Store flags of a messages
      * 
-     * @param array $Code
-     * @param string $Text
+     * @see https://tools.ietf.org/html/rfc3501#section-6.4.6
+     * 
+     * @param bool $byUID
+     * @param sequence $IDs
+     * @param array $messageFlags
+     * @param enum $storeMode (optional)
+     * @param bool $storeSilent (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function storeMessageFlags ($byUID, $IDs, array $messageFlags, $storeMode = self::STORE_MODE_SET, $storeSilent = false) : qcEvents_Promise {
+      // Prepare the arguments
+      if (!($messageSequence = $this->imapEncodeSequence ($IDs)))
+        return qcEvents_Promise::reject ('Failed to encode message-sequence');
+      
+      $commandArguments = array ($messageSequence);
+      
+      if ($storeMode == $this::STORE_MODE_SET)
+        $commandArguments [] = 'FLAGS' . ($storeSilent ? '.SILENT' : '');
+      elseif ($storeMode == $this::MODE_ADD)
+        $commandArguments [] = '+FLAGS' . ($storeSilent ? '.SILENT' : '');
+      elseif ($storeMode == $this::MODE_DEL)
+        $commandArguments [] = '-FLAGS' . ($storeSilent ? '.SILENT' : '');
+      else
+        return qcEvents_Promise::reject ('Invalid store-mode');
+      
+      $commandArguments [] = $messageFlags;
+      
+      // Issue the command
+      return $this->imapCommand (
+        ($byUID ? 'UID STORE' : 'STORE'),
+        $commandArguments
+      )->then (
+        function ($responseText, array $responseData, array $responseCodes = null) {
+        
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ copyMessages
+    /**
+     * Copy a set of Messages to a given mailbox
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-6.4.7
+     * @see https://tools.ietf.org/html/rfc4315#section-3
+     * 
+     * @param bool $byUID
+     * @param sequence $IDs
+     * @param string $mailboxName
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function copyMessages ($byUID, $IDs, $mailboxName) : qcEvents_Promise {
+      // Prepare the args
+      if (!($messageSequence = $this->imapEncodeSequence ($IDs)))
+        return qcEvents_Promise::reject ('Failed to encode message-sequence');
+      
+      $Args = array ($Seq, $Mailbox);
+      
+      // Issue the command
+      return $this->imapCommand (
+        ($byUID ? 'UID COPY' : 'COPY'),
+        array ($messageSequence, $mailboxName)
+      )->then (
+        function ($responseText, array $responseData, array $responseCodes = null) {
+          // Check for an UIDPLUS-Response (RFC 4315)
+          $uidValidity = null;
+          
+          if ($responseCodes)
+            for ($i = 0; $i < count ($responseCodes); $i++)
+              if ($responseCodes [$i] == 'APPENDUID') {
+                $uidValidity = $responseCodes [++$i];
+                $uidMessageSet = $responseCodes [++$i];
+              }
+          
+          # TODO: Expand the uidMessageSet
+          
+          if ($uidValidity !== null)
+            return array ($uidValidity, $uidMessageSet);
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ unselect
+    /**
+     * Unselect the current mailbox
+     * 
+     * @remark this is similar to CLOSE, but does not implicit expunge deleted messages
+     * @see https://tools.ietf.org/html/rfc3691
+     * 
+     * @param callback $Callback (optional)
+     * @param mixed $Private (optional)
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function unselect () : qcEvents_Promise {
+      return $this->checkCapability ('UNSELECT')->then (
+        function () {
+          return $this->imapCommand ('UNSELECT');
+        }
+      )->then (
+        function () {
+          // Remove current mailbox
+          $lastMailbox = $this->imapMailbox;
+          $this->imapMailbox = null;
+          
+          // Update the state
+          $this->imapSetState ($this::IMAP_STATE_AUTHENTICATED);
+          
+          // Raise a callback
+          if ($lastMailbox)
+            $this->___callback ('imapMailboxClosed', $lastMailbox);
+        },
+        function () {
+          // Raise a callback
+          if ($this->imapMailbox)
+            $this->___callback ('imapMailboxCloseFailed', $this->imapMailbox);
+          
+          // Forward the rejection
+          throw new qcEvents_Promise_Solution (func_get_args ());
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ getNamespaces
+    /**
+     * Request a list of all namespaces on this server
+     * 
+     * @see https://tools.ietf.org/html/rfc2342
+     * 
+     * @param bool $forceFetch (optional) Ignore cached result
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function getNamespaces ($forceFetch = false) : qcEvents_Promise {
+      // Check for a cached result
+      if (!$forceFetch && ($this->imapNamespaces !== null))
+        return qcEvents_Promise::resolve ($this->imapNamespaces);
+      
+      // Issue the command
+      return $this->imapCommand (
+        'NAMESPACE'
+      )->then (
+        function ($responseText, array $responseItems) {
+          // Prepare the result
+          $resultNamespaces = null;
+          
+          foreach ($responseItems as $responseData) {
+            // Check if we are interested in this response-item
+            if ($responseData [0] != 'NAMESPACE')
+              continue;
+            
+            // Check if we already found a NAMESPACE-Response
+            if ($resultNamespaces !== null)
+              throw new Error ('');
+            
+            
+            // Unpack namespace-info
+            if (!is_array ($namespaceInfo = $this::imapDecodeArguments ($responseData [1]))) {
+              trigger_error ('Failed to deserialize namespace');
+              
+              continue;
+            }
+            
+            // Build the result
+            $resultNamespaces = array (
+              'personal' => array (),
+              'users' => array (),
+              'shared' => array (),
+            );
+            
+            foreach (array_keys ($resultNamespaces) as $sectionName) {
+              // Make sure there is data to read
+              if (count ($namespaceInfo) < 1)
+                throw new Error ('Short read on namespace-info');
+              
+              // Get the next namespace-section
+              if (($sectionInfo = array_shift ($namespaceInfo)) === null)
+                continue;
+              
+              foreach ($sectionInfo as $namespaceData)
+                $resultNamespaces [$sectionName][] = array (
+                  'prefix' => $namespaceData [0],
+                  'delimiter' => $namespaceData [1],
+                );
+            }
+          }
+          
+          // Check if a result was found
+          if ($resultNamespaces === null)
+            throw new Error ('No NAMESPACE-Response received');
+          
+          // Forward the result
+          return ($this->imapNamespaces = $resultNamespaces);
+        }
+      );
+    }
+    // }}}
+    
+    
+    // {{{ close
+    /**
+     * Close this event-interface
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public function close () : qcEvents_Promise {
+      if ($this->imapState > $this::IMAP_STATE_DISCONNECTING)
+        return $this->logout ();
+      
+      return qcEvents_Promise::resolve ();
+    }
+    // }}}
+    
+    // {{{ consume
+    /**
+     * Consume a set of data
+     * 
+     * @param mixed $receivedData
+     * @param qcEvents_Interface_Source $sourceStream
+     * 
+     * @access public
+     * @return void
+     **/
+    public function consume ($receivedData, qcEvents_Interface_Source $sourceStream) {
+      // Push to receive-buffer
+      $this->receiveBuffer .= $receivedData;
+      unset ($receivedData);
+      
+      // Process lines from buffer
+      $bufferStart = $bufferProcessed = 0;
+      
+      while (($bufferStart = strpos ($this->receiveBuffer, "\n", $bufferProcessed)) !== false) {
+        // Peek line from buffer
+        $receivedLine = substr ($this->receiveBuffer, $bufferProcessed, $bufferStart - $bufferProcessed);
+        
+        if (substr ($receivedLine, -1, 1) == "\r")
+          $receivedLine = substr ($receivedLine, 0, -1);
+        
+        // Check for literal on line
+        if ((substr ($receivedLine, -1, 1) == '}') && (($p = strrpos ($receivedLine, '{')) !== false)) {
+          // Extract length of literal
+          $literalLength = intval (substr ($receivedLine, $p + 1, -1));
+          
+          // Check if the entire literal is on buffer
+          if (strlen ($this->receiveBuffer) < $bufferStart + $literalLength + 1)
+            break;
+          
+          // Append the entire literal to line
+          $receivedLine .= "\r\n" . substr ($this->receiveBuffer, $bufferStart + 1, $literalLength);
+          
+          // Move the pointer to the end of the literal
+          $bufferProcessed = $bufferStart + 1 + $literalLength;
+        
+        // Just move buffer-pointer
+        } else
+          $bufferProcessed = $bufferStart + 1;
+        
+        
+        // Grab the first token from the line
+        if (($p = strpos ($receivedLine, ' ')) === false) {
+          $this->___callback ('imapDiscard', $receivedLine);
+          
+          continue;
+        }
+        
+        $lineTag = substr ($receivedLine, 0, $p);
+        $receivedLine = ltrim (substr ($receivedLine, $p + 1));
+        
+        // Check for continuation
+        if ($lineTag == '+') {
+          $this->processContinuation ($receivedLine);
+          
+          continue;
+        }
+        
+        // Split line into status and additional data
+        if (($p = strpos ($receivedLine, ' ')) === false) {
+          $this->___callback ('imapDiscard', $lineTag . ' ' . $receivedLine);
+          
+          continue;
+        }
+        
+        $lineStatus = substr ($receivedLine, 0, $p);
+        $receivedLine = ltrim (substr ($receivedLine, $p + 1));
+        
+        // Process the line
+        $this->processLine ($lineTag, $lineStatus, $receivedLine);
+      }
+      
+      // Truncate processed data from buffer
+      if ($bufferProcessed)
+        $this->receiveBuffer = substr ($this->receiveBuffer, $bufferProcessed);
+    }
+    // }}}
+    
+    // {{{ processLine
+    /**
+     * Process a line received from our server
+     * 
+     * @param string $lineTag
+     * @param enum $lineStatus
+     * @param string $lineData
      * 
      * @access private
      * @return void
      **/
-    private function receivedCode ($Code, $Text) {
-      // Make sure the code is valid
-      if (count ($Code) < 1)
+    private function processLine ($lineTag, $lineStatus, $lineData) {
+      // Raise initial callback
+      if ($this->___callback ('imapRead', $lineTag, $lineStatus, $lineData) === false)
         return;
       
-      switch ($Code [0]) {
+      // Check for embeded codes in line-data
+      if ((strlen ($lineData) > 0) &&
+          ($lineData [0] == '[') &&
+          (($p = strpos ($lineData, ']', 1)) !== false)) {
+        $lineCode = $this::imapDecodeArguments (substr ($lineData, 1, $p - 1));
+        $lineData = ltrim (substr ($lineData, $p + 1));
+        
+        $this->processCode ($lineCode, $lineData);
+      } else
+        $lineCode = null;
+      
+      // Process connection-setup
+      if ($this->imapState == $this::IMAP_STATE_CONNECTING) {
+        // Connection is OK, we are in connected state
+        if ($lineStatus == $this::IMAP_STATUS_OK)
+          $imapState = $this->imapSetState ($this::IMAP_STATE_CONNECTED);
+        
+        // Connection is very good, we are already authenticated
+        elseif ($lineStatus == $this::IMAP_STATUS_PREAUTH)
+          $imapState = $this->imapSetState ($this::IMAP_STATE_AUTHENTICATED);
+        
+        // Something is wrong with us or the server, we will be disconnected soon
+        elseif ($lineStatus == $this::IMAP_STATUS_BYE)
+          $imapState = $this->imapSetState ($this::IMAP_STATE_DISCONNECTED);
+        
+        // RFC-Violation, leave immediatly
+        else
+          # TODO: Signal the violation
+          $impaState = $this->imapSetState ($this::IMAP_STATE_DISCONNECTED);
+        
+        # TODO: Check wheter to request CAPABILITY
+        
+        // Handle connection-failures
+        if ($imapState == $this::IMAP_STATE_DISCONNECTED) {
+          // Reject the init-promise
+          if ($this->initPromise)
+            $this->initPromise->reject ('Connection could not be negotiated');
+          
+          $this->initPromise = null;
+          
+          // Trigger connection-close
+          $this->close ();
+        
+        // Check wheter to run callbacks
+        } elseif ($imapState !== null) {
+          if ($this->initPromise)
+            $this->initPromise->resolve ();
+          
+          $this->___callback ('imapConnected');
+          
+          if ($imapState > $this::IMAP_STATE_CONNECTED)
+            $this->___callback ('imapAuthenticated');
+          
+          $this->initPromise = null;
+        }
+      }
+      
+      // Check if this is an untagged message from server
+      if ($lineTag == '*')
+        return $this->processUntagged ($lineStatus, $lineData, $lineCode);
+      
+      // Check if the message is related to a pending command
+      $activeCommand = hexdec ($lineTag);
+      
+      if (!isset ($this->pendingCommands [$activeCommand])) {
+        # TODO
+        return;
+      }
+      
+      // Check if the pending command wasn't finished successfull
+      if ($lineStatus != $this::IMAP_STATUS_OK) {
+        // Reject the promise
+        $this->pendingCommands [$activeCommand][0]->reject ($lineData, $lineStatus);
+        
+        // Check if the response-status was valid at all
+        if (($lineStatus != $this::IMAP_STATUS_NO) &&
+            ($lineStatus != $this::IMAP_STATUS_BAD))
+          $this->close ();
+      
+      // Just resolve the promise
+      } else
+        $this->pendingCommands [$activeCommand][0]->resolve ($lineData, $this->pendingCommands [$activeCommand][4], $lineCode);
+        
+      // Remove active command
+      unset ($this->pendingCommands [$activeCommand]);
+      $this->activeCommand = null;
+      
+      // Try to start next command
+      $this->imapStartPendingCommand ();
+    }
+    // }}}
+    
+    // {{{ processContinuation
+    /**
+     * Process requested continuation
+     * 
+     * @param string $receivedLine
+     * 
+     * @access private
+     * @return void
+     **/
+    private function processContinuation ($receivedLine) {
+      // Check if we can process the request
+      if (($this->activeCommand === null) ||
+          !isset ($this->pendingCommands [$this->activeCommand]) ||
+          ($this->pendingCommands [$this->activeCommand][3] === null)) {
+        trigger_error ('No continuation-handler available');
+        
+        return $this->imapWriteToStream ('*' . "\r\n");
+      }
+      
+      // Invoke the contionation-handler
+      if ((strlen ($receivedLine) > 0) && ($receivedLine [0] != '['))
+        $receivedLine = base64_decode ($receivedLine);
+      
+      $rc = $this->pendingCommands [$this->activeCommand][3] ($receivedLine);
+      
+      return $this->imapWriteToStream ($rc . "\r\n");
+    }
+    // }}}
+    
+    // {{{ processUntagged
+    /**
+     * Process an untagged response from server
+     * 
+     * @param string $lineType
+     * @param string $lineData
+     * @param array $lineCode (optional)
+     * 
+     * @access private
+     * @return void
+     **/
+    private function processUntagged ($lineType, $lineData, array $lineCode = null) {
+      // Push to active command
+      if (($this->activeCommand !== null) &&
+          isset ($this->pendingCommands [$this->activeCommand]))
+        $this->pendingCommands [$this->activeCommand][4][] = array ($lineType, $lineData, $lineCode);
+      
+      # TODO: EXISTS Update number of messages on current mailbox
+      # TODO: RECENT Update number of recent messages on current mailboxBA
+      # TODO: FETCH Update message-metadata
+    }
+    // }}}
+    
+    // {{{ processCode
+    /**
+     * Special function to handle received codes
+     * 
+     * @see https://tools.ietf.org/html/rfc3501#section-7.1
+     * 
+     * @param array $lineCode
+     * @param string $lineData
+     * 
+     * @access private
+     * @return void
+     **/
+    private function processCode (array $lineCode, $lineData) {
+      switch ($lineCode [0]) {
         // An alert was raised
         case 'ALERT':
         case 'PARSE': // This is not really an Alert but indicates an error on server-side
-          $this->___callback ('imapAlert', $Text);
+          $this->___callback ('imapAlert', $lineData);
+          
           break;
         
         // Server includes capabilities in its greeting, fake an CAPABILITY-Command
         case 'CAPABILITY':
-          $this->receivedUntagged ('CAPABILITY', array (), $Text);
+          // Store new capabilities
+          $this->serverCapabilities = explode (' ', $lineData);
+          
+          // Raise a callback for this
+          $this->___callback ('imapCapabilities', $this->serverCapabilities);
+          
           break;
         
         # Other:
@@ -399,1712 +1527,50 @@
     }
     // }}}
     
-    // {{{ receivedUntagged
+    // {{{ initStreamConsumer
     /**
-     * Receive an untagged response from server
+     * Setup ourself to consume data from a stream
      * 
-     * @param string $Response
-     * @param string $Line
+     * @param qcEvents_Interface_Source $sourceStream
      * 
-     * @access private
-     * @return void
+     * @access public
+     * @return qcEvents_Promise
      **/
-    private function receivedUntagged ($Response, $Code, $Text) {
-      // Ugly hack for EXISTS, RECENT, FETCH & EXPUNGE
-      if (is_numeric ($Response)) {
-        $t = $Response;
-        
-        if (($p = strpos ($Text, ' ')) !== false) {
-          $Response = substr ($Text, 0, $p);
-          $Text = $t . substr ($Text, $p);
-        } else {
-          $Response = $Text;
-          $Text = $t;
+    public function initStreamConsumer (qcEvents_Interface_Stream $sourceStream) : qcEvents_Promise {
+      // Check for an existing init-promise
+      if ($this->initPromise)
+        $this->initPromise->reject ('Replaced by another stream');
+      
+      // Reset our internal state
+      $this->sourceStream = $sourceStream;
+      $this->receiveBuffer = '';
+      
+      $this->imapSetState ($this::IMAP_STATE_CONNECTING);
+      
+      // Create new init-promise
+      $this->initPromise = new qcEvents_Defered;
+      $this->initPromise->getPromise ()->then (
+        function () use ($sourceStream) {
+          $this->___callback ('eventPipedStream', $sourceStream);
         }
-        
-        unset ($t);
-      }
-      
-      // Handle the response
-      switch ($Response) {
-        // Update Capabilities of our server
-        case 'CAPABILITY':
-          $this->serverCapabilities = explode (' ', $Text);
-          $this->___callback ('imapCapabilities', $this->serverCapabilities);
-          
-          break;
-        
-        // About to disconnect
-        case 'BYE':
-          // Ignore this if we are disconnecting
-          if ($this->State == self::IMAP_STATE_DISCONNECTING)
-            break;
-          
-          // Raise an alert
-          $this->___callback ('imapAlert', $Text);
-          
-          break;
-        
-        // Update Mailbox-Status
-        case 'STATUS':
-          // Parse the result
-          $Result = $this->imapParseArgs ($Text);
-          
-          // Retrive a handle for this mailbox
-          $Handle = $this->imapCreateLocalMailbox ($Result [0]);
-          
-          // Merge the status
-          while (count ($Result [1]) > 1) {
-            $Property = array_shift ($Result [1]);
-            $Handle->Status [$Property] = array_shift ($Result [1]);
-          }
-          
-          break;
-        
-        // LIST/LSUB-Information
-        case 'LIST':
-        case 'LSUB':
-          // Parse the result
-          $Result = $this->imapParseArgs ($Text);
-          
-          // Retrive a handle for this mailbox
-          $Handle = $this->imapCreateLocalMailbox ($Result [2]);
-          
-          // Update the handle
-          $Handle->Delimiter = $Result [1];
-          
-          if (count ($Handle->Attributes == 0) || ($Response == 'LIST'))
-            # TODO: On LSUB we may have a \\NoSelect here, that only affects the subscription-status
-            $Handle->Attributes = $Result [0];
-          
-          if (($Response == 'LSUB') && !in_array ('\\NoSelect', $Result [0]))
-            $Handle->Subscribed = true;
-          
-          break;
-        
-        // Namespace-Info
-        case 'NAMESPACE':
-          // Parse the result
-          $Result = $this->imapParseArgs ($Text);
-          
-          foreach ($Result as $Type=>$Namespaces) {
-            if (!is_array ($Namespaces))
-              continue;
+      );
             
-            foreach ($Namespaces as $Info)
-              $this->imapNamespaces [$Info [0]] = array ($Info [1], $Type);
-          }
-          
-          break;
-        
-        // Handle Search-Results
-        case 'SEARCH':
-          $this->searchResult = $this->imapParseArgs ($Text);
-          break;
-        
-        // Mailbox-Flags
-        case 'FLAGS':
-          if ($this->imapMailboxNext !== null)
-            $Mailbox = $this->getMailbox ($this->imapMailboxNext);
-          elseif ($this->imapMailbox !== null)
-            $Mailbox = $this->getMailbox ($this->imapMailbox);
-          else
-            break;
-     
-          if ($Mailbox) {
-            $Args = $this->imapParseArgs ($Text);
-            $Mailbox->Flags = array_shift ($Args);
-          }
-          
-          break;
-        
-        // Number of mails in current mailbox
-        case 'EXISTS':
-          if ($this->imapMailboxNext !== null)
-            $Mailbox = $this->getMailbox ($this->imapMailboxNext);
-          elseif ($this->imapMailbox !== null)
-            $Mailbox = $this->getMailbox ($this->imapMailbox);
-          else
-            break;
-          
-          if ($Mailbox)
-            $Mailbox->MessageCount = intval ($Text);
-          
-          break;
-        
-        // Number of recent mails in current mailbox
-        case 'RECENT':
-          if (($this->imapMailbox !== null) && ($Mailbox = $this->getMailbox ($this->imapMailbox)))
-            $Mailbox->RecentCount = intval ($Text);
-          
-          break;
-        
-        // A message was removed from mailbox
-        case 'EXPUNGE':
-          // Decrease the counter
-          if (($this->imapMailbox !== null) && ($Mailbox = $this->getMailbox ($this->imapMailbox)))
-            $Mailbox->MessageCount--;
-          
-          // Retrive Sequence-number of the removed message
-          $ID = intval ($Text);
-          
-          // Remove this message from our local storage
-          if (isset ($this->messageIDs [$ID])) {
-            if (isset ($this->messageIDs [$ID]) && ($this->messageIDs [$ID] !== null))
-              unset ($this->messages [$this->messageIDs [$ID]]);
-            
-            array_splice ($this->messageIDs, $ID, 1);
-          }
-          
-          break;
-        // Message-Data was fetched
-        case 'FETCH':
-          // Parse the arguements of this response
-          if (!($Args = $this->imapParseArgs ($Text)))
-            return;
-          
-          // Retrive the Sequence-ID
-          $SequenceID = $Args [0];
-          $Args = $Args [1];
-          
-          // Find UID of this message
-          if (($ID = array_search ('UID', $Args)) !== false)
-            $UID = $Args [$ID + 1];
-          elseif (isset ($this->messageIDs [$SequenceID]))
-            $UID = $this->messageIDs [$SequenceID];
-          else {
-            trigger_error ('Received FETCH-Response without UID', E_USER_WARNING);
-            break;
-          }
-          
-          // Make sure the message exists
-          if (!isset ($this->messages [$UID]))
-            $this->messages [$UID] = array (
-              'UID' => $UID,
-              'Headers' => new qcMail_Headers,
-              'HeadersComplete' => false,
-              'Structure' => null,
-              'Envelope' => null,
-              'Flags' => null,
-              'Internaldate' => null,
-              'Size' => null,
-              'Body' => null,
-              'Parts' => array (),
-            );
-          
-          if (!isset ($this->messageIDs [$SequenceID])) {
-            // Extend message-ID-Mapping to the right size
-            for ($i = count ($this->messageIDs); $i < $SequenceID; $i++)
-              $this->messageIDs [$i] = null;
-            
-            // Map the UID
-            $this->messageIDs [$i] = $UID;
-          }
-          
-          // Update Message-Information
-          $l = count ($Args);
-          
-          for ($i = 0; $i < $l; $i += 2)
-            switch ($Args [$i]) {
-              // Update flags of this message
-              case 'FLAGS':
-                $this->messages [$UID]['Flags'] = $Args [$i + 1];
-                
-                break;
-              // Update envelope-information of this message
-              case 'ENVELOPE':
-                $j = $i + 1;
-                
-                $this->messages [$UID]['Envelope'] = array (
-                  'date' => strtotime ($Args [$j][0]),
-                  'subject' => $Args [$j][1],
-                  'from' => $Args [$j][2],
-                  'sender' => $Args [$j][3],
-                  'reply-to' => $Args [$j][4],
-                  'to' => $Args [$j][5],
-                  'cc' => $Args [$j][6],
-                  'bcc' => $Args [$j][7],
-                  'in-reply-to' => $Args [$j][8],
-                  'message-id' => $Args [$j][9],
-                );
-                
-                break;
-              // Update the internal date of this message
-              case 'INTERNALDATE':
-                $this->messages [$UID]['Internaldate'] = strtotime ($Args [$i + 1]);
-                
-                break;
-              // Update the size of this message
-              case 'RFC822.SIZE':
-                $this->messages [$UID]['Size'] = intval ($Args [$i + 1]);
-                
-                break;
-              // Update the structure of this message
-              case 'BODY':
-              case 'BODYSTRUCTURE':
-                $this->messages [$UID]['Structure'] = $Args [$i + 1];
-                
-                break;
-              // Entire message was received
-              case 'BODY[]':
-              case 'BODY.PEEK[]':
-              case 'RFC822':
-                $n = $i + 1;
-                
-                // Find delimiter between header and body
-                if (($p = strpos ($Args [$n], "\r\n\r\n")) === false)
-                  continue;
-                
-                // Enqueue header and body as seperated items
-                $Args [$l++] = 'RFC822.HEADER';
-                $Args [$l++] = substr ($Args [$n], 0, $p);
-                $Args [$l++] = 'RFC822.TEXT';
-                $Args [$l++] = substr ($Args [$n], $p + 4);
-                $Args [$n] = '';
-                
-                break;
-              // Entire header was received
-              case 'BODY[HEADER]':
-              case 'BODY.PEEK[HEADER]':
-              case 'RFC822.HEADER':
-                $this->messages [$UID]['Headers'] = new qcMail_Headers ($Args [$i + 1]);
-                $this->messages [$UID]['HeadersComplete'] = true;
-                
-                break;
-              // Entire body was received
-              case 'BODY[TEXT]':
-              case 'BODY.PEEK[TEXT]':
-              case 'RFC822.TEXT':
-                $this->messages [$UID]['Body'] = $Args [$i + 1];
-              
-                break;
-              // Check if a message-section was received
-              default:
-                // Make sure here is a body-part returned
-                if ((substr ($Args [$i], 0, 5) != 'BODY[') &&
-                    (substr ($Args [$i], 0, 10) != 'BODY.PEEK['))
-                  continue;
-                
-                // Parse the section-description
-                # TODO: We don't handle partial GETs here
-                $Section = $this->imapParseArgs (substr ($Args [$i], ($Args [$i][5] == '.' ? 10 : 5), -1));
-                
-                switch ($Section [0]) {
-                  // Specific fields from Message-Header
-                  case 'HEADER.FIELDS':
-                  // Message-Header without a set of fields
-                  case 'HEADER.FIELDS.NOT':
-                    // Ignore this if headers are complete
-                    if (!$this->messages [$UID]['HeadersComplete'])
-                      $this->messages [$UID]['Headers']->addHeadersFromBlob ($Args [$i + 1], true);
-                    
-                    break;
-                  // Message-Part
-                  default:
-                    // Handle the message-path-path
-                    $Path = explode ('.', $Section [0]);
-                    $Last = count ($Path) - 1;
-                    
-                    // Check for an entire RFC822-Mail(part)
-                    if (!is_numeric ($Path [$Last])) {
-                      $Type = '';
-                      
-                      while (!is_numeric ($Path [$Last])) {
-                        $Type = $Path [$Last] . (strlen ($Type) > 0 ? '.' . $Type : '');
-                        unset ($Path [$Last--]);
-                      }
-                    } else
-                      $Type = 'TEXT';
-                    
-                    // Rollback the path into a string
-                    $Path = implode ('.', $Path);
-                    
-                    // Make sure the part exists
-                    if (!isset ($this->messages [$UID]['Parts'][$Path]))
-                      $this->messages [$UID]['Parts'][$Path] = array (
-                        'Headers' => new qcMail_Headers,
-                        'HeadersComplete' => false,
-                        'Body' => null,
-                      );
-                    
-                    switch ($Type) {
-                      // Entire content of this part
-                      case 'RFC822':
-                        $n = $i + 1;
-                        
-                        // Find delimiter between header and body
-                        if (($p = strpos ($Args [$n], "\r\n\r\n")) === false)
-                          break;
-                        
-                        $this->messages [$UID]['Parts'][$Path]['Headers'] = new qcMail_Headers (substr ($Args [$n], 0, $p));
-                        $this->messages [$UID]['Parts'][$Path]['HeadersComplete'] = true;
-                        $this->messages [$UID]['Parts'][$Path]['Body'] = substr ($Args [$n], $p + 4);
-                        $Args [$n] = '';
-                        
-                        break;
-                      // Append partial headers to this part
-                      case 'HEADER.FIELDS':
-                      case 'HEADER.FIELDS.NOT':
-                      case 'MIME':
-                        if (!$this->messages [$UID]['Parts'][$Path]['HeadersComplete'])
-                          $this->messages [$UID]['Parts'][$Path]['Headers']->addHeadersFromBlob ($Args [$i + 1], true);
-                        
-                        break;
-                      // Set the entire headers of this part
-                      case 'HEADER':
-                        $this->messages [$UID]['Parts'][$Path]['Headers'] = new qcMail_Headers ($Args [$i + 1]);
-                        $this->messages [$UID]['Parts'][$Path]['HeadersComplete'] = true;
-                        
-                        break;
-                      // Set the body of this part
-                      case 'TEXT':
-                        $this->messages [$UID]['Parts'][$Path]['Body'] = $Args [$i + 1];
-                        
-                        break;
-                    }
-                }
-            }
-          
-          break;
-        
-        // Special codes in OK-Response
-        case 'OK':
-          // Check if there is a code given
-          if (count ($Code) < 2)
-            return;
-          
-          if ($this->imapMailboxNext !== null)
-            $Mailbox = $this->getMailbox ($this->imapMailboxNext);
-          elseif ($this->imapMailbox !== null)
-            $Mailbox = $this->getMailbox ($this->imapMailbox);
-          else
-            break;
-            
-          if (!$Mailbox)
-            break;
-          
-          switch ($Code [0]) {
-            // List of flags that are stored permanent
-            case 'PERMANENTFLAGS':
-              $Args = $this->imapParseArgs ($Code [1]);
-              $Mailbox->PermanentFlags = array_shift ($Args);
-              break;
-            
-            // UID-Validity-Value of a mailbox
-            case 'UIDVALIDITY':
-              $Mailbox->UIDValidity = intval ($Code [1]);
-              break;
-            
-            // Predicted next UID-Value
-            case 'UIDNEXT':
-              $Mailbox->UIDNext = intval ($Code [1]);
-              break;
-            
-            // Number of unseen messages on this mailbox
-            case 'UNSEEN':
-              $Mailbox->UnseenCount = intval ($Code [1]);
-              break;
-          }
-          
-          break;                              
-        
-        default:
-          echo 'UNHANDLED UNTAGGED: ', $Response, ' / ', implode (' - ', $Code), ' / ', $Text, "\n";
-      }
+      return $this->initPromise->getPromise ();
     }
     // }}}
     
-    // {{{ imapCreateLocalFolder
+    // {{{ deinitConsumer
     /**
-     * Make sure we have a given folder on our local storage
+     * Callback: A source was removed from this consumer
      * 
-     * @param string $Path
-     * 
-     * @access private
-     * @return object
-     **/
-    private function imapCreateLocalMailbox ($Path) {
-      // Find a namespace for this
-      $Namespace = null;
-      
-      if (is_array ($this->imapNamespaces)) {
-        // Find the longest matching namespace
-        $l = 0;
-        
-        foreach ($this->imapNamespaces as $cNamespace=>$Info) {
-          $ln = strlen ($cNamespace);
-          
-          if (($ln == 0) || ((substr ($Path, 0, $ln) == $cNamespace) && ($ln > $l)))
-            $Namespace = $cNamespace;
-        }
-      }
-      
-      if (($Namespace !== null) && (($p = strrpos ($Path, $this->imapNamespaces [$Namespace][0])) !== false)) {
-        $Name = substr ($Path, $p + 1);
-        $pPath = substr ($Path, 0, $p);
-      } else {
-        $Name = $Path;
-        $pPath = '';
-      }
-      
-      // Check if this is a root-folder
-      if (strlen ($pPath) == 0) {
-        if (!isset ($this->imapMailboxes [$Name])) {
-          $this->imapMailboxes [$Name] = $Handle = new stdClass;
-          
-          $Handle->Path = $Path;
-          $Handle->Name = $Name;
-          $Handle->Namespace = $Namespace;
-          $Handle->Delimiter = ($Namespace !== null ? $this->imapNamespaces [$Namespace][0] : '/');
-          $Handle->Subscribed = false;
-          $Handle->Attributes = array ();
-          $Handle->Flags = array ();
-          $Handle->PermanentFlags = array ();
-          $Handle->Status = array ();
-          $Handle->Children = array ();
-          $Handle->Parent = null;
-          $Handle->MessageCount = 0;
-          $Handle->RecentCount = 0;
-          $Handle->UnseenCount = 0;
-          $Handle->UIDValidity = 0;
-          $Handle->UIDNext = 0;
-        }
-        
-        return $this->imapMailboxes [$Name];
-      }
-      
-      // Try to load the parent folder
-      $pHandle = $this->imapCreateLocalMailbox ($pPath);
-      
-      if (!isset ($pHandle->Children [$Name])) {
-        $pHandle->Children [$Name] = $Handle = new stdClass;
-        
-        $Handle->Path = $Path;
-        $Handle->Name = $Name;
-        $Handle->Namespace = $Namespace;
-        $Handle->Delimiter = ($Namespace !== null ? $this->imapNamespaces [$Namespace][0] : '/');
-        $Handle->Subscribed = false;
-        $Handle->Attributes = array ();
-        $Handle->Flags = array ();
-        $Handle->PermanentFlags = array ();
-        $Handle->Status = array ();
-        $Handle->Children = array ();
-        $Handle->Parent = $pHandle;
-        $Handle->MessageCount = 0;
-        $Handle->RecentCount = 0;
-        $Handle->UnseenCount = 0; 
-        $Handle->UIDValidity = 0; 
-        $Handle->UIDNext = 0;
-      }
-      
-      return $pHandle->Children [$Name];
-    }
-    // }}}
-    
-    // {{{ getRootMailboxes
-    /**
-     * Retrive all mailboxes on the top-level of this server
+     * @param qcEvents_Interface_Source $Source
      * 
      * @access public
-     * @return array
+     * @return qcEvents_Promise
      **/
-    public function getRootMailboxes () {
-      return $this->imapMailboxes;
-    }
-    // }}}
-    
-    // {{{ getMailbox
-    /**
-     * Retrive a mailbox at given Path
-     * 
-     * @remark This is a local function only, you have to load them via LIST/LSUB before
-     * 
-     * @param string $Path
-     * 
-     * @access public
-     * @return object
-     **/
-    public function getMailbox ($Path) {
-      $l = strlen ($Path);
-      
-      // Find a root-mailbox for this
-      $rootMailbox = null;
-      
-      foreach ($this->imapMailboxes as $Name=>$Mailbox) {
-        $lM = strlen ($Name);
-        
-        // Check if the name matches
-        if (substr ($Path, 0, $lM) != $Name)
-          continue;
-        
-        // Check for a direct match
-        if ($lM == $l)
-          return $Mailbox;
-        
-        // Check the delimiter
-        if ($Path [$lM++] != $Mailbox->Delimiter)
-          continue;
-        
-        $rootMailbox = $Mailbox;
-        $Path = substr ($Path, $lM);
-        $l -= $lM;
-        
-        break;
-      }
-      
-      if (!$rootMailbox)
-        return false;
-      
-      $Path = explode ($rootMailbox->Delimiter, $Path);
-      
-      foreach ($Path as $Name)
-        if (!isset ($rootMailbox->Children [$Name]))
-          return false;
-        else
-          $rootMailbox = $rootMailbox->Children [$Name];
-      
-      return $rootMailbox;
-    }
-    // }}}
-    
-    // {{{ getMessages
-    /**
-     * Retrive all messages stored on this client
-     * 
-     * @access public
-     * @return array
-     **/
-    public function getMessages () {
-      return $this->messages;
-    }
-    // }}}
-    
-    // {{{ getMessage
-    /**
-     * Retrive a message stored on this client
-     * 
-     * @param int $ID
-     * @param bool $UID (optional) ID is the UID
-     * 
-     * @access public
-     * @return array
-     **/
-    public function getMessage ($ID, $UID = false) {
-      // Check wheter to translate into an UID
-      if (!$UID) {
-        if (!isset ($this->messageIDs [$ID]))
-          return false;
-        
-        $ID = $this->messageIDs [$ID];
-      }
-      
-      // Check if the message exists
-      if (!isset ($this->messages [$ID]))
-        return false;
-      
-      // Return the message
-      return $this->messages [$ID];
-    }
-    // }}}
-    
-    // {{{ haveCapabilty
-    /**
-     * Check if a given capability is supported by the server
-     * 
-     * @param string $Capability
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function haveCapability ($Capability) {
-      return in_array ($Capability, $this->serverCapabilities);
-    }
-    // }}}
-    
-    // {{{ getCapabilities
-    /**
-     * Request a list of capabilities of this server
-     * 
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function getCapabilities ($Callback = null, $Private = null) {
-      return $this->imapCommand ('CAPABILITY', null, $Callback, $Private);
-    }
-    // }}}
-    
-    // {{{ noOp
-    /**
-     * Issue an NoOp-Command to keep the connection alive or retrive any pending updates
-     * 
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function noOp ($Callback = null, $Private = null) {
-      return $this->imapCommand ('NOOP', null, $Callback, $Private);
-    }
-    // }}}
-    
-    // {{{ logout
-    /**
-     * Request a logout from server
-     * 
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function logout ($Callback = null, $Private = null) {
-      $this->imapSetState (self::IMAP_STATE_DISCONNECTING);
-      
-      return $this->imapCommand ('LOGOUT', null, $Callback, $Private);
-    }
-    // }}}
-    
-    // {{{ startTLS
-    /**
-     * Enable TLS-encryption on this connection
-     * 
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function startTLS ($Callback = null, $Private = null) {
-      // Check if STARTTLS is supported by the server
-      if (!$this->haveCapability ('STARTTLS'))
-        return false;
-      
-      // Check if we are in connected state
-      if ($this->State !== self::IMAP_STATE_CONNECTED)
-        return false;
-      
-      return $this->imapCommand ('STARTTLS', null, array ($this, 'imapTLSHelper'), array ($Callback, $Private));
-    }
-    // }}}
-    
-    // {{{ imapTLSHelper
-    /**
-     * Internal Callback: Establish TLS-Connection
-     * 
-     * @param enum $Response
-     * @param array $Code
-     * @param string $Text
-     * @param array $Private
-     * 
-     * @access private
-     * @return void
-     **/
-    private function imapTLSHelper ($Response, $Code, $Text, $Private) {
-      // Check if the server is able to start TLS
-      if ($Response != self::IMAP_STATUS_OK) {
-        if (($Private [0] !== null) && is_callable ($Private [0]))
-          call_user_func ($Private [0], $this, null, $Private [1]);
-        
-        return $this->___callback ('tlsFailed');
-      }
-      
-      // Start TLS-Negotiation
-      $this->imapTLSCallback = $Private;
-      $this->tlsEnable (true, array ($this, 'imapTLSReady'));
-    }
-    // }}}
-    
-    // {{{ imapTLSReady
-    /**
-     * Handle a successfull TLS-Connection
-     * 
-     * @param bool $Status
-     * 
-     * @access protected
-     * @return void
-     **/
-    protected final function imapTLSReady ($Status) {
-      // Get the requested callback
-      $Callback = $this->imapTLSCallback;
-      $this->imapTLSCallback = null;
-      
-      // Check if TLS was enabled successfully
-      if ($Status === true) {
-        $this->serverCapabilities = array ();
-        
-        return $this->imapCommand ('CAPABILITY', null, array ($this, 'imapCallbackExt'), array ($Callback [0], false, true, $Callback [1]));
-      }
-      
-      // Raise any registered callback
-      if (($Callback [0] !== null) && is_callable ($Callback [0]))
-        call_user_func ($Callback [0], $this, $Status, $Callback [1]);
-    }
-    // }}}
-    
-    // {{{ authenticate
-    /**
-     * Try to login using AUTHENTICATE
-     * 
-     * @param string $Username
-     * @param string $Password
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function authenticate ($Username, $Password, $Callback = null, $Private = null) {
-      // Check if we are in connected state
-      if ($this->State !== self::IMAP_STATE_CONNECTED)
-        return false;
-      
-      if (($Callback !== null) && !is_callable ($Callback))
-        $Callback = null;
-      
-      // Create SASL-Client
-      require_once ('qcAuth/SASL/Client.php');
-      
-      $Client = new qcAuth_SASL_Client;
-      $Client->setUsername ($Username);
-      $Client->setPassword ($Password);
-      
-      // Start authentication-process
-      $this->authenticateHandler (self::IMAP_STATUS_NO, array (), '', array (
-        0 => $Client,
-        1 => null,
-        2 => 0,
-        3 => $Client->getMechanisms (),
-        4 => $Callback,
-        5 => $Private,
-      ));
-    }
-    // }}}
-    
-    // {{{ authenticateHandler
-    /**
-     * Internal Callback: Handle ongoing authentication-process
-     * 
-     * @param enum $Response
-     * @param array $Code
-     * @param string $Text
-     * @param array $Private
-     * 
-     * @access private
-     * @return void
-     **/
-    private function authenticateHandler ($Response, $Code, $Text, $Private) {
-      // Check if authentication was successfull
-      if ($Response == self::IMAP_STATUS_OK) {
-        // Set new state
-        $this->imapSetState (self::IMAP_STATE_AUTHENTICATED);
-        
-        // Re-Request Capabilties and fire up all callbacks
-        return $this->imapCommand ('CAPABILITY', null, array ($this, 'imapAfterAuthentication'), array ($Private [4], $Private [5]));
-      }
-      
-      // Check if there are mechanisms available
-      if (count ($Private [3]) == 0) {
-        if ($Private [4] !== null)
-          call_user_func ($Private [4], $this, false, $Private [5]);
-        
-        return $this->___callback ('imapAuthenticationFailed');
-      }
-      
-      // Try next authentication-mechanism
-      $Private [1] = array_shift ($Private [3]);
-      $Private [2] = 0;
-      
-      $Private [0]->cancel ();
-      $Private [0]->setMechanism ($Private [1]);
-      
-      // Prepare parameters
-      $Args = array ($Private [1]);
-      
-      if ($this->haveCapability ('SASL-IR') && (($Initial = $Private [0]->getInitialResponse ()) !== null))
-        $Args [] = base64_encode ($Initial);
-      
-      // Issue the command
-      return $this->imapCommand ('AUTHENTICATE', $Args, array ($this, 'authenticateHandler'), $Private, array ($this, 'authenticateCallback'), $Private);
-    }
-    // }}}
-    
-    // {{{ authenticateCallback
-    /**
-     * Internal Callback: Continuation-Request for AUTHENTICATE
-     * 
-     * @param int $ID Identifier of the current command
-     * @param string $Text Text submitted by the server for this continuation-request
-     * @param array $Private Private data for this callback
-     * 
-     * @access private
-     * @return void
-     **/
-    private function authenticateCallback ($ID, $Text, $Private) {
-      // Increase the counter
-      $this->Callbacks [$ID][1][2]++;
-      $this->Callbacks [$ID][3][2]++;
-      
-      // Check wheter to send an initial response
-      if (($Private [2] == 0) && !$this->haveCapability ('SASL-IR'))
-        return base64_encode ($Private [0]->getInitialResponse ());
-      
-      // Send normal response
-      return base64_encode ($Private [0]->getResponse ());
-    }
-    // }}}
-    
-    // {{{ login
-    /**
-     * Login on server using LOGIN
-     * 
-     * @param string $Username
-     * @param string $Password
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function login ($Username, $Password, $Callback = null, $Private = null) {
-      // Check if we are in connected state
-      if ($this->State !== self::IMAP_STATE_CONNECTED)
-        return false;
-       
-      if (($Callback !== null) && !is_callable ($Callback))
-        $Callback = null;
-      
-      $this->imapCommand ('LOGIN', array ($Username, $Password), array ($this, 'loginHandler'), array ($Callback, $Private));
-    }
-    // }}}
-    
-    // {{{ loginHandler
-    /**
-     * Internal Callback: Handle LOGIN-Response
-     * 
-     * @param enum $Response
-     * @param array $Code
-     * @param string $Text
-     * @param array $Private
-     * 
-     * @access private
-     * @return void
-     **/
-    private function loginHandler ($Response, $Code, $Text, $Callback) {
-      // Check if authentication was successfull
-      if ($Response == self::IMAP_STATUS_OK) {
-        // Set new state
-        $this->imapSetState (self::IMAP_STATE_AUTHENTICATED);
-       
-        // Re-Request Capabilties and fire up all callbacks
-        return $this->imapCommand ('CAPABILITY', null, array ($this, 'imapAfterAuthentication'), $Callback);
-      }
-      
-      // Handle failure
-      if ($Callback [0] !== null)
-        call_user_func ($Callback [0], $this, false, $Callback [1]);
-      
-      return $this->___callback ('imapAuthenticationFailed');
-    }
-    // }}}
-    
-    // {{{ imapAfterAuthentication
-    /**
-     * Internal Callback: Authentication was finished successfully
-     * 
-     * @param enum $Response
-     * @param array $Code
-     * @param string $Text
-     * @param array $Private
-     * 
-     * @access private
-     * @return void
-     **/
-    private function imapAfterAuthentication ($Response, $Code, $Text, $Callback) {
-      if ($Callback [0] !== null)
-        call_user_func ($Callback [0], $this, true, $Callback [1]);
-     
-      return $this->___callback ('imapAuthenticated');
-    }
-    // }}}
-    
-    
-    // {{{ createMailbox
-    /**
-     * Create a new mailbox
-     * 
-     * @param string $Name
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function createMailbox ($Name, $Callback = null, $Private = null) {
-      // Check our state
-      if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
-          ($this->State != self::IMAP_STATE_ONMAILBOX))
-        return false;
-      
-      // Issue the command
-      return $this->imapCommand ('CREATE', array ($Name), array ($this, 'mailboxAction'), array (0, $Callback, $Name, $Private));
-    }
-    // }}}
-   
-    // {{{ deleteMailbox
-    /**
-     * Remove a mailbox from server
-     * 
-     * @param string $Name
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function deleteMailbox ($Name, $Callback = null, $Private = null) {
-      // Check our state
-      if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
-          ($this->State != self::IMAP_STATE_ONMAILBOX))
-        return false;
-      
-      // Issue the command
-      return $this->imapCommand ('DELETE', array ($Name), array ($this, 'mailboxAction'), array (1, $Callback, $Name, $Private));
-    }
-    // }}}
-    
-    // {{{ statusMailbox
-    /**
-     * Retrive the status for a given mailbox
-     * 
-     * @param string $Mailbox
-     * @param array $Statuses (optional)
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function statusMailbox ($Mailbox, $Statuses = null, $Callback = null, $Private = null) {
-      // Check our state
-      if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
-          ($this->State != self::IMAP_STATE_ONMAILBOX))
-        return false;
-      
-      // Check wheter to retrive all statuses for this mailbox
-      if (!is_array ($Statuses))
-        $Statuses = array (
-          'MESSAGES',
-          'RECENT',
-          'UIDNEXT',
-          'UIDVALIDITY',
-          'UNSEEN',
-        );
-      
-      return $this->imapCommand ('STATUS', array ($Mailbox, $Statuses), $Callback, $Private);
-    }
-    // }}}
-    
-    // {{{ renameMailbox
-    /**
-     * Rename a mailbox on our server
-     * 
-     * @param string $Name
-     * @param string $newName
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void  
-     **/
-    public function renameMailbox ($Name, $newName, $Callback = null, $Private = null) {
-      // Check our state
-      if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
-          ($this->State != self::IMAP_STATE_ONMAILBOX))
-        return false;
-      
-      // Issue the command
-      return $this->imapCommand ('RENAME', array ($Name, $newName), array ($this, 'mailboxAction'), array (2, $Callback, $Name, $newName, $Private));
-    }
-    // }}}
-    
-    // {{{ subscribeMailbox
-    /**
-     * Subscribe to a mailbox on our server
-     * 
-     * @param string $Name
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function subscribeMailbox ($Name, $Callback = null, $Private = null) {
-      // Check our state
-      if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
-          ($this->State != self::IMAP_STATE_ONMAILBOX))
-        return false;
-      
-      // Issue the command
-      return $this->imapCommand ('SUBSCRIBE', array ($Name, $newName), array ($this, 'mailboxAction'), array (3, $Callback, $Name, $Private));
-    }
-    // }}}
-    
-    // {{{ unsubscribeMailbox
-    /**
-     * Unsubscribe from a mailbox on our server
-     * 
-     * @param string $Name
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function unsubscribeMailbox ($Name, $Callback = null, $Private = null) {
-      // Check our state
-      if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&   
-          ($this->State != self::IMAP_STATE_ONMAILBOX))
-        return false;
-      
-      // Issue the command
-      return $this->imapCommand ('UNSUBSCRIBE', array ($Name, $newName), array ($this, 'mailboxAction'), array (4, $Callback, $Name, $Private));
-    }
-    // }}}
-    
-    // {{{ appendMailbox
-    /**
-     * Append a given message to a mailbox
-     * 
-     * @param string $Mailbox
-     * @param string $Message
-     * @param array $Flags (optional)
-     * @param int $Timestamp (optional)
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function appendMailbox ($Mailbox, $Message, $Flags = null, $Timestamp = null, $Callback = null, $Private = null) {
-      // Check our state
-      if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
-          ($this->State != self::IMAP_STATE_ONMAILBOX))
-        return false;
-      
-      // Generate parameters
-      $Args = array ($Mailbox);
-      
-      if (is_array ($Flags))
-        $Args [] = '(' . implode (' ', $Flags) . ')';
-      
-      if ($Timestamp !== null)
-        $Args [] = '"' . date ('d-M-Y H:i:s O', $Timestamp) . '"';
-      
-      if ($this->haveCapability ('LITERAL+')) {
-        $Args [] = '{' . strlen ($Message) . '+}' . "\n" . $Message;
-        $Args = array ($Args);
-      } else {
-        $Args [] = '{' . strlen ($Message) . '}';
-        $Args = array ($Args, array ($Message));
-      }
-      
-      // Issue the command
-      return $this->imapCommand ('APPEND', $Args, array ($this, 'mailboxAction'), array (5, $Callback, $Mailbox, $Private), null, null, true, true);
-    }
-    // }}}
-    
-    // {{{ mailboxAction
-    /**
-     * Internal Callback: A Mailbox was modified
-     * 
-     * @param enum $Response
-     * @param array $Code
-     * @param string $Text
-     * @param array $Private
-     * 
-     * @access private
-     * @return void
-     **/
-    private function mailboxAction ($Response, $Code, $Text, $Private) {
-      // Retrive Arguments
-      $Action = array_shift ($Private);
-      $Callback = array_shift ($Private);
-      
-      // Update internal values upon success
-      if ($Response == self::IMAP_STATUS_OK) {
-        // Mailbox was created
-        if ($Action == 0) {
-        
-        // Mailbox was removed or renamed
-        } elseif (($Action == 1) || ($Action == 2)) {
-          // Remove the mailbox
-          if ($Handle = $this->getMailbox ($Private [0])) {
-            if ($Handle->Parent)
-              unset ($Handle->Parent->Children [$Handle->Name]);
-            else
-              unset ($this->imapMailboxes [$Handle->Name]);
-            
-            if ($Action == 2) {
-              $Handle2 = $this->imapCreateLocalMailbox ($Private [1]);
-              $Handle->Name = $Handle2->Name;
-              $Handle->Parent = $Handle2->Parent;
-              
-              if ($Handle->Parent)
-                $Handle->Parent->Children [$Handle->Name] = $Handle;
-              else
-                $this->imapMailboxes [$Handle->Name] = $Handle;
-            }
-          } elseif ($Action == 2)
-            $this->imapCreateLocalMailbox ($Private [1]);
-        
-        // Mailbox was (un)subscribed
-        } elseif ((($Action == 3) || ($Action == 4)) && ($Handle = $this->getMailbox ($Private [0])))
-          $Handle->Subscribed = ($Action == 3);
-        
-        // Mail was appended to mailbox
-        elseif ($Action == 5) {
-        
-        }
-      }
-      
-      // Check wheter to fire up another callback
-      if (($Callback !== null) && is_callable ($Callback)) {
-        array_unshift ($Private, $this);
-        $Private [] = $Response == self::IMAP_STATUS_OK;
-        
-        call_user_func_array ($Callback, $Private);
-      }
-    }
-    // }}}
-    
-    // {{{ listMailboxes
-    /**
-     * Request a list of mailboxes from server
-     * 
-     * @param string $Name (optional)
-     * @param string $Root (optional)
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function listMailboxes ($Name = '%', $Root = '', $Callback = null, $Private = null) {
-      // Check our state
-      if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
-          ($this->State != self::IMAP_STATE_ONMAILBOX))
-        return false;
-      
-      // Try to load IMAP-Namespaces before this one
-      if (!is_array ($this->imapNamespaces))
-        $this->listNamespaces ();
-      
-      // Issue the command
-      return $this->imapCommand ('LIST', array ($Root, $Name), array ($this, 'listHandler'), array (0, $Callback, $Name, $Root, $Private));
-    }
-    // }}}
-    
-    // {{{ listSubscribedMailboxes
-    /**
-     * Request a list of subscribed mailboxes from server
-     * 
-     * @param string $Name (optional)
-     * @param string $Root (optional)  
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void   
-     **/
-    public function listSubscribedMailboxes ($Name = '%', $Root = '', $Callback = null, $Private = null) {
-      // Check our state
-      if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
-          ($this->State != self::IMAP_STATE_ONMAILBOX))
-        return false;
-      
-      // Try to load IMAP-Namespaces before this one
-      if (!is_array ($this->imapNamespaces))
-        $this->listNamespaces ();
-      
-      // Issue the command
-      return $this->imapCommand ('LSUB', array ($Root, $Name), array ($this, 'listHandler'), array (1, $Callback, $Name, $Root, $Private));
-    }
-    // }}}
-    
-    // {{{ listNamespaces
-    /**
-     * Request a list of all namespaces on this server
-     * 
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void   
-     **/
-    public function listNamespaces ($Callback = null, $Private = null) {
-      // Check our state
-      if ((($this->State != self::IMAP_STATE_AUTHENTICATED) &&
-           ($this->State != self::IMAP_STATE_ONMAILBOX)) ||
-          !$this->haveCapability ('NAMESPACE'))
-        return false;
-      
-      // Make sure the format of imapNamespaces is correct
-      if (!is_array ($this->imapNamespaces))
-        $this->imapNamespaces = array ();
-      
-      // Issue the command
-      return $this->imapCommand ('NAMESPACE', array (), array ($this, 'listHandler'), array (2, $Callback, $Private));
-    }
-    // }}}
-    
-    // {{{ listHandler
-    /**
-     * Internal Callback: A LIST/LSUB-Command was executed
-     * 
-     * @param enum $Response
-     * @param array $Code
-     * @param string $Text
-     * @param array $Private
-     * 
-     * @access private
-     * @return void
-     **/
-    private function listHandler ($Response, $Code, $Text, $Private) {
-      # TODO: Improve this
-      $Type = array_shift ($Private);
-      
-      // Check if LIST/LSUB was performed
-      if ($Type < 2) {
-        $Root = $Private [2];
-        
-        // Implement HasNoChildren-Flag if not supported by server
-        if (($Handle = $this->getMailbox ($Root)) && (count ($Handle->Children) == 0) && !in_array ('\\HasNoChildren', $Handle->Attributes))
-          $Handle->Attributes [] = '\\HasNoChildren';
-      }
-      
-      // Issue any stored callback for this
-      $Callback = $Private [0];
-      $Private [0] = $this;
-      
-      if (($Callback !== null) && is_callable ($Callback))
-        call_user_func_array ($Callback, $Private);
-    }
-    // }}}
-    
-    // {{{ selectMailbox
-    /**
-     * Open a given mailbox
-     * 
-     * @param string $Mailbox
-     * @param bool $ReadOnly (optional)
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function selectMailbox ($Mailbox, $ReadOnly = false, $Callback = null, $Private = null) {
-      // Check our state
-      if (($this->State != self::IMAP_STATE_AUTHENTICATED) &&
-          ($this->State != self::IMAP_STATE_ONMAILBOX))
-        return false;
-      
-      // Store the predicted next mailbox
-      $this->imapMailboxNext = $Mailbox;
-      
-      // Issue the command 
-      return $this->imapCommand (($ReadOnly ? 'EXAMINE' : 'SELECT'), array ($Mailbox), array ($this, 'selectHandler'), array ($Callback, $Mailbox, $Private));
-    }
-    // }}}
-    
-    // {{{ selectHandler
-    /**
-     * Internal Callback: A Mailbox was selected
-     * 
-     * @param enum $Response
-     * @param array $Code
-     * @param string $Text
-     * @param array $Private
-     * 
-     * @access private
-     * @return void
-     **/
-    private function selectHandler ($Response, $Code, $Text, $Private) {
-      // Check if the command was successfull
-      if ($Response == self::IMAP_STATUS_OK) {
-        $this->imapMailbox = $Private [1];
-        $this->imapMailboxNext = null;
-        $this->mailboxReadOnly = ((count ($Code) > 0) && ($Code [0] == 'READ-ONLY'));
-        
-        $this->imapSetState (self::IMAP_STATE_ONMAILBOX);
-      }
-      
-      // Fire callbacks
-      $this->imapCallbackStatus (array ('imapMailboxOpened', 'imapMailboxOpenFailed'), $Private [0], $Response == self::IMAP_STATUS_OK, $this->imapMailbox, !$this->mailboxReadOnly, $Private [2]);
-    }
-    // }}}
-    
-    
-    // {{{ check
-    /**
-     * Issue a CHECK-Command
-     * 
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function check ($Callback = null, $Private = null) {
-      // Check our state
-      if ($this->State != self::IMAP_STATE_ONMAILBOX)
-        return false;
-      
-      return $this->imapCommand ('CHECK', null, $Callback, $Private);
-    }
-    // }}}
-    
-    // {{{ closeMailbox
-    /**
-     * Close the currently selected mailbox
-     * 
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function closeMailbox ($Callback = null, $Private = null) {
-      // Check our state
-      if ($this->State != self::IMAP_STATE_ONMAILBOX)  
-        return false;
-      
-      $this->imapMailboxNext = null;
-      
-      return $this->imapCommand ('CLOSE', null, array ($this, 'closeHandler'), array ($Callback, $Private));
-    }
-    // }}}
-    
-    // {{{ unselect
-    /**
-     * Unselect the current mailbox
-     * 
-     * @remark this is similar to CLOSE, but does not implicit expunge deleted messages
-     * 
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void  
-     **/
-    public function unselect ($Callback = null, $Private = null) {
-      // Check our state
-      if (($this->State != self::IMAP_STATE_ONMAILBOX) || !$this->haveCapability ('UNSELECT'))
-        return false;
-      
-      $this->imapMailboxNext = null;
-      
-      return $this->imapCommand ('UNSELECT', null, array ($this, 'closeHandler'), array ($Callback, $Private));
-    }
-    // }}}
-    
-    // {{{ closeHandler
-    /**
-     * Internal Callback: CLOSE-Command was executed
-     * 
-     * @param enum $Response
-     * @param array $Code
-     * @param string $Text
-     * @param array $Private
-     * 
-     * @access private
-     * @return void
-     **/  
-    private function closeHandler ($Response, $Code, $Text, $Private) {
-      // Remember the current mailbox
-      $oMailbox = $this->imapMailbox;
-      
-      // Change the status on success
-      if ($Response == self::IMAP_STATUS_OK) {
-        $this->imapMailbox = null;
-        $this->imapSetState (self::IMAP_STATE_AUTHENTICATED);
-      }
-      
-      // Handle callbacks
-      $this->imapCallbackStatus (array ('imapMailboxClosed', 'imapMailboxCloseFailed'), $Private [0], $Response == self::IMAP_STATUS_OK, $oMailbox, $Private [1]);
-    }
-    // }}}
-    
-    // {{{ expunge
-    /**
-     * Wipe out all mails marked as deleted on the current mailbox
-     * 
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function expunge ($Callback = null, $Private = null) {
-      // Check our state
-      if ($this->State != self::IMAP_STATE_ONMAILBOX)
-        return false;
-      
-      // Issue the command
-      return $this->imapCommand ('EXPUNGE', null, array ($this, 'imapCallbackExt'), array ($Callback, true, $Private));
-    }
-    // }}}
-    
-    // {{{ setFlags
-    /**
-     * Set Flags of a messages
-     * 
-     * @param bool $byUID
-     * @param sequence $IDs
-     * @param array $Flags
-     * @param enum $Mode (optional)
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function setFlags ($byUID, $IDs, $Flags, $Mode = self::MODE_SET, $Callback = null, $Private = null) {
-      // Check our state
-      if ($this->State != self::IMAP_STATE_ONMAILBOX)
-        return false;
-      
-      // Prepare the args
-      $Args = array ();
-      
-      if (!($Seq = $this->imapSequence ($IDs)))
-        return false;
-      
-      $Args [] = $Seq;
-      
-      if ($Mode == self::MODE_SET)
-        $Args [] = 'FLAGS';
-      elseif ($Mode == self::MODE_ADD)
-        $Args [] = '+FLAGS';
-      elseif ($Mode == self::MODE_DEL)
-        $Args [] = '-FLAGS';
-      else
-        return false;
-      
-      if (!is_array ($Flags))
-        $Flags = array ($Flags);
-      
-      $Args [] = '(' . implode (' ', $Flags) . ')';
-      
-      // Issue the command
-      return $this->imapCommand (($byUID ? 'UID STORE' : 'STORE'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true, $Private), null, null, true);
-    }
-    // }}}
-    
-    // {{{ copy
-    /**
-     * Copy a set of Messages to a given mailbox
-     * 
-     * @param bool $byUID
-     * @param sequence $IDs
-     * @param string $Mailbox
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function copy ($byUID, $IDs, $Mailbox, $Callback = null, $Private = null) {
-      // Check our state
-      if ($this->State != self::IMAP_STATE_ONMAILBOX)
-        return false;
-      
-      // Prepare the args
-      if (!($Seq = $this->imapSequence ($IDs)))
-        return false;
-      
-      $Args = array ($Seq, $Mailbox);
-      
-      // Issue the command
-      return $this->imapCommand (($byUID ? 'UID COPY' : 'COPY'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true, $Private));
-    }
-    // }}}
-    
-    // {{{ fetchMessages
-    /**
-     * Fetch messages from server
-     * 
-     * @param bool $byUID
-     * @param sequence $IDs
-     * @param callback $Callback (optional)
-     * @param mixed $Private (optional)
-     * @param string ... (optional)
-     *
-     * @access public
-     * @return void
-     **/
-    public function fetchMessages ($byUID, $IDs, $Callback = null, $Private = null, $Item = 'ALL') {
-      // Check our state
-      if ($this->State != self::IMAP_STATE_ONMAILBOX)
-        return false;
-      
-      // Handle all data-items
-      if (count ($Args = array_slice (func_get_args (), 3)) == 0)
-        $Args [] = 'ALL';
-      
-      foreach ($Args as $idx=>$Arg)
-        // Make sure Macros are on their own
-        if ($Arg == 'ALL') {
-          $Args = array ('UID', 'FLAGS', 'INTERNALDATE', 'RFC822.SIZE', 'ENVELOPE');
-          break;
-        } elseif ($Arg == 'FAST') {
-          $Args = array ('UID', 'FLAGS', 'INTERNALDATE', 'RFC822.SIZE');
-          break;
-        } elseif ($Arg == 'FULL') {
-          $Args = array ('UID', 'FLAGS', 'INTERNALDATE', 'RFC822.SIZE', 'ENVELOPE', 'BODY');
-          break;
-        
-        // Check for a valid flag that stands on its own
-        } elseif (($Arg == 'ENVELOPE') || ($Arg == 'FLAGS') || ($Arg == 'UID') || ($Arg == 'INTERNALDATE') ||
-                  ($Arg == 'RFC822') || ($Arg == 'RFC822.HEADER') || ($Arg == 'RFC822.SIZE') || ($Arg == 'RFC822.TEXT') ||
-                  ($Arg == 'BODY') || ($Arg == 'BODYSTRUCTURE'))
-          continue;
-        
-        // Check wheter to fetch a body-section
-        elseif (((substr ($Arg, 0, 5) == 'BODY[') || (substr ($Arg, 0, 10) == 'BODY.PEEK[')) && (substr ($Arg, -1, 1) == ']')) {
-          # TODO: Validate the section-value
-          # TODO: Add support for parital gets
-          
-          # $Section = substr ($Arg, ($Arg [4] == '.' ? 10 : 5), -1);
-          continue;
-        
-        // Discard the value if it seems invalid
-        } else
-          unset ($Args [$idx]);
-      
-      // Make sure always to fetch the UID
-      if (!in_array ('UID', $Args))
-        $Args [] = 'UID';
-      
-      // Prepare the args
-      if (!($Seq = $this->imapSequence ($IDs)))
-        return false;
-      
-      $Args = array ($Seq, '(' . implode (' ', $Args) . ')');
-      
-      // Issue the command
-      return $this->imapCommand (($byUID ? 'UID FETCH' : 'FETCH'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true, $Private), null, null, true);
-    }
-    // }}}
-    
-    // {{{ searchMessages
-    /**
-     * Search a set of messages
-     * 
-     * @param bool $byUID
-     * @param string $Charset (optional)
-     * @param $Callback (optional)
-     * @param mixed $Private (optional)
-     * @param string ... (optional)
-     * 
-     * @access public
-     * @return void
-     **/
-    public function searchMessages ($byUID, $Charset = null, $Callback = null, $Private = null, $Match1 = 'ALL') {
-      // Check our state
-      if ($this->State != self::IMAP_STATE_ONMAILBOX)
-        return false;
-      
-      // Handle all data-items
-      if (count ($Args = array_slice (func_get_args (), 3)) == 0)
-        $Args [] = 'ALL';
-      
-      foreach ($Args as $idx=>$Arg)
-        if (!$this->checkSearchKey ($Arg))
-          unset ($Args [$idx]);
-      
-      if (count ($Args) > 1)
-        $Args = array ($Args);
-      
-      // Prepend Charset to arguements
-      if ($Charset !== null)
-        array_unshift ($Args, 'CHARSET', $Charset);
-      
-      // Issue the command
-      return $this->imapCommand (($byUID ? 'UID SEARCH' : 'SEARCH'), $Args, array ($this, 'imapCallbackExt'), array ($Callback, true, $Private), null, null, true);
-    }
-    // }}}
-    
-    // {{{ checkSearchKey
-    /**
-     * Validate a given search-key
-     * 
-     * @param string $Key
-     * 
-     * @access private
-     * @return bool
-     **/
-    private function checkSearchKey ($Key) {
-      // Check for a single-value
-      if (($Key == 'ALL') || ($Key == 'NEW') || ($Key == 'OLD') || ($Key == 'SEEN') ||
-          ($Key == 'DRAFT') || ($Key == 'RECENT') || ($Key == 'UNSEEN') || ($Key == 'DELETED') ||
-          ($Key == 'FLAGGED') || ($Key == 'UNDRAFT') || ($Key == 'UNDELETED') || ($Key == 'UNFLAGGED') ||
-          ($Key == 'UNANSWERED'))
-        return true;
-      
-      // Try to parse the key
-      if (!($Params = $this->imapParseArgs ($Key)) || (count ($Params) < 2))
-        return false;
-      
-      // Check by keyword
-      switch ($Params [0]) {
-        // Second arguement must be a number
-        case 'LARGER':
-        case 'SMALLER':
-          return ((count ($Params) == 2) && is_numeric ($Params [1]));
-        
-        // Simple strings
-        case 'CC':
-        case 'BCC':
-        case 'FROM':
-        case 'BODY':
-        case 'SUBJECT':
-          return ((count ($Params) == 2) && (strlen ($Params [1]) > 0));
-        
-        case 'HEADER':
-          return ((count ($Params) == 3) && (strlen ($Params [1]) > 0) && (strlen ($Params [2]) > 0));
-          
-        // Dates
-        case 'ON':
-        case 'SINCE':
-        case 'BEFORE':
-        case 'SENTON':
-        case 'SENTSINCE':
-        case 'SENTBEFORE':
-          return ((count ($Params) == 2) && (strlen ($Params [1]) > 7));
-        
-        // Flags
-        case 'KEYWORD':
-        case 'UNKEYWORD':
-          return ((count ($Params) == 2) && (strlen ($Params [1]) > 0));
-        
-        // Sequences
-        case 'UID':
-          return ((count ($Params) == 2) && (strlen ($Params [1]) > 0));
-        
-        // Subkeys
-        case 'NOT':
-          return $this->checkSearchKey (substr ($Key, 4));
-        
-        case 'OR':
-          # TODO!
-      }
-      
-      return false;
+    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
+      # TODO?
+      return qcEvents_Promise::resolve ();
     }
     // }}}
     
@@ -2112,99 +1578,224 @@
     /**
      * Issue an IMAP-Command over the wire
      * 
-     * @param string $Command
-     * @param mixed $Args
-     * @param callback $Callback
-     * @param mixed $Private (optional)
-     * @param callback $ContinueCallback (optional)
-     * @param mixed $Private2 (optional)
-     * @param bool $dontParse (optional)
-     * @param bool $unparedMultiline (optional)
+     * @param string $commandNAme
+     * @param array $commandArguments (optional)
+     * @param callable $continuationCallback (optional)
+     * 
+     * @access private
+     * @return qcEvents_Promise
+     **/
+    private function imapCommand ($commandName, array $commandArguments = null, callable $continuationCallback = null) : qcEvents_Promise {
+      // Create a new promise for this command
+      $deferedPromise = new qcEvents_Defered;
+      
+      // Push command to queue
+      $this->pendingCommands [$this->commandSequence++] = array ($deferedPromise, $commandName, $commandArguments, $continuationCallback, array ());
+      
+      // Try to start pending command
+      $this->imapStartPendingCommand ();
+      
+      // Return the promise
+      return $deferedPromise->getPromise ();
+    }
+    // }}}
+    
+    // {{{ imapStartPendingCommand
+    /**
+     * Try to start next command from queue (if there is no active command)
      * 
      * @access private
      * @return void
      **/
-    private function imapCommand ($Command, $Args, $Callback, $Private = null, $ContinueCallback = null, $Private2 = null, $dontParse = false, $unparedMultiline = false) {
-      // Make sure the callback is valid
-      if (($Callback !== null) && !is_callable ($Callback)) {
-        trigger_error ('No valid callback given', E_USER_WARNING);
+    private function imapStartPendingCommand () {
+      // Check if there is already an active command
+      if ($this->activeCommand !== null)
+        return;
+      
+      // Move to next pending command
+      foreach ($this->pendingCommands as $commandSequence=>$commandInfo) {
+        $this->activeCommand = $commandSequence;
         
-        return false;
+        break;
       }
       
-      if (($ContinueCallback !== null) && !is_callable ($ContinueCallback))
-        $ContinueCallback = null;
+      // Check if there is a next command
+      if ($this->activeCommand === null)
+        return;
       
-      // Retrive the ID for this Command
-      $ID = $this->Commands++;
+      // Prepare to write the command to the wire
+      $commandLines = array ($this->pendingCommands [$this->activeCommand][1]);
       
-      # TODO: Keep commands in a local pipe, don't issue them directly
-      #   See RFC 3501 5.5
-      # Use for this commandPipe
+      if ($this->pendingCommands [$this->activeCommand][2] !== null) {
+        $argumentLines = $this->imapEncodeArguments ($this->pendingCommands [$this->activeCommand][2]);
+        
+        foreach ($argumentLines as $lineIndex=>$argumentLine)
+          if ($lineIndex == 0)
+            $commandLines [0] .= $argumentLine;
+          else
+            $commandLines [] = ltrim ($argumentLine, ' ');
+      }
       
-      // Register a callback for this command
-      $this->Callbacks [$ID] = array ($Callback, $Private, $ContinueCallback, $Private2);
+      // Check wheter to override the continuation-handler
+      if (count ($commandLines) > 1) {
+        $continuationHandler = $this->pendingCommands [$this->activeCommand][3];
+        
+        $this->pendingCommands [$this->activeCommand][3] =
+          function () use ($continuationHandler, &$commandLines) {
+            // Check wheter to restore the original continuation-handler
+            if (count ($commandLines) < 2)
+              $this->pendingCommands [$this->activeCommand][3] = $continuationHandler;
+            
+            // Return the next command-line
+            return array_shift ($commandLines);
+          };
+      }
       
-      // Write out a command with arguments
-      if (is_array ($Args) && (count ($Args) > 0)) {
-        // Check wheter to parse the given arguements
-        if ($dontParse) {
-          if ($unparedMultiline) {
-            $firstArg = implode (' ', array_shift ($Args));
-          } else {
-            $firstArg = implode (' ', $Args);
-            $Args = array ();
-          }
-        
-        // Prepare arguements for submission
-        } elseif (!($Args = $this->imapArgs ($Args)))
-          return false;
-        
-        // Peek the first line for this command
-        else
-          $firstArg = array_shift ($Args);
-        
-        // Check if there are literals (and rewrite the continuation-callback)
-        if (count ($Args) > 0) {
-          $this->Callbacks [$ID][2] = array ($this, 'handleCommandLiterals');
-          $this->Callbacks [$ID][3] = array ($Args, $ContinueCallback, $Private2);
-        }
-        
-        // Write out the first part of this command
-        $this->mwrite ('C', dechex ($ID), ' ', $Command, ' ', $firstArg, "\r\n");
-        
-      // Write out command without args
-      } else
-        $this->mwrite ('C', dechex ($ID), ' ', $Command, "\r\n");
+      // Write command to the wire
+      $commandLine = array_shift ($commandLines);
+      
+      return $this->imapWriteToStream (sprintf ('%04X %s' . "\r\n", $this->activeCommand, $commandLine));
     }
     // }}}
     
-    // {{{ handleCommandLiterals
+    // {{{ imapEncodeArguments
     /**
-     * Internal Callback: Write out further literals for a command
+     * Encode command-arguments for submission to the server
      * 
-     * @param int $ID Identifier of the current command
-     * @param string $Text Text submitted by the server for this continuation-request
-     * @param array $Private Private data for this callback
+     * @param array $imapArguments
      * 
      * @access private
-     * @return string
+     * @return array
      **/
-    private function handleCommandLiterals ($ID, $Text, $Private) {
-      // Retrive the next chunk from the pipe
-      $NextArg = array_shift ($this->Callbacks [$ID][3][0]);
+    private function imapEncodeArguments (array $imapArguments) : array {
+      $argumentLines = array ();
+      $argumentLine = '';
       
-      // Check if we are ready after this one
-      if (count ($this->Callbacks [$ID][3][0]) == 0) {
-        $this->Callbacks [$ID][2] = $this->Callbacks [$ID][3][1];
-        $this->Callbacks [$ID][3] = $this->Callbacks [$ID][3][2];
+      foreach ($imapArguments as $imapArgument) {
+        if (is_string ($imapArgument) &&
+            ((strpos ($imapArgument, "\n") !== false) ||
+             (strpos ($imapArgument, "\r") !== false)))
+          $imapArgument = new qcEvents_Stream_IMAP_Literal ($imapArgument);
+        
+        if ($imapArgument instanceof qcEvents_Stream_IMAP_Literal) {
+          if (true || !$this->haveCapability ('LITERAL+')) {
+            $argumentLines [] = $argumentLine . ' {' . $imapArgument->length () . '}';
+            $argumentLine = (string)$imapArgument;
+          } else
+            $argumentLine .= ' {' . $imapArgument->length () . '+}' . "\r\n" . (string)$imapArgument;
+          
+        } elseif (is_array ($imapArgument)) {
+          $subArguments = static::imapEncodeArguments ($imapArgument);
+          $argumentLine .= ' (';
+          
+          foreach ($subArguments as $lineIndex=>$subLine) {
+            $argumentLine .= ltrim ($subLine) . ' ';
+            
+            if ($lineIndex < count ($subArguments) - 1) {
+              $argumentLines [] = rtrim ($argumentLine);
+              $argumentLine = '';
+            }
+          }
+          
+          $argumentLine = rtrim ($argumentLine) . ')';
+        } elseif (preg_match ('/^[.\\\d\w=-]+$/', $imapArgument) > 0)
+          $argumentLine .= ' ' . $imapArgument;
+        else
+          $argumentLine .= ' "' . str_replace (array ('"', '\\'), array ('\\"', '\\\\'), $imapArgument) . '"';
       }
       
-      return $NextArg;
+      $argumentLines [] = $argumentLine;
+      
+      return $argumentLines;
     }
     // }}}
     
-    // {{{ imapSequence
+    // {{{ imapDecodeArguments
+    /**
+     * Parse a string into IMAP-Arguments
+     * 
+     * @param string $imapArguments
+     * 
+     * @access private
+     * @return array
+     **/
+    private static function imapDecodeArguments ($imapArguments) {
+      $decodedArguments = array ();
+      $argumentStack = array ();
+      
+      while (($l = strlen ($imapArguments)) > 0) {
+        // Check for a quoted string
+        if (($imapArguments [0] == '"') || ($imapArguments [0] == "'")) {
+          if (($p = strpos ($imapArguments, $imapArguments [0], 1)) !== false) {
+            $decodedArguments [] = substr ($imapArguments, 1, $p - 1);
+            $imapArguments = ltrim (substr ($imapArguments, $p + 1));
+          } else {
+            $decodedArguments [] = substr ($imapArguments, 1);
+            $imapArguments = '';
+          }
+        
+        // Check for a literal
+        } elseif (($imapArguments [0] == '{') && (($p = strpos ($imapArguments, "}\r\n", 1)) !== false)) {
+          $literalSize = intval (substr ($imapArguments, 1, $p - 1));
+          $decodedArguments [] = substr ($imapArguments, $p + 3, $literalSize);
+          $imapArguments = ltrim (substr ($imapArguments, $p + $literalSize + 3));
+        
+        // Check for beginning of an array
+        } elseif ($imapArguments [0] == '(') {
+          $argumentStack [] = $decodedArguments;
+          $decodedArguments = array ();
+          $imapArguments = ltrim (substr ($imapArguments, 1));
+        
+        // Check for end of an array
+        } elseif ($imapArguments [0] == ')') {
+          $stackNext = array_pop ($argumentStack);
+          $stackNext [] = $decodedArguments;
+          $decodedArguments = $stackNext;
+          $imapArguments = ltrim (substr ($imapArguments, 1));
+          
+          unset ($stackNext);
+        
+        // Handle as simple type
+        } else {
+          // Find next delimiter
+          if (($p = strpos ($imapArguments, ' ')) === false)
+            $p = $l;
+          
+          // Move back to last valid value
+          $p--;
+          
+          if ((($p2 = strpos ($imapArguments, '[')) !== false) &&
+              ($p2 < $p) &&
+              (($p3 = strpos ($imapArguments, ']', $p2)) !== false))
+            $p = max ($p3, $p);
+          
+          // Check for closed arrays
+          if ((($p2 = strpos ($imapArguments, ')')) !== false) && ($p2 < $p))
+            $p = $p2 - 1;
+          
+          while ($imapArguments [$p] == ')')
+            $p--;
+          
+          if (($argumentValue = substr ($imapArguments, 0, $p + 1)) == 'NIL')
+            $argumentValue = null;
+          
+          $decodedArguments [] = $argumentValue;
+          $imapArguments = ltrim (substr ($imapArguments, $p + 1));
+        }
+      }
+      
+      // Roll stack back (should never be used)
+      while (count ($argumentStack) > 0) {
+        $stackNext = array_pop ($argumentStack);
+        $stackNext [] = $decodedArguments;
+        $decodedArguments = $stackNext;
+      }
+      
+      return $decodedArguments;
+    }
+    // }}}
+    
+    // {{{ imapEncodeSequence
     /**
      * Create an IMAP-Sequence from a given valud
      * 
@@ -2213,214 +1804,122 @@
      * @access private
      * @return string
      **/
-    private function imapSequence ($Sequence) {
+    private function imapEncodeSequence ($imapSequence) {
       // Return the Sequence as-is if not an array
-      if (!is_array ($Sequence))
-        return $Sequence;
+      if (!is_array ($imapSequence))
+        return $imapSequence;
       
       // Convert an array into a string
-      $out = '';
+      $finalSequence = '';
       
-      foreach ($Sequence as $V)
-        if (is_array ($V)) {
-          if (count ($V) == 2) {
-            $V1 = array_shift ($V);
-            $V2 = array_shift ($V);
-            $out .= ($V1 == '*' ? $V1 : intval ($V1)) . ':' . ($V2 == '*' ? $V2 : intval ($V2)) . ',';
+      foreach ($imapSequence as $sequenceValue)
+        if (is_array ($sequenceValue)) {
+          // Check for a range
+          if (count ($sequenceValue) == 2) {
+            $sequenceStart = array_shift ($sequenceValue);
+            $sequenceEnd = array_shift ($sequenceValue);
+            
+            $finalSequence .= ($sequenceStart == '*' ? $sequenceStart : (int)$sequenceStart) . ':' . ($sequenceEnd == '*' ? $sequenceEnd : (int)$sequenceEnd) . ',';
           } else
-            foreach ($V as $v)
-              $out .= ($v == '*' ? $v : intval ($v)) . ',';
+            foreach ($sequenceValue as $sequenceItem)
+              $finalSequence .= ($sequenceItem == '*' ? $sequenceItem : (int)$sequenceItem) . ',';
+        
+        // Process a single sequence-number
         } else
-          $out .= ($V == '*' ? $V : intval ($V)) . ',';
+          $finalSequence .= ($sequenceValue == '*' ? $sequenceValue : (int)$sequenceValue) . ',';
       
-      return substr ($out, 0, -1);
+      return substr ($finalSequence, 0, -1);
     }
     // }}}
     
-    // {{{ isASCII
+    // {{{ imapCheckSearchKey
     /**
-     * Check if a given string is 7-bit ASCII
+     * Validate a given search-key
      * 
-     * @param string $Text
+     * @param string $searchKey
      * 
      * @access private
      * @return bool
      **/
-    private function isASCII ($Text) {
-      for ($i = 0; $i < strlen ($Text); $i++)
-        if (ord ($Text [$i]) > 127)
-          return false;
+    private function imapCheckSearchKey ($searchKey) {
+      // Check for a single-value
+      if (in_array ($searchKey, array ('ALL', 'NEW', 'OLD', 'SEEN', 'DRAFT', 'RECENT', 'UNSEEN', 'DELETED', 'FLAGGED', 'UNDRAFT', 'UNDELETED', 'UNFLAGGED', 'UNANSWERED')))
+        return true;
       
-      return true;
+      // Try to parse the key
+      if (!($searchParameters = $this->imapDecodeArguments ($searchKey)) || (count ($searchParameters) < 2))
+        return false;
+      
+      // Check by keyword
+      switch ($searchParameters [0]) {
+        // Second arguement must be a number
+        case 'LARGER':
+        case 'SMALLER':
+          return ((count ($searchParameters) == 2) && is_numeric ($searchParameters [1]));
+        
+        // Simple strings
+        case 'CC':
+        case 'BCC':
+        case 'FROM':
+        case 'BODY':
+        case 'SUBJECT':
+          return ((count ($searchParameters) == 2) && (strlen ($searchParameters [1]) > 0));
+        
+        case 'HEADER':
+          return ((count ($searchParameters) == 3) && (strlen ($searchParameters [1]) > 0) && (strlen ($searchParameters [2]) > 0));
+          
+        // Dates
+        case 'ON':
+        case 'SINCE':
+        case 'BEFORE':
+        case 'SENTON':
+        case 'SENTSINCE':
+        case 'SENTBEFORE':
+          return ((count ($searchParameters) == 2) && (strlen ($searchParameters [1]) > 7));
+        
+        // Flags
+        case 'KEYWORD':
+        case 'UNKEYWORD':
+          return ((count ($searchParameters) == 2) && (strlen ($searchParameters [1]) > 0));
+        
+        // Sequences
+        case 'UID':
+          return ((count ($searchParameters) == 2) && (strlen ($searchParameters [1]) > 0));
+        
+        // Subkeys
+        case 'NOT':
+          return $this->imapCheckSearchKey (substr ($Key, 4));
+        
+        // Conjunction of two keys
+        case 'OR':
+          return (
+            (count ($searchParameters) == 3) &&
+            $this->imapCheckSearchKey ($searchParameters [1]) &&
+            $this->imapCheckSearchKey ($searchParameters [2])
+          );
+      }
+      
+      return false;
     }
     // }}}
     
-    // {{{ imapArgs
-    /**
-     * Parse given arguements into a string
-     * 
-     * @param array $Args
-     * 
-     * @access private
-     * @return array
-     **/
-    private function imapArgs ($Args) {
-      // Check if the server supports literal+
-      $literalPlus = $this->haveCapability ('LITERAL+');
-      
-      // Generate the output
-      $rc = array ();
-      $out = '';
-      
-      while (count ($Args) > 0) {
-        // Get the next argument
-        $Arg = array_shift ($Args);
-        
-        // Check for an array
-        if (is_array ($Arg)) {
-          $lst = $this->imapArgs ($Arg);
-          $c = count ($lst);
-          
-          if ($c == 1)
-            $out .= '(' . $lst [0] . ') ';
-          elseif ($c == 0)
-            $out .= '() ';
-          else {
-            $out .= '(' . array_shift ($lst);
-            $rc [] = $out;
-            
-            foreach ($lst as $l)
-              $rc [] = $l;
-            
-            $out .= ') ';
-          }
-        
-        // Check for a null-value
-        } elseif ($Arg === null)
-          $Out .= 'NIL ';
-        
-        // Check for an empty string
-        elseif (($l = strlen ($Arg)) == 0)
-          $out .= '"" ';
-        
-        // Check for an explicit literal
-        elseif (($Arg [0] == '{') && ($Arg [$l - 1] == '}') && is_numeric (substr ($Arg, 1, $l - 2))) {
-          $next = array_shift ($Args);
-          
-          if (!$literalPlus) {
-            $out .= '{' . strlen ($next) . '}';
-            $rc [] = $out;
-            $out = $next . ' ';
-          } else
-            $out .= '{' . strlen ($next) . '+}' . "\r\n" . $next . ' ';
-        
-        // Check for an implicit literal
-        } elseif (!$this->isASCII ($Arg) || (strpos ($Arg, "\n") !== false) || (strpos ($Arg, "\r") !== false)) {
-          if (!$literalPlus) {
-            $out .= '{' . strlen ($Arg) . '}';
-            $rc [] = $out;
-            $out = $Arg . ' ';
-          } else
-            $out .= '{' . strlen ($Arg) . '+}'. "\r\n" . $Arg . ' ';
-        
-        // Check wheter to quote
-        } elseif ((strpos ($Arg, ' ') !== false) || (strpos ($Arg, '(') !== false) || (strpos ($Arg, ')') !== false) ||
-                (strpos ($Arg, '{') !== false) || (strpos ($Arg, '%') !== false) || (strpos ($Arg, '*') !== false) ||
-                (strpos ($Arg, '[') !== false) || (strpos ($Arg, '\\') !== false))
-          $out .= '"' . $Arg . '" ';
-        
-        // Just output the string
-        else
-          $out .= $Arg . ' ';
-      }
-      
-      $rc [] = substr ($out, 0, -1);
-      
-      return $rc;
-    }
-    // }}}
     
-    // {{{ imapParseArgs
+    // {{{ imapWriteToStream
     /**
-     * Parse a string into IMAP-Args
+     * Write a message to our server
      * 
-     * @param string $Args
+     * @param string $writeData
      * 
      * @access private
-     * @return array
+     * @return void
      **/
-    private function imapParseArgs ($Args) {
-      $out = array ();
-      $stack = array ();
+    private function imapWriteToStream ($writeData) {
+      // Raise a callback for this
+      if ($this->___callback ('imapWrite', $writeData) === false)
+        return false;
       
-      while (($l = strlen ($Args)) > 0) {
-        // Check for an enclosed value
-        if (($Args [0] == '"') || ($Args [0] == "'")) {
-          if (($p = strpos ($Args, $Args [0], 1)) !== false) {
-            $out [] = substr ($Args, 1, $p - 1);
-            $Args = ltrim (substr ($Args, $p + 1));
-          } else {
-            $out [] = substr ($Args, 1);
-            $Args = '';
-          }
-        
-        // Check for a literal
-        } elseif (($Args [0] == '{') && (($p = strpos ($Args, "}\r\n", 1)) !== false)) {
-          $Size = intval (substr ($Args, 1, $p - 1));
-          $out [] = substr ($Args, $p + 3, $Size);
-          $Args = ltrim (substr ($Args, $p + $Size + 3));
-        
-        // Check for beginning of an array
-        } elseif ($Args [0] == '(') {
-          $stack [] = $out;
-          $out = array ();
-          $Args = ltrim (substr ($Args, 1));
-        
-        // Check for end of an array
-        } elseif ($Args [0] == ')') {
-          $nout = array_pop ($stack);
-          $nout [] = $out;
-          $out = $nout;
-          $Args = ltrim (substr ($Args, 1));
-          unset ($nout);
-        
-        // Handle as simple type
-        } else {
-          // Find next delimiter
-          if (($p = strpos ($Args, ' ')) === false)
-            $p = $l;
-          
-          // Move back to last valid value
-          $p--;
-          
-          if ((($p2 = strpos ($Args, '[')) !== false) &&
-              ($p2 < $p) &&
-              (($p3 = strpos ($Args, ']', $p2)) !== false))
-            $p = max ($p3, $p);
-          
-          // Check for closed arrays
-          if ((($p2 = strpos ($Args, ')')) !== false) && ($p2 < $p))
-            $p = $p2 - 1;
-          
-          while ($Args [$p] == ')')
-            $p--;
-          
-          if (($Value = substr ($Args, 0, $p + 1)) == 'NIL')
-            $Value = null;
-          
-          $out [] = $Value;
-          $Args = ltrim (substr ($Args, $p + 1));
-        }
-      }
-      
-      // Roll stack back (should never be used)
-      while (count ($stack) > 0) {
-        $nout = array_pop ($stack);
-        $nout [] = $out;
-        $out = $nout;
-      }
-      
-      return $out;
+      // Push to the wire
+      return $this->sourceStream->write ($writeData);
     }
     // }}}
     
@@ -2428,151 +1927,49 @@
     /**
      * Change the IMAP-Protocol-State
      * 
-     * @param enum $State
+     * @param enum $newState
      * 
      * @access private
-     * @return void
+     * @return enum New state, NULL if state wasn't changed
      **/
-    private function imapSetState ($State) {
+    private function imapSetState ($newState) {
       // Check if anything is to be changed
-      if ($State == $this->State)
-        return;
+      if ($newState == $this->imapState)
+        return null;
       
       // Change the status
-      $oState = $this->State;
-      $this->State = $State;
+      $oldState = $this->imapState;
+      $this->imapState = $newState;
       
       // Fire callback
-      $this->___callback ('imapStateChanged', $State, $oState);
-    }
-    // }}}
-    
-    // {{{ imapCallback
-    /**
-     * Internal callback: Convert an IMAP-Command-Callback to a normal callback
-     * 
-     * @param enum $Response
-     * @param array $Code
-     * @param string $Text
-     * @param array $Private
-     * 
-     * @access private
-     * @return void
-     **/
-    private function imapCallback ($Response, $Code, $Text, $Private) {
-      if (!is_array ($Private))
-        $Private = array ($Private);
+      $this->___callback ('imapStateChanged', $newState, $oldState);
       
-      call_user_func_array (array ($this, '___callback'), $Private);
-    }
-    // }}}
-    
-    // {{{ imapCallbackExt
-    /**
-     * Internal callback: Convert an IMAP-Command-Callback to an external callback
-     * 
-     * $Private is expected to be an array with at least one element:
-     * - The first element is taken as callback
-     * - If the second arguement is true, a boolean representing the IMAP-Response is appended to the remaining array
-     * - The remaining elements (including IMAP-Response) will be used as parameter for the callback
-     * 
-     * @param enum $Response
-     * @param array $Code
-     * @param string $Text
-     * @param array $Private
-     * 
-     * @access private
-     * @return void
-     **/
-    private function imapCallbackExt ($Response, $Code, $Text, $Private) {
-      // Make sure we have an array
-      if (!is_array ($Private) || (($c = count ($Private)) < 1))
-        return;
-      
-      // Retrive the callback
-      if (!is_callable ($Callback = array_shift ($Private)))
-        return;
-      
-      // Check wheter to append the status
-      if ($c > 1)
-        $appendStatus = array_shift ($Private);
-      
-      // Prepare arguements
-      if ($appendStatus)
-        array_unshift ($Private, $Response == self::IMAP_STATUS_OK);
-      
-      array_unshift ($Private, $this);
-      
-      // Fire the callback
-      call_user_func_array ($Callback, $Private);
-    } 
-    // }}}
-    
-    // {{{ imapCallbackStatus
-    /**
-     * Fire up internal and external callbacks with a status-code
-     * 
-     * @param mixed $Internal
-     * @param callback $External
-     * @param bool $Status
-     * 
-     * @access private
-     * @return void
-     **/
-    private function imapCallbackStatus ($Internal, $External, $Status) {
-      // Retrive arguements
-      $Args = array_slice (func_get_args (), 3);
-      
-      // Fire up external callback
-      if (($External !== null) && is_callable ($External)) {
-        $eArgs = $Args;
-        array_unshift ($eArgs, $this, $Status == true);
-        
-        call_user_func_array ($External, $eArgs);
-      }
-      
-      // Choose the right callback
-      if (is_array ($Internal))
-        $Callback = ($Status ? array_shift ($Internal) : array_pop ($Internal));
-      else
-        array_push ($Args, $Status == true);
-      
-      if ($Callback === null)
-        return;
-      
-      array_unshift ($Args, $Callback);
-      call_user_func_array (array ($this, '___callback'), $Args);
+      return $newState;
     }
     // }}}
     
     
-    // {{{ socketConnected
+    // {{{ eventClosed
     /**
-     * Occupied Callback: Underlying connection was established
+     * Callback: Stream was closed
      * 
      * @access protected
      * @return void
      **/
-    protected final function socketConnected () {
-      $this->imapSetState (self::IMAP_STATE_CONNECTING);
-      $this->imapGreeting = false;
-    }
+    protected function eventClosed () { }
     // }}}
     
-    // {{{ socketDisconnected
+    // {{{ eventPipedStream
     /**
-     * Occupied Callback: Underlying connection was closed
+     * Callback: A stream was attached to this consumer
+     * 
+     * @param qcEvents_Interface_Stream $sourceStream
      * 
      * @access protected
      * @return void
      **/
-    protected final function socketDisconnected () {
-      $this->imapSetState (self::IMAP_STATE_DISCONNECTED);
-      
-      $this->___callback ('imapDisconnected');
-    }
+    protected function eventPipedStream (qcEvents_Interface_Stream $sourceStream) { }
     // }}}
-    
     
     // {{{ imapStateChanged
     /**
@@ -2595,6 +1992,32 @@
      * @return void
      **/
     protected function imapConnected () { }
+    // }}}
+    
+    // {{{ imapRead
+    /**
+     * Callback: A decoded line was received from the server
+     * 
+     * @param string $lineTag
+     * @param string $lineStatus
+     * @param string $lineText
+     * 
+     * @access protected
+     * @return bool
+     **/
+    protected function imapRead ($lineTag, $lineStatus, $lineText) { }
+    // }}}
+    
+    // {{{ imapWrite
+    /**
+     * Callback: About to write data to the server
+     * 
+     * @param string $writeLine
+     * 
+     * @access protected
+     * @return bool
+     **/
+    protected function imapWrite ($lineData) { }
     // }}}
     
     // {{{ imapAuthenticated
@@ -2680,24 +2103,24 @@
     /**
      * Callback: Selected Mailbox was closed
      * 
-     * @param string $Mailbox
+     * @param qcEvents_Stream_IMAP_Mailbox $Mailbox
      * 
      * @access protected
      * @return void
      **/
-    protected function imapMailboxClosed ($Mailbox) { }
+    protected function imapMailboxClosed (qcEvents_Stream_IMAP_Mailbox $Mailbox) { }
     // }}}
     
     // {{{ imapMailboxCloseFailed
     /**
      * Callback: Mailbox could not be closed
      * 
-     * @param string $Mailbox
+     * @param qcEvents_Stream_IMAP_Mailbox $Mailbox
      * 
      * @access protected
      * @return void
      **/
-    protected function imapMailboxCloseFailed ($Mailbox) { }
+    protected function imapMailboxCloseFailed (qcEvents_Stream_IMAP_Mailbox $Mailbox) { }
     // }}}
   }
 
