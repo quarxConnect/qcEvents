@@ -57,6 +57,21 @@
   
   $Client = new qcEvents_Client_SMTP ($Base, $Mailserver, $Port);
   
+  qcEvents_Stream_SMTP_Client::registerHook (
+    'smtpWrite',
+    function (qcEvents_Stream_SMTP_Client $smtpClient, $Command, $Parameters, $Commandline) {
+      printf ('WRITE %s' . "\n", $Commandline);
+    }
+  );
+  
+  qcEvents_Stream_SMTP_Client::registerHook (
+    'smtpResponse',
+    function (qcEvents_Stream_SMTP_Client $smtpClient, $Code, $Lines) {
+      foreach ($Lines as $Line)
+        printf ('READ  [%s] %s' . "\n", $Code, $Line);
+    }
+  );
+  
   if ($Username !== null)
     $Client->setCredentials ($Username, $Password);
   

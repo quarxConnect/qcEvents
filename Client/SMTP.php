@@ -64,32 +64,27 @@
     function __construct (qcEvents_Base $eventBase, $Hostname = null, $Port = null, $TLS = null) {
       // Create new socket-pool
       $this->Pool = new qcEvents_Socket_Pool ($eventBase);
-      $this->Pool->addHook ('socketConnected', function (qcEvents_Socket_Pool $Pool, qcEvents_Socket $Socket) {
-        // Create a new SMTP-Client
-        $Client = new qcEvents_Stream_SMTP_Client;
-        
-        // Connect ourself with that socket
-        return $Socket->pipeStream ($Client, true)->then (
-          function () use ($Socket, $Client) {
-            // Check wheter to enable TLS
-            if (($this->remoteTLS === true) && !$Client->hasFeature ('STARTTLS') && !$Socket->tlsEnable ())
-              return $this->Pool->releaseSocket ($Socket);
-            
-            // Try to enable TLS
-            if (($this->remoteTLS !== false) && $Client->hasFeature ('STARTTLS') && !$Socket->tlsEnable ())
-              return $Client->startTLS ()->catch (
-                function () use ($Socket) {
-                  // Check if TLS was required
-                  if ($this->remoteTLS === null)
-                    return;
-                  
-                  // Release the socket
-                  $this->Pool->releaseSocket ($Socket);
-                  
-                  // Forward the error
-                  throw new qcEvents_Promise_Solution (func_get_args ());
-                }
-              )->then (
+      
+      $this->Pool->addHook (
+        'socketConnected',
+        function (qcEvents_Socket_Pool $Pool, qcEvents_Socket $Socket) {
+          // Create a new SMTP-Client
+          $Client = new qcEvents_Stream_SMTP_Client;
+          
+          // Connect ourself with that socket
+          return $Socket->pipeStream ($Client, true)->then (
+            function () use ($Socket, $Client) {
+              // Check wheter to enable TLS
+              if (($this->remoteTLS === true) && !$Client->hasFeature ('STARTTLS') && !$Socket->isTLS ())
+                return $this->Pool->releaseSocket ($Socket);
+              
+              // Try to enable TLS
+              if (($this->remoteTLS !== false) && $Client->hasFeature ('STARTTLS') && !$Socket->isTLS ())
+                $socketPromise = $Client->startTLS ();
+              else
+                $socketPromise = qcEvents_Promise::resolve ();
+                
+              return $socketPromise->then (
                 function () use ($Socket, $Client) {
                   // Check wheter to perform authentication
                   if ($this->remoteUser === null)
@@ -103,36 +98,21 @@
                     function () use ($Socket, $Client) {
                       $this->Pool->enableSocket ($Socket, $Client);
                     },
-                    function () use ($Socket) {
-                      $this->Pool->releaseSocket ($Socket);
-                      
-                      throw new qcEvents_Promise_Solution (func_get_args ());
-                    }
                   );
                 }
               );
-            
-            // Check wheter to perform authentication
-            if ($this->remoteUser === null)
-              return $this->Pool->enableSocket ($Socket, $Client);
-            
-            // Try to authenticate
-            return $Client->authenticate (
-              $this->remoteUser,
-              $this->remotePassword,
-              function (qcEvents_Stream_SMTP_Client $Client, $Username, $Status) use ($Socket) {
-                if (!$Status)
-                  return $this->Pool->releaseSocket ($Socket);
+            }
+          )->catch (
+            function () use ($Socket) {
+              // Release the socket
+              $this->Pool->releaseSocket ($Socket);
               
-                return $this->Pool->enableSocket ($Socket, $Client);
-              }
-            );
-          },
-          function () use ($Socket) {
-            $this->Pool->releaseSocket ($Socket);
-          }
-        );
-      });
+              // Forward the error
+              throw new qcEvents_Promise_Solution (func_get_args ());
+            }
+          );
+        }
+      );
       
       // Setup ourself
       if ($Hostname !== null)

@@ -166,7 +166,7 @@
         return qcEvents_Promise::reject ('Server does not support STARTTLS');
       
       // Check if TLS is already active
-      if ($this->sourceStream->tlsEnable ())
+      if ($this->sourceStream->isTLS ())
         return qcEvents_Promise::resolve ();
       
       // Issue the command
@@ -197,7 +197,7 @@
               $this->connectingState = self::SMTP_HANDSHAKE_EHLO;
               $this->serverFeatures = null;
               
-              $this->smtpCommand (
+              return $this->smtpCommand (
                 'EHLO',
                 array ($this->getClientName ()),
                 null,
@@ -599,6 +599,10 @@
       
       $this->mailQueue [] = array ($Originator, $Receivers, $Mail, $Receivers, array (), $deferedPromise);
       
+      // Try to run the queue
+      $this->runMailQueue ();
+      
+      // Return the promise
       return $deferedPromise->getPromise ();
     }
     // }}}
