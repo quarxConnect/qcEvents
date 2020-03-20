@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Asyncronous SMTP Client-Stream
-   * Copyright (C) 2015 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2015-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Promise.php');
+  require_once ('qcEvents/Defered.php');
   
   /**
    * SMTP-Client
@@ -41,20 +42,20 @@
    **/
   class qcEvents_Stream_SMTP_Client extends qcEvents_Hookable implements qcEvents_Interface_Stream_Consumer {
     /* The attached stream */
-    private $Stream = null;
+    private $sourceStream = null;
     
     /* Protocol state */
     const SMTP_STATE_DISCONNECTED = 0;
-    const SMTP_STATE_CONNECTING = 1;
-    const SMTP_STATE_CONNECTED = 2;
-    const SMTP_STATE_TRANSACTION = 3;
-    const SMTP_STATE_DISCONNECTING = 4;
+    const SMTP_STATE_DISCONNECTING = 1;
+    const SMTP_STATE_CONNECTING = 2;
+    const SMTP_STATE_CONNECTED = 3;
+    const SMTP_STATE_TRANSACTION = 4;
+    
+    private $smtpState = qcEvents_Stream_SMTP_Client::SMTP_STATE_DISCONNECTED;
     
     const SMTP_HANDSHAKE_START = 0;
     const SMTP_HANDSHAKE_EHLO = 1;
     const SMTP_HANDSHAKE_FALLBACK = 2;
-    
-    private $State = qcEvents_Stream_SMTP_Client::SMTP_STATE_DISCONNECTED;
     
     /* Internal read-buffer */
     private $Buffer = '';
@@ -90,7 +91,8 @@
     /* Features supported by the server */
     private $serverFeatures = null;
     
-    private $initCallback = null;
+    /* Promise for stream-initialization */
+    private $initPromise = null;
     
     // {{{ getClientName
     /**
@@ -164,11 +166,11 @@
         return qcEvents_Promise::reject ('Server does not support STARTTLS');
       
       // Check if TLS is already active
-      if ($this->Stream->tlsEnable ())
+      if ($this->sourceStream->tlsEnable ())
         return qcEvents_Promise::resolve ();
       
       // Issue the command
-      return $this->issueSMTPCommand (
+      return $this->smtpCommand (
         'STARTTLS',
         null,
         self::SMTP_STATE_CONNECTED,
@@ -186,30 +188,23 @@
           $this->Command = true;
           
           // Try to start TLS-negotiation
-          return new qcEvents_Promise (function ($resolve, $reject) {
-            $this->Stream->tlsEnable (true, function (qcEvents_Socket $Socket, $Status) use ($resolve, $reject) {
+          return $this->sourceStream->tlsEnable (true)->then (
+            function () {
               // Unlock the command-pipeline
               $this->Command = null;
-              
-              // Check if TLS-negotiation failed
-              if (!$Status)
-                return $reject ('TLS-negotiation failed');
               
               // Restart the connection
               $this->connectingState = self::SMTP_HANDSHAKE_EHLO;
               $this->serverFeatures = null;
               
-              $this->issueSMTPCommand (
+              $this->smtpCommand (
                 'EHLO',
                 array ($this->getClientName ()),
                 null,
                 null
-              )->then (
-                $resolve,
-                $reject
               );
-            });
-          });
+            }
+          );
         }
       );
     }
@@ -271,7 +266,7 @@
           $this->connectingState = self::SMTP_HANDSHAKE_EHLO;
           $this->serverFeatures = null;
           
-          return $this->issueSMTPCommand (
+          return $this->smtpCommand (
             'EHLO',
             array ($this->getClientName ()),
             null,
@@ -299,7 +294,7 @@
         }
       
         // Ask the server for that mechanism
-        return $this->issueSMTPCommand (
+        return $this->smtpCommand (
           'AUTH',
           array ($Mechanism, base64_encode ($Client->getInitialResponse ())),
           self::SMTP_STATE_CONNECTED,
@@ -311,7 +306,7 @@
       };
       
       // Issue the first AUTH-Command
-      return $this->issueSMTPCommand (
+      return $this->smtpCommand (
         'AUTH',
         array ($Mechanism, base64_encode ($Client->getInitialResponse ())),
         self::SMTP_STATE_CONNECTED,
@@ -349,7 +344,7 @@
       }
        
       // Issue the command
-      return $this->issueSMTPCommand (
+      return $this->smtpCommand (
         'MAIL FROM:' . $Originator,
         $Params,
         self::SMTP_STATE_CONNECTED,
@@ -379,7 +374,7 @@
         $Receiver = '<' . $Receiver . '>';
 
       // Issue the command
-      return $this->issueSMTPCommand (
+      return $this->smtpCommand (
         'RCPT TO:' . $Receiver,
         $Params,
         self::SMTP_STATE_TRANSACTION
@@ -403,7 +398,7 @@
      **/
     public function sendData ($Mail) : qcEvents_Promise {
       // Issue the command
-      return $this->issueSMTPCommand (
+      return $this->smtpCommand (
         'DATA',
         null,
         self::SMTP_STATE_TRANSACTION,
@@ -434,7 +429,7 @@
      **/
     public function reset () : qcEvents_Promise {
       // Issue the command
-      return $this->issueSMTPCommand (
+      return $this->smtpCommand (
         'RSET',
         null,
         null,
@@ -459,7 +454,7 @@
      **/
     public function verify ($Mailbox) : qcEvents_Promise {
       // Issue the command
-      return $this->issueSMTPCommand (
+      return $this->smtpCommand (
         'VRFY',
         array ($Mailbox)
       )->then (
@@ -507,7 +502,7 @@
      **/
     public function noOp (callable $Callback = null, $Private = null) {
       // Issue the command
-      return $this->issueSMTPCommand (
+      return $this->smtpCommand (
         'NOOP'
       )->then (
         function ($Code) {
@@ -533,7 +528,7 @@
         return qcEvents_Promise::reject ('ETRN not supported by server');
       
       // Issue the command
-      return $this->issueSMTPCommand (
+      return $this->smtpCommand (
         'ETRN',
         array ($Domain)
       )->then (
@@ -554,9 +549,9 @@
      **/
     public function close () : qcEvents_Promise {
       // Check if our stream is already closed
-      if (!is_object ($this->Stream)) {
+      if (!is_object ($this->sourceStream)) {
         // Check if we are in disconnected state
-        if ($this->State != self::SMTP_STATE_DISCONNECTED) {
+        if ($this->smtpState != self::SMTP_STATE_DISCONNECTED) {
           // Set disconnected state
           $this->smtpSetState (self::SMTP_STATE_DISCONNECTED);
           $this->___callback ('smtpDisconnected');
@@ -567,7 +562,7 @@
       }
       
       // Issue the command
-      return $this->issueSMTPCommand (
+      return $this->smtpCommand (
         'QUIT',
         null,
         null,
@@ -600,12 +595,11 @@
         return qcEvents_Promise::reject ('SIZE-constraint failed');
       
       // Enqueue the mail
-      return new qcEvents_Promise (function ($resolve, $reject) use ($Originator, $Receivers, $Mail) {
-        $this->mailQueue [] = array ($Originator, $Receivers, $Mail, $Receivers, array (), $resolve, $reject);
-        
-        // Try to start the submission
-        $this->runMailQueue ();
-      });
+      $deferedPromise = new qcEvents_Defered;
+      
+      $this->mailQueue [] = array ($Originator, $Receivers, $Mail, $Receivers, array (), $deferedPromise);
+      
+      return $deferedPromise->getPromise ();
     }
     // }}}
     
@@ -649,7 +643,7 @@
                 $this->mailCurrent = null;
                 
                 // Raise the callback
-                call_user_func ($mc [5], $mc [4]);
+                $mc [5]->resolve ($mc [4]);
                 
                 // Move forward to next queue-item
                 $this->runMailQueue ();
@@ -662,7 +656,7 @@
                 $this->mailCurrent = null;
             
                 // Raise the callback
-                call_user_func ($mc [6], 'Could not send mail');
+                $mc [5]->reject ('Could not send mail');
                 
                 // Move forward to next queue-item
                 $this->runMailQueue ();
@@ -688,7 +682,7 @@
           
           $receiverError = function () use (&$Receiver, &$receiverAdded, &$receiverError, $sendMail) {
             // Push last error-code
-            $this->mailCurrent [7] = $this->lastCode;
+            $this->mailCurrent [6] = $this->lastCode;
             
             // Check wheter to submit the next receiver
             if (count ($this->mailCurrent [3]) > 0) {
@@ -700,7 +694,7 @@
             // Check if the server accepted any receiver
             if (count ($this->mailCurrent [4]) == 0) {
               // Restore the last error-code
-              $this->lastCode = $this->mailCurrent [7];
+              $this->lastCode = $this->mailCurrent [6];
               
               // Remember the current mail
               $mc = $this->mailCurrent;
@@ -715,7 +709,7 @@
               );
               
               // Raise the callback
-              return call_user_func ($mc [6], 'No receiver was accepted by the server');
+              return $mc [5]->reject ('No receiver was accepted by the server');
             }
             
             // Submit the mail
@@ -737,7 +731,7 @@
           });
           
           // Raise the callback
-          return call_user_func ($mc [6], 'MAIL FROM failed');
+          return $mc [5]->reject ('MAIL FROM failed');
         }
       );
     }
@@ -755,12 +749,12 @@
      **/
     private function smtpSetState ($State) {
       // Check if anything was changed
-      if ($this->State == $State)
+      if ($this->smtpState == $State)
         return;
       
       // Set the state
-      $oState = $this->State;
-      $this->State = $State;
+      $oState = $this->smtpState;
+      $this->smtpState = $State;
       
       // Fire a callback
       $this->___callback ('smtpStateChanged', $State, $oState);
@@ -776,22 +770,22 @@
      **/
     private function smtpCheckState () {
       // Start with our current state
-      $State = $this->State;
+      $State = $this->smtpState;
       
       // Check the current command
-      if (($this->Command !== null) && isset ($this->Command [6]) && ($this->Command [6] !== null))
-        $State = $this->Command [6];
+      if (($this->Command !== null) && isset ($this->Command [5]) && ($this->Command [5] !== null))
+        $State = $this->Command [5];
       
       // Check all commands on the pipe
       foreach ($this->Commands as $Command)
-        if (isset ($Command [6]) && ($Command [6] !== null))
-          $State = $Command [6];
+        if (isset ($Command [5]) && ($Command [5] !== null))
+          $State = $Command [5];
       
       return $State;
     }
     // }}}
     
-    // {{{ issueSMTPCommand
+    // {{{ smtpCommand
     /**
      * Issue an SMTP-Command
      * 
@@ -805,14 +799,16 @@
      * @access private
      * @return qcEvents_Promise
      **/
-    private function issueSMTPCommand ($Verb, $Args = null, $requiredState = null, $setState = null, callable $ContinuationCallback = null, $ContinuationPrivate = null) : qcEvents_Promise {
-      return new qcEvents_Promise (function ($resolve, $reject) use ($Verb, $Args, $ContinuationCallback, $ContinuationPrivate, $setState, $requiredState) {
-        // Just push the command to the queue
-        $this->Commands [] = array ($Verb, $Args, $ContinuationCallback, $ContinuationPrivate, $resolve, $reject, $setState, $requiredState);
-        
-        // Try to issue the next command
-        $this->smtpExecuteCommand ();
-      });
+    private function smtpCommand ($Verb, $Args = null, $requiredState = null, $setState = null, callable $ContinuationCallback = null, $ContinuationPrivate = null) : qcEvents_Promise {
+      // Just push the command to the queue
+      $deferedPromise = new qcEvents_Defered;
+      
+      $this->Commands [] = array ($Verb, $Args, $ContinuationCallback, $ContinuationPrivate, $deferedPromise, $setState, $requiredState);
+      
+      // Try to issue the next command
+      $this->smtpExecuteCommand ();
+      
+      return $deferedPromise->getPromise ();
     }
     // }}}
     
@@ -837,11 +833,11 @@
         $this->Command = array_shift ($this->Commands);
         
         // Check the required state
-        if (($this->Command [7] === null) || ($this->State == $this->Command [7]))
+        if (($this->Command [6] === null) || ($this->smtpState == $this->Command [6]))
           break;
         
         // Fire a failed callback
-        call_user_func ($this->Command [5], 503, array ());
+        $this->Command [4]->reject ('Invalid SMTP-State');
         
         if ($c > 1)
           continue;
@@ -855,10 +851,10 @@
       if (is_array ($this->Command [1]) && (count ($this->Command [1]) > 0))
         $Command .= ' ' . implode (' ', $this->Command [1]);
       
-      $this->Stream->write ($Command . "\r\n");
+      $this->sourceStream->write ($Command . "\r\n");
       
       // Raise a callback for this
-      $this->___callback ('smtpCommand', $this->Command [0], $this->Command [1], $Command);
+      $this->___callback ('smtpWrite', $this->Command [0], $this->Command [1], $Command);
     }
     // }}}
     
@@ -866,26 +862,26 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param qcEvents_Interface_Source $Source
+     * @param qcEvents_Interface_Source $sourceStream
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+    public function initStreamConsumer (qcEvents_Interface_Stream $sourceStream) : qcEvents_Promise {
       // Check if this is really a new stream
-      if ($this->Stream === $Source)
+      if ($this->sourceStream === $sourceStream)
         return qcEvents_Promise::resolve ();
       
       // Check if we have a stream assigned
-      if (is_object ($this->Stream))
-        $Promise = $this->Stream->unpipe ($this);
+      if (is_object ($this->sourceStream))
+        $initPromise = $this->sourceStream->unpipe ($this);
       else
-        $Promise = qcEvents_Promise::resolve ();
+        $initPromise = qcEvents_Promise::resolve ();
       
-      return $Promise->catch (function () { })->then (
-        function () use ($Source) {
+      return $initPromise->catch (function () { })->then (
+        function () use ($sourceStream) {
           // Reset our state
-          $this->Stream = $Source;
+          $this->sourceStream = $sourceStream;
           
           $this->Buffer = '';
           $this->authenticated = false;
@@ -904,13 +900,13 @@
           $this->smtpSetState (self::SMTP_STATE_CONNECTING);
           
           // Raise callbacks
-          $this->___callback ('eventPipedStream', $Source);
+          $this->___callback ('eventPipedStream', $sourceStream);
           $this->___callback ('smtpConnecting');
           
           // Create a new promise
-          return new qcEvents_Promise (function ($resolve, $reject) {
-            $this->initCallback = array ($resolve, $reject);
-          });
+          $this->initPromise = new qcEvents_Defered;
+          
+          return $this->initPromise->getPromise ();
         }
       );
     }
@@ -927,11 +923,11 @@
      **/
     public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
       // Check if the source is authentic
-      if ($this->Stream !== $Source)
+      if ($this->sourceStream !== $Source)
         return qcEvents_Promise::reject ('Invalid source');
       
       // Remove the stream
-      $this->Stream = null;
+      $this->sourceStream = null;
       
       // Reset our state
       $this->close ();
@@ -1012,7 +1008,7 @@
         // Check for continuation
         if (($Code >= 300) && ($Code < 400)) {
           if (is_callable ($this->Command [2])) {
-            $this->Stream->write ($this->___raiseCallback ($this->Command [2], $Code, $Lines, $this->Command [3]));
+            $this->sourceStream->write ($this->___raiseCallback ($this->Command [2], $Code, $Lines, $this->Command [3]));
             
             continue;
           }
@@ -1021,7 +1017,7 @@
         }
         
         // Check if we are connecting
-        if ($this->State == self::SMTP_STATE_CONNECTING) {
+        if ($this->smtpState == self::SMTP_STATE_CONNECTING) {
           // Peek the current command
           if ($this->Command)
             $Command = $this->Command;
@@ -1039,9 +1035,9 @@
                 function () use ($Source) {
                   $this->___callback ('smtpConnectionFailed');
                   
-                  if ($this->initCallback) {
-                    call_user_func ($this->initCallback [1], 'Received ' . $Code);
-                    $this->initCallback = null;
+                  if ($this->initPromise) {
+                    $this->initPromise->reject ('Received ' . $Code);
+                    $this->initPromise = null;
                   }
                 }
               );
@@ -1051,14 +1047,14 @@
             $this->connectingState = self::SMTP_HANDSHAKE_EHLO;
             $this->Command = null;
             
-            $this->issueSMTPCommand ('EHLO', array ($this->getClientName ()))->then (
+            $this->smtpCommand ('EHLO', array ($this->getClientName ()))->then (
               function () use ($Command, $Source) {
                 // Raise callbacks
                 $this->___callback ('smtpConnected');
                 
-                if ($this->initCallback) {
-                  call_user_func ($this->initCallback [0], true);
-                  $this->initCallback = null;
+                if ($this->initPromise) {
+                  $this->initPromise->resolve ();
+                  $this->initPromise = null;
                 }
                 
                 // Push back pending command
@@ -1080,9 +1076,9 @@
                 function () use ($Source) {
                   $this->___callback ('smtpConnectionFailed');
                   
-                  if ($this->initCallback) {
-                    call_user_func ($this->initCallback [1], 'Neither HELO nor EHLO were successfull');
-                    $this->initCallback = null;
+                  if ($this->initPromise) {
+                    $this->initPromise->reject ('Neither HELO nor EHLO were successfull');
+                    $this->initPromise = null;
                   }
                 }
               );
@@ -1092,14 +1088,14 @@
             $this->connectingState = self::SMTP_HANDSHAKE_FALLBACK;
             $this->Command = null;
             
-            $this->issueSMTPCommand ('HELO', array ($this->getClientName ()))->then (
+            $this->smtpCommand ('HELO', array ($this->getClientName ()))->then (
               function () use ($Command, $Source) {
                 // Raise callbacks
                 $this->___callback ('smtpConnected');
                 
-                if ($this->initCallback) {
-                  call_user_func ($this->initCallback [0], true);
-                  $this->initCallback = null;
+                if ($this->initPromise) {
+                  $this->initPromise->resolve ();
+                  $this->initPromise = null;
                 }
                 
                 // Push back pending command
@@ -1138,10 +1134,10 @@
         }
         
         // Handle normal replies
-        if (($this->Command [6] !== null) && ($Code >= 200) && ($Code < 300))
-          $this->smtpSetState ($this->Command [6]);
+        if (($this->Command [5] !== null) && ($Code >= 200) && ($Code < 300))
+          $this->smtpSetState ($this->Command [5]);
         
-        call_user_func ($this->Command [4], $Code, $Lines);
+        $this->Command [4]->resolve ($Code, $Lines);
         
         // Remove the current command
         $this->Command = null;
@@ -1209,7 +1205,7 @@
     protected function smtpDisconnected () { }
     // }}}
     
-    // {{{ smtpCommand
+    // {{{ smtpWrite
     /**
      * Callback: A SMTP-Command was issued to the server
      * 
@@ -1218,7 +1214,7 @@
      * @access protected
      * @return void
      **/
-    protected function smtpCommand ($Command) { }
+    protected function smtpWrite ($Command) { }
     // }}}
     
     // {{{ smtpResponse
