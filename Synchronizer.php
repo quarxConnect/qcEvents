@@ -129,7 +129,7 @@
         // Analyze parameters of the call
         $Method = new ReflectionMethod ($Handler, $Function);
         
-        if (!($isPromise = ($Method->getReturnType () == 'qcEvents_Promise'))) {
+        if (!($isPromise = ($Method->hasReturnType () && ($Method->getReturnType ()->getName () == 'qcEvents_Promise')))) {
           $CallbackIndex = null;
           
           foreach ($Method->getParameters () as $Index=>$Parameter) 
