@@ -42,18 +42,16 @@
     use qcEvents_Trait_Hookable, qcEvents_Trait_Parented, qcEvents_Trait_Pipe;
     
     /* HTTP States */
-    const HTTP_STATE_CLOSED     = 0;
-    const HTTP_STATE_CONNECTING = 1;
-    const HTTP_STATE_WAITING    = 2;
-    const HTTP_STATE_HEADER     = 3;
-    const HTTP_STATE_BODY       = 4;
-    const HTTP_STATE_FINISHED   = 5;
+    const HTTP_STATE_DISCONNECTED = 0; // Stream is disconnected
+    const HTTP_STATE_CONNECTED    = 1; // Stream is connected
+    const HTTP_STATE_HEADER       = 2; // Headers are being sent/received
+    const HTTP_STATE_BODY         = 3; // Body/Payload is being sent/received
+    
+    /* Our current state */
+    private $httpState = qcEvents_Stream_HTTP::HTTP_STATE_DISCONNECTED;
     
     /* Source for this HTTP-Stream */
     private $Source = null;
-    
-    /* Our current state */
-    private $State = qcEvents_Stream_HTTP::HTTP_STATE_CLOSED;
     
     /* Don't try to read any body-data */
     private $bodySuppressed = false;
@@ -115,6 +113,9 @@
      * @return void
      **/
     public function consume ($Data, qcEvents_Interface_Source $Source) {
+      if ($this->httpState == $this::HTTP_STATE_DISCONNECTED)
+        return trigger_error ('consume() while disconnected');
+      
       // Check if we are just waiting for the connection to be closed
       if ($this->bufferCompleteBody) {
         $this->httpBodyAppend ($Data);
@@ -126,12 +127,12 @@
       $this->bufferRead .= $Data;
       unset ($Data);
       
-      // Leave waiting-state if neccessary
-      if (($this->State == $this::HTTP_STATE_CONNECTING) || ($this->State == $this::HTTP_STATE_WAITING))
+      // Leave connected-state if neccessary
+      if ($this->httpState == $this::HTTP_STATE_CONNECTED)
         $this->httpSetState ($this::HTTP_STATE_HEADER);
       
       // Read the header
-      if ($this->State == $this::HTTP_STATE_HEADER)
+      if ($this->httpState == $this::HTTP_STATE_HEADER)
         while (($p = strpos ($this->bufferRead, "\n")) !== false) {
           // Retrive the current line
           $Line = substr ($this->bufferRead, 0, $p);
@@ -159,7 +160,7 @@
             
             // Switch states
             if (!$this->expectBody () || !$this->Header->hasBody ()) {
-              $this->httpSetState (self::HTTP_STATE_FINISHED);
+              $this->httpSetState (self::HTTP_STATE_CONNECTED);
               
               return $this->___callback ('httpFinished', $this->Header, null);
             }
@@ -180,7 +181,7 @@
         }
       
       // Read Payload
-      if ($this->State == $this::HTTP_STATE_BODY)
+      if ($this->httpState == $this::HTTP_STATE_BODY)
         // Handle chunked transfer
         if ($this->bodyEncodings [0] != 'identity') {
           // Check if we see the length of next chunk
@@ -320,7 +321,7 @@
         function () use ($Source, $Callback, $Private) {
           // Reset ourself
           $this->reset ();
-          $this->httpSetState ($this::HTTP_STATE_CONNECTING);
+          $this->httpSetState ($this::HTTP_STATE_CONNECTED);
           
           // Set the new source
           $this->Source = $Source;
@@ -362,7 +363,7 @@
         function () use ($Source) {
           // Reset ourself
           $this->reset ();
-          $this->httpSetState ($this::HTTP_STATE_CONNECTING);
+          $this->httpSetState ($this::HTTP_STATE_CONNECTED);
           
           // Set the new source
           $this->Source = $Source;
@@ -460,7 +461,7 @@
       $this->bufferCompleteBody = false;
       $this->Header = null;
       $this->bodyEncodings = array ();
-      $this->httpSetState ($this::HTTP_STATE_CLOSED);
+      $this->httpSetState ($this->Source ? $this::HTTP_STATE_CONNECTED : $this::HTTP_STATE_DISCONNECTED);
     }
     // }}}
     
@@ -478,13 +479,14 @@
       if (!$this->Source || !($this->Source instanceof qcEvents_Interface_Sink))
         return qcEvents_Promise::reject ('No suitable source to write headers');
       
+      if ($this->httpState != $this::HTTP_STATE_CONNECTED)
+        return qcEvents_Promise::reject ('Invalid state to send headers');
+      
       // Try to write out the status
+      $this->httpSetState ($this::HTTP_STATE_HEADER);
+      
       return $this->Source->write (strval ($Header))->then (
         function () use ($Header) {
-          // Update the status
-          if ($this->State == $this::HTTP_STATE_CONNECTING)
-            $this->httpSetState (qcEvents_Stream_HTTP::HTTP_STATE_WAITING);
-          
           // Run the callback
           $this->___callback ('httpHeadersSent', $Header);
         },
@@ -511,22 +513,22 @@
     /**
      * Change the state of the HTTP-Parser
      * 
-     * @param enum $State
+     * @param enum $newState
      * 
      * @access private
      * @return void
      **/
-    private function httpSetState ($State) {
+    private function httpSetState ($newState) {
       // Check if the state changed
-      if ($State == $this->State)
+      if ($newState == $this->httpState)
         return;
       
       // Switch the state
-      $oState = $this->State;
-      $this->State = $State;
+      $oldState = $this->httpState;
+      $this->httpState = $newState;
       
       // Fire up a callback
-      $this->___callback ('httpStateChanged', $State, $oState);
+      $this->___callback ('httpStateChanged', $newState, $oldState);
     }
     // }}}
     
@@ -543,7 +545,7 @@
         trigger_error ('More than one encoding found, this is unimplemented');
       
       // Change our state
-      $this->httpSetState ($this::HTTP_STATE_FINISHED);
+      $this->httpSetState ($this::HTTP_STATE_CONNECTED);
       
       // Fire the callback
       if ($this->isPiped ()) {
@@ -565,7 +567,8 @@
      **/
     private function httpUnexpectedClose () {
       // Check if we are processing a request
-      if (($this->State != $this::HTTP_STATE_FINISHED) && ($this->State != $this::HTTP_STATE_CLOSED))
+      if (($this->httpState != $this::HTTP_STATE_CONNECTED) &&
+          ($this->httpState != $this::HTTP_STATE_DISCONNECTED))
         $this->___callback ('httpFailed', $this->Header, $this->bufferBody);
       
       // Reset ourself
@@ -584,7 +587,7 @@
       # TODO: Sanity-Check the socket
       
       // Check if the stream closes as expected
-      if (!$this->bufferCompleteBody || ($this->State != $this::HTTP_STATE_WAITING))
+      if (!$this->bufferCompleteBody || ($this->httpState != $this::HTTP_STATE_BODY))
         return $this->httpUnexpectedClose ();
       
       // Finish the request
