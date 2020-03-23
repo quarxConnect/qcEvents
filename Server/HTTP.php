@@ -197,6 +197,15 @@
             $Response->setField ('Content-Type', $ContentType);
           }
           
+          if (!$Response->hasField ('Date'))
+            $Response->setField ('Date', date ('r'));
+          
+          if (!$Response->hasField ('Last-Modified'))
+            $Response->setField ('Last-Modified', date ('r', filemtime ($Path)));
+          
+          if (!$Response->hasField ('Expires'))
+            $Response->setField ('Expires', date ('r', time () + 3600));
+          
           return $this->httpdSetResponse ($Request, $Response, $Content);
         },
         function () {
