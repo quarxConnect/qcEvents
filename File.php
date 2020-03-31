@@ -150,7 +150,6 @@
       
       // Forward the read/write-status
       $this->watchRead ($Read);
-      $this->watchWrite ($Write);
       
       // Check wheter to truncate
       if ($Write && $Truncate)
