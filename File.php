@@ -136,6 +136,9 @@
       if (!is_resource ($fd = fopen ($Filename, $Mode)))
         throw new Exception ('Could not open file');
       
+      if (!stream_set_blocking ($fd, false))
+        trigger_error ('Failed to set file to non-blocking', E_USER_WARNING);
+      
       // Store the filename
       $this->Filename = $Filename;
       
