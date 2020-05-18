@@ -534,12 +534,12 @@
      * Create a new child-class
      * 
      * @param string $Remote
-     * @param resource $Connection (optional)
+     * @param resource $childConnection (optional)
      * 
      * @access private
      * @return qcEvents_Socket
      **/
-    private function serverCreateChild ($Remote, $Connection = null) {
+    private function serverCreateChild ($Remote, $childConnection = null) {
       // Create Socket and client
       if ($this->childClassPiped) {
         $socketClass = $this::CHILD_CLASS_BASE;
@@ -558,11 +558,14 @@
         }
       
       // Check wheter to enable TLS
-      $Options = stream_context_get_options ($Connection);
-      $enableTLS = (isset ($Options ['ssl']) && (isset ($Options ['ssl']['local_cert']) || isset ($Options ['ssl']['SNI_server_certs'])));
+      if ($childConnection !== null) {
+        $contextOptions = stream_context_get_options ($childConnection);
+        $enableTLS = (isset ($contextOptions ['ssl']) && (isset ($contextOptions ['ssl']['local_cert']) || isset ($contextOptions ['ssl']['SNI_server_certs'])));
+      } else
+        $enableTLS = false;
       
       // Register ourself at the child
-      $Socket->connectServer ($this, $Remote, $Connection, $enableTLS);
+      $Socket->connectServer ($this, $Remote, $childConnection, $enableTLS);
       
       // Pipe if client and socket are not the same
       if ($Socket !== $Client) {
