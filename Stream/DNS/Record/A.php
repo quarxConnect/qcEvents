@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS IPv4 Resource Record
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -71,23 +71,23 @@
     /**
      * Parse a given payload
      * 
-     * @param string $Data
-     * @param int $Offset (optional)
-     * @param int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @param int $dataLength (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
+     * @throws LengthException
      **/  
-    public function parsePayload ($Data, $Offset = 0, $Length = null) {
-      if ($Length === null)
-        $Length = strlen ($Data) - $Offset;
+    public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
-      if ($Length != 4)
-        return false;
+      if ($dataLength < $dataOffset + 4)
+        throw new LengthException ('DNS-Record too short (A)');
       
-      $this->Address = long2ip (self::parseInt32 ($Data, $Offset));
-      
-      return true;
+      $this->Address = long2ip (self::parseInt32 ($dnsData, $dataOffset, $dataLength));
+      $dataOffset += 4;
     }
     // }}}
     

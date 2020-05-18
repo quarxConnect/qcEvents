@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS Resource Record
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -90,37 +90,35 @@
     /**
      * Parse a given payload
      * 
-     * @param string $Data
-     * @param int $Offset (optional)
-     * @param int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @param int $dataLength (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
+     * @throws LengthException
+     * @throws UnexpectedValueException
      **/
-    public function parsePayload ($Data, $Offset = 0, $Length = null) {
-      if ($Length === null)
-        $Length = strlen ($Data) - $Offset;
+    public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
-      $oOffset = $Offset;
+      if (!($Nameserver = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset)))
+        throw new UnexpectedValueException ('Failed to read Nameserver-Label of DNS-Record (SOA)');
       
-      if (!($Nameserver = qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset)))
-        return false;
+      if (!($Mailbox = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset)))
+        throw new UnexpectedValueException ('Failed to read Mailbox-Label of DNS-Record (SOA)');
       
-      if (!($Mailbox = qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset)))
-        return false;
-      
-      if (($Length - ($Offset - $oOffset)) != 20)
-        return false;
+      if ($dataLength < $dataOffset + 20)
+        throw new LengthException ('DNS-Record too short (SOA)');
       
       $this->Nameserver = $Nameserver;
       $this->Mailbox    = $Mailbox;
-      $this->Serial     = self::parseInt32 ($Data, $Offset);
-      $this->Refresh    = self::parseInt32 ($Data, $Offset);
-      $this->Retry      = self::parseInt32 ($Data, $Offset);
-      $this->Expire     = self::parseInt32 ($Data, $Offset);
-      $this->Minimum    = self::parseInt32 ($Data, $Offset);
-      
-      return true;
+      $this->Serial     = self::parseInt32 ($dnsData, $dataOffset, $dataLength);
+      $this->Refresh    = self::parseInt32 ($dnsData, $dataOffset, $dataLength);
+      $this->Retry      = self::parseInt32 ($dnsData, $dataOffset, $dataLength);
+      $this->Expire     = self::parseInt32 ($dnsData, $dataOffset, $dataLength);
+      $this->Minimum    = self::parseInt32 ($dnsData, $dataOffset, $dataLength);
     }
     // }}}
     

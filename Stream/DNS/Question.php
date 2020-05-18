@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS Question
-   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -150,32 +150,28 @@
     /**
      * Parse binary data into this object
      * 
-     * @param string $Data
-     * @param int $Offset
-     * @param int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @param int $dataLength (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
+     * @throws LengthException
      **/
-    public function parse ($Data, &$Offset, $Length = null) {
+    public function parse ($dnsData, &$dataOffset, $dataLength = null) {
       // Get the length of input
-      if ($Length === null)
-        $Length = strlen ($Data);
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
       // Retrive the label
-      $this->setLabel (qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset));
+      $this->setLabel (qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset));
       
       // Retrive type and class
-      if ($Length < $Offset + 4) {
-        trigger_error ('DNS-Message too short');
-        
-        return false;
-      }
+      if ($dataLength < $dataOffset + 4)
+        throw new LengthException ('DNS-Question too short');
       
-      $this->setType ((ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]));
-      $this->setClass ((ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]));
-      
-      return true;
+      $this->setType ((ord ($dnsData [$dataOffset++]) << 8) + ord ($dnsData [$dataOffset++]));
+      $this->setClass ((ord ($dnsData [$dataOffset++]) << 8) + ord ($dnsData [$dataOffset++]));
     }
     // }}}
     

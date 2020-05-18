@@ -73,7 +73,7 @@
       $Message = new qcEvents_Stream_DNS_Message;
       
       // Try to parse the message and push back if everything was successfull
-      if (($rCode = $Message->parse ($Data)) === true)
+      if (($rCode = $Message->parse ($Data)) === qcEvents_Stream_DNS_Message::ERROR_NONE)
         return $Message;
       
       // Check for a generic failure

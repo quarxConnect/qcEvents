@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS Messages
-   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -120,7 +120,7 @@
     
     const TYPE_ANY    = 0xFF;	// RFC 1035
     
-    private $Header = null;
+    private $messageHeader = null;
     private $Question = array ();
     private $Answer = null;
     private $Authority = null;
@@ -248,7 +248,7 @@
      **/
     function __construct ($Data = null) {
       // Create sub-objects
-      $this->Header = new qcEvents_Stream_DNS_Header;
+      $this->messageHeader = new qcEvents_Stream_DNS_Header;
       $this->Answer = new qcEvents_Stream_DNS_Recordset;
       $this->Authority = new qcEvents_Stream_DNS_Recordset;
       $this->Additional = new qcEvents_Stream_DNS_Recordset;
@@ -263,117 +263,87 @@
     /**
      * Try to parse an DNS-Message
      * 
-     * @param string $Data
+     * @param string $dnsData
      * @param bool $parseErrors (optional)
      * 
      * @access public
-     * @return mixed - TRUE if everything was successfull, DNS-RCode if something went wrong
+     * @return int DNS-Error-Code
+     * @throws LengthException
      **/
-    public function parse ($Data, $parseErrors = false) {
+    public function parse ($dnsData, $parseErrors = false) {
       // Make sure we have sufficient data
-      if (($Length = strlen ($Data)) < 12) {
-        trigger_error ('DNS-Message too short');
-        
-        return false;
-      }
+      if (($dataLength = strlen ($dnsData)) < 12)
+        throw new LengthException ('DNS-Message too short');
       
-      $Offset = 0;
-      $errCode = null;
+      $dataOffset = 0;
+      $errorCode = null;
       
       // Parse the header
-      $Header = new qcEvents_Stream_DNS_Header;
-      
-      if (!$Header->parse ($Data, $Offset, $Length)) {
-        trigger_error ('Could not parse DNS-Header');
-        
-        return false;
-      }
+      $messageHeader = new qcEvents_Stream_DNS_Header;
+      $messageHeader->parse ($dnsData, $dataOffset, $dataLength);
       
       // Parse the questions
-      $Questions = array ();
-      $c = $Header->Questions;
+      $questionRecords = array ();
+      $questionCount = $messageHeader->Questions;
       
-      while ($c-- > 0) {
-        $Question = new qcEvents_Stream_DNS_Question;
+      while ($questionCount-- > 0) {
+        $questionRecord = new qcEvents_Stream_DNS_Question;
+        $questionRecord->parse ($dnsData, $dataOffset, $dataLength);
         
-        if (!$Question->parse ($Data, $Offset, $Length)) {
-          trigger_error ('Failed to parse Question #' . ($Header->Questions - $c + 1));
-          
-          return false;
-        }
-        
-        $Questions [] = $Question;
+        $questionRecords [] = $questionRecord;
       }
       
       // Parse the answers
-      $Answers = new qcEvents_Stream_DNS_Recordset;
-      $c = $Header->Answers;
+      $answerRecords = new qcEvents_Stream_DNS_Recordset;
+      $answerCount = $messageHeader->Answers;
       
-      while ($c-- > 0) {
-        if (!is_object ($Record = qcEvents_Stream_DNS_Record::fromString ($Data, $Offset, $Length))) {
-          trigger_error ('Failed to parse Answer #' . ($Header->Answers - $c + 1));
-          
-          return false;
-        }
-        
-        $Answers [] = $Record;
-      }
+      while ($answerCount-- > 0)
+        $answerRecords [] = qcEvents_Stream_DNS_Record::fromString ($dnsData, $dataOffset, $dataLength);
       
       // Parse the authority nameservers
-      $Authorities = new qcEvents_Stream_DNS_Recordset;
-      $c = $Header->Authorities;
+      $authorityRecords = new qcEvents_Stream_DNS_Recordset;
+      $authorityCount = $messageHeader->Authorities;
       
-      while ($c-- > 0) {
-        if (!is_object ($Record = qcEvents_Stream_DNS_Record::fromString ($Data, $Offset))) {
-          trigger_error ('Failed to parse Authority #' . ($Header->Authorities - $c + 1));
-          
-          return false;
-        }
-        
-        $Authorities [] = $Record;
-      }
+      while ($authorityCount-- > 0)
+        $authorityRecords [] = qcEvents_Stream_DNS_Record::fromString ($dnsData, $dataOffset, $dataLength);
       
       // Parse additional Records
-      $Additionals = new qcEvents_Stream_DNS_Recordset;
-      $c = $Header->Additionals;
+      $additionalRecords = new qcEvents_Stream_DNS_Recordset;
+      $additionalCount = $messageHeader->Additionals;
       $ednsRecord = null;
       
-      while ($c-- > 0) {
+      while ($additionalCount-- > 0) {
         // Try to parse the record
-        if (!is_object ($Record = qcEvents_Stream_DNS_Record::fromString ($Data, $Offset))) {
-          trigger_error ('Failed to parse Additional #' . ($Header->Additionals - $c + 1));
-          
-          return false;
-        }
+        $dnsRecord = qcEvents_Stream_DNS_Record::fromString ($dnsData, $dataOffset, $dataLength);
         
         // Check if this is an EDNS-Message
-        if ($Record instanceof qcEvents_Stream_DNS_Record_EDNS) {
+        if ($dnsRecord instanceof qcEvents_Stream_DNS_Record_EDNS) {
           // Fail if the record is present more than once or if the record has a non-empty label
-          if (($ednsRecord !== null) || (strlen ($Record->getLabel ()) > 1)) {
-            $errCode = qcEvents_Stream_DNS_Message::ERROR_FORMAT;
+          if (($ednsRecord !== null) || (strlen ($dnsRecord->getLabel ()) > 1)) {
+            $errorCode = qcEvents_Stream_DNS_Message::ERROR_FORMAT;
             
             if (!$parseErrors) {
               trigger_error ('Invalid EDNS-Data: ' . ($ednsRecord ? 'Dupplicate EDNS-Records' : 'EDNS-Record as label of size ' . strlen ($Record->getLabel ()) . strval ($Record->getLabel ())));
               
-              return false;
+              return $errorCode;
             }
           }
           
-          $ednsRecord = $Record;
+          $ednsRecord = $dnsRecord;
         }
         
-        $Additionals [] = $Record;
+        $additionalRecords [] = $dnsRecord;
       }
       
       // Commit to ourself
-      $this->Header = $Header;
-      $this->Question = $Questions;
-      $this->Answer = $Answers;
-      $this->Authority = $Authorities;
-      $this->Additional = $Additionals;
+      $this->messageHeader = $messageHeader;
+      $this->Question = $questionRecords;
+      $this->Answer = $answerRecords;
+      $this->Authority = $authorityRecords;
+      $this->Additional = $additionalRecords;
       $this->ednsRecord = $ednsRecord;
       
-      return ($errCode === null ? true : $errCode);
+      return ($errorCode === null ? $this::ERROR_NONE : $errorCode);
     }
     // }}}
     
@@ -386,13 +356,13 @@
      **/
     public function toString () {
       // Update the header
-      $this->Header->Questions = count ($this->Question);
-      $this->Header->Answers = count ($this->Answer);
-      $this->Header->Authorities = count ($this->Authority);
-      $this->Header->Additionals = count ($this->Additional);
+      $this->messageHeader->Questions = count ($this->Question);
+      $this->messageHeader->Answers = count ($this->Answer);
+      $this->messageHeader->Authorities = count ($this->Authority);
+      $this->messageHeader->Additionals = count ($this->Additional);
       
       // Convert the header into a string
-      $Data = $this->Header->toString ();
+      $Data = $this->messageHeader->toString ();
       
       // Append Question-Section
       $Labels = array ();
@@ -427,17 +397,17 @@
      * @return bool
      **/
     public function isQuestion ($Toggle = null) {
-      if (!is_object ($this->Header))
+      if (!is_object ($this->messageHeader))
         return false;
       
       if ($Toggle !== null) {
-        if (!($this->Header->isResponse = !$Toggle))
-          $this->Header->recursionDesired = true;
+        if (!($this->messageHeader->isResponse = !$Toggle))
+          $this->messageHeader->recursionDesired = true;
         
         return true;
       }
       
-      return !$this->Header->isResponse;
+      return !$this->messageHeader->isResponse;
     }
     // }}}
     
@@ -485,8 +455,8 @@
      * @access public
      * @return qcEvents_Stream_DNS_Header
      **/
-    public function getHeader () {
-      return $this->Header;
+    public function getHeader () : ?qcEvents_Stream_DNS_Header {
+      return $this->messageHeader;
     }
     // }}}
     
@@ -498,10 +468,10 @@
      * @return int
      **/
     public function getID () {
-      if (!is_object ($this->Header))
+      if (!is_object ($this->messageHeader))
         return false;
       
-      return $this->Header->ID;
+      return $this->messageHeader->ID;
     }
     // }}}
     
@@ -518,10 +488,10 @@
       if (($ID > 0xffff) || ($ID < 1))
         return false;
       
-      if (!is_object ($this->Header))
+      if (!is_object ($this->messageHeader))
         return false;
       
-      $this->Header->ID = $ID;
+      $this->messageHeader->ID = $ID;
       
       return true;
     }
@@ -549,7 +519,7 @@
      * @return enum
      **/
     public function getOpcode () {
-      return $this->Header->getOpcode ();
+      return $this->messageHeader->getOpcode ();
     }
     // }}}
     
@@ -563,7 +533,7 @@
      * @return bool
      **/
     public function setOpcode ($Opcode) {
-      return $this->Header->setOpcode ($Opcode);
+      return $this->messageHeader->setOpcode ($Opcode);
     }
     // }}}
     
@@ -576,7 +546,7 @@
      **/
     public function getFlags () {
       // Retrive traditional flags
-      $Flags = $this->Header->getFlags ();
+      $Flags = $this->messageHeader->getFlags ();
       
       // Add flags from EDNS
       if ($this->ednsRecord)
@@ -601,7 +571,7 @@
         return false;
       
       // Forward traditional flags to header
-      if (!$this->Header->setFlags ($Flags & 0x7F))
+      if (!$this->messageHeader->setFlags ($Flags & 0x7F))
         return false;
       
       // Store extended flags on EDNS-Record
@@ -637,7 +607,7 @@
      * @return enum
      **/
     public function getError () {
-      return ($this->Header->RCode & 0x0F) + ($this->ednsRecord ? ($this->ednsRecord->getReturnCode () << 4) : 0);
+      return ($this->messageHeader->RCode & 0x0F) + ($this->ednsRecord ? ($this->ednsRecord->getReturnCode () << 4) : 0);
     }
     // }}}
     
@@ -656,7 +626,7 @@
         return false;
       
       // Set the classic return-code on the header
-      $this->Header->RCode = ($Error & 0x0F);
+      $this->messageHeader->RCode = ($Error & 0x0F);
       
       // Update EDNS-Record
       if ($this->ednsRecord)
@@ -854,17 +824,17 @@
       $Response = new $this;
       
       // Clone the header
-      $Response->Header = clone $this->Header;
+      $Response->messageHeader = clone $this->messageHeader;
       
-      $Response->Header->Opcode = qcEvents_Stream_DNS_Message::OPCODE_QUERY;
-      $Response->Header->RCode = qcEvents_Stream_DNS_Message::ERROR_NONE;
-      $Response->Header->setFlags ($this->Header->getFlags () & 0x44);
+      $Response->messageHeader->Opcode = qcEvents_Stream_DNS_Message::OPCODE_QUERY;
+      $Response->messageHeader->RCode = qcEvents_Stream_DNS_Message::ERROR_NONE;
+      $Response->messageHeader->setFlags ($this->messageHeader->getFlags () & 0x44);
       
       // Reset the counters
-      $Response->Header->Questions = 0;
-      $Response->Header->Answers = 0;
-      $Response->Header->Authorities = 0;
-      $Response->Header->Additionals = 0;
+      $Response->messageHeader->Questions = 0;
+      $Response->messageHeader->Answers = 0;
+      $Response->messageHeader->Authorities = 0;
+      $Response->messageHeader->Additionals = 0;
       
       // Reset messages
       $Response->Question = array ();
@@ -877,8 +847,8 @@
         $Response->Additional [] = $Response->ednsRecord = clone $this->ednsRecord;
       
       // Invert the response-status
-      $Response->Header->isResponse = !$this->Header->isResponse;
-      $Response->Header->recursionAvailable = false;
+      $Response->messageHeader->isResponse = !$this->messageHeader->isResponse;
+      $Response->messageHeader->recursionAvailable = false;
       
       return $Response;
     }
@@ -897,10 +867,10 @@
         return false;
       
       // Copy all values
-      $Response->Header->Questions = count ($this->Question);
-      $Response->Header->Answers = count ($this->Answer);
-      $Response->Header->Authorities = count ($this->Authority);
-      $Response->Header->Additionals = count ($this->Additional);
+      $Response->messageHeader->Questions = count ($this->Question);
+      $Response->messageHeader->Answers = count ($this->Answer);
+      $Response->messageHeader->Authorities = count ($this->Authority);
+      $Response->messageHeader->Additionals = count ($this->Additional);
       
       foreach ($this->Question as $Q)
         $Response->Question [] = clone $Q;

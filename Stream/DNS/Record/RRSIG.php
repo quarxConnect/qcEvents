@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS RRSIG Resource Record
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -170,42 +170,32 @@
     /**
      * Parse a given payload
      * 
-     * @param string $Data
-     * @param int $Offset (optional)
-     * @param int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @param int $dataLength (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
+     * @throws LengthException
+     * @throws UnexpectedValueException
      **/
-    public function parsePayload ($Data, $Offset = 0, $Length = null) {
-      if ($Length === null)
-        $Length = strlen ($Data) - $Offset;
+    public function parsePayload (&$dnsData, $dataOffset, $dataLength = null) {
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
-      $oOffset = $Offset;
+      if ($dataLength < $dataOffset + 18)
+        throw new LengthException ('DNS-Record too short (RRSIG)');
       
-      if (($typeCovered = self::parseInt16 ($Data, $Offset)) === false)
-        return false;
+      $typeCovered = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      $Algorithm = ord ($dnsData [$dataOffset++]);
+      $Labels = ord ($dnsData [$dataOffset++]);
+      $originalTTL = self::parseInt32 ($dnsData, $dataOffset, $dataLength);
+      $sigExpiration = self::parseInt32 ($dnsData, $dataOffset, $dataLength);
+      $sigInception = self::parseInt32 ($dnsData, $dataOffset, $dataLength);
+      $keyTag = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
       
-      if (($Algorithm = ord ($Data [$Offset++])) === false)
-        return false;
-      
-      if (($Labels = ord ($Data [$Offset++])) === false)
-        return false;
-      
-      if (($originalTTL = self::parseInt32 ($Data, $Offset)) === false)
-        return false;
-      
-      if (($sigExpiration = self::parseInt32 ($Data, $Offset)) === false)
-        return false;
-      
-      if (($sigInception = self::parseInt32 ($Data, $Offset)) === false)
-        return false;
-      
-      if (($keyTag = self::parseInt16 ($Data, $Offset)) === false)
-        return false;
-      
-      if (($SignersName = qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset, false)) === false)
-        return false;
+      if (($SignersName = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset, false)) === false)
+        throw new UnexpectedValueException ('Failed to read signer label of DNS-Record (RRSIG)');
       
       $this->typeCovered   = $typeCovered;
       $this->Algorithm     = $Algorithm;
@@ -215,9 +205,7 @@
       $this->sigInception  = $sigInception;
       $this->keyTag        = $keyTag;
       $this->SignersName   = $SignersName;
-      $this->Signature     = substr ($Data, $Offset, $Length - ($Offset - $oOffset));
-      
-      return true;
+      $this->Signature     = substr ($dnsData, $dataOffset, $dataLength - $dataOffset);
     }
     // }}}
     

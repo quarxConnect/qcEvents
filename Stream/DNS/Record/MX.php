@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS MX Resource Record
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -104,23 +104,22 @@
     /**
      * Parse a given payload
      * 
-     * @param string $Data
-     * @param int $Offset (optional)
-     * @param int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @param int $dataLength (optional)
      * 
      * @access public
-     * @return bool  
+     * @return void
+     * @throws UnexpectedValueException
      **/
-    public function parsePayload ($Data, $Offset = 0, $Length = null) {
-      $Priority = self::parseInt16 ($Data, $Offset);
+    public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
+      $Priority = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
       
-      if (!($Hostname = qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset)))
-        return false;
+      if (!($Hostname = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset)))
+        throw new UnexpectedValueException ('Failed to read hostname (MX)');
       
       $this->Priority = $Priority;
       $this->Hostname = $Hostname;
-      
-      return true;
     }
     // }}}
     

@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS Header
-   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -167,14 +167,15 @@
      * @param int $Length (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
+     * @throws LengthException
      **/
     public function parse ($Data, &$Offset, $Length = null) {
       if ($Length === null)
         $Length = strlen ($Data);
       
       if ($Length < $Offset + 12)
-        return false;
+        throw new LengthException ('DNS-Header too short');
       
       $this->ID = (ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]);
       $this->isResponse = (($b = ord ($Data [$Offset++])) & 0x80) == 0x80;
@@ -191,8 +192,6 @@
       $this->Answers = (ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]);
       $this->Authorities = (ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]);
       $this->Additionals = (ord ($Data [$Offset++]) << 8) + ord ($Data [$Offset++]);
-      
-      return true;
     }
     // }}}
     

@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS DS Resource Record
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -94,25 +94,22 @@
     /**
      * Parse a given payload
      * 
-     * @param string $Data
-     * @param int $Offset (optional)
-     * @param int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @param int $dataLength (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function parsePayload ($Data, $Offset = 0, $Length = null) {
-      if ($Length === null)
-        $Length = strlen ($Data) - $Offset;
+    public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
-      $oOffset = $Offset;
-      
-      $this->keyTag = self::parseInt16 ($Data, $Offset);
-      $this->Algorithm = ord ($Data [$Offset++]);
-      $this->digestType = ord ($Data [$Offset++]);
-      $this->Digest = substr ($Data, $Offset, $Length - ($Offset - $oOffset));
-      
-      return true;
+      $this->keyTag = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      $this->Algorithm = ord ($dnsData [$dataOffset++]);
+      $this->digestType = ord ($dnsData [$dataOffset++]);
+      $this->Digest = substr ($dnsData, $dataOffset, $dataLength - $dataOffset);
+      $dataOffset = $dataLength;
     }
     // }}}
     

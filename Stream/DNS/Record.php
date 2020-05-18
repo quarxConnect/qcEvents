@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS Resource Record
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -29,6 +29,7 @@
   require_once ('qcEvents/Stream/DNS/Record/AAAA.php');
   require_once ('qcEvents/Stream/DNS/Record/SRV.php');
   require_once ('qcEvents/Stream/DNS/Record/EDNS.php');
+  require_once ('qcEvents/Stream/DNS/Record/TSIG.php');
   
   class qcEvents_Stream_DNS_Record {
     const DEFAULT_TYPE = null;
@@ -49,6 +50,7 @@
       qcEvents_Stream_DNS_Message::TYPE_AAAA  => 'qcEvents_Stream_DNS_Record_AAAA',
       qcEvents_Stream_DNS_Message::TYPE_SRV   => 'qcEvents_Stream_DNS_Record_SRV',
       qcEvents_Stream_DNS_Message::TYPE_OPT   => 'qcEvents_Stream_DNS_Record_EDNS',
+      qcEvents_Stream_DNS_Message::TYPE_TSIG  => 'qcEvents_Stream_DNS_Record_TSIG',
     );
     
     /**
@@ -80,50 +82,57 @@
     /**
      * Try to create a new DNS-Record from string
      * 
-     * @param string $Data
-     * @param int $Offset
-     * @parma int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @parma int $dataLength (optional)
      * 
      * @access public
      * @return qcEvents_Stream_DNS_Record
+     * @throws LengthException
+     * @throws UnexpectedValueException
      **/
-    public static function fromString ($Data, &$Offset, $Length = null) {
+    public static function fromString (&$dnsData, &$dataOffset, $dataLength = null) : qcEvents_Stream_DNS_Record {
       // Check if there is enough data available
-      if ($Length === null)
-        $Length = strlen ($Data);
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
-      if ($Length - $Offset < 10)
-        return false;
+      if ($dataLength < $dataOffset + 10)
+        throw new LengthException ('DNS-Record too short');
       
       // Retrive the label of this record
-      $Label = qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset);
+      $recordLabel = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset);
      
       // Retrive type, class and TTL
-      $Type  = self::parseInt16 ($Data, $Offset);
-      $Class = self::parseInt16 ($Data, $Offset);
-      $TTL   = self::parseInt32 ($Data, $Offset);
+      if ($dataLength < $dataOffset + 8)
+        throw new LengthException ('DNS-Record too short');
+      
+      $recordType  = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      $recordClass = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      $recordTTL   = self::parseInt32 ($dnsData, $dataOffset, $dataLength);
       
       // Retrive the payload
-      $rdLength = self::parseInt16 ($Data, $Offset);
-      $Payload = substr ($Data, $Offset, $rdLength);
-      $pOffset = $Offset;
-      $Offset += $rdLength;
+      $recordDataLength = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      $recordDataOffset = $dataOffset;
+      
+      if ($dataLength < $dataOffset + $recordDataLength)
+        throw new LengthException ('DNS-Record too short');
+      
+      $recordPayload = substr ($dnsData, $dataOffset, $recordDataLength);
+      $dataOffset += $recordDataLength;
       
       // Create a new record
-      if (isset (self::$Records [$Type]))
-        $objClass = self::$Records [$Type];
+      if (isset (self::$Records [$recordType]))
+        $recordImplementationClass = self::$Records [$recordType];
       else
-        $objClass = get_called_class ();
+        $recordImplementationClass = get_called_class ();
       
-      $Record = new $objClass ($Label, $TTL, $Type, $Class);
+      $dnsRecord = new $recordImplementationClass ($recordLabel, $recordTTL, $recordType, $recordClass);
       
       // Try to parse the payload
-      $Record->Payload = $Payload;
+      $dnsRecord->Payload = $recordPayload;
+      $dnsRecord->parsePayload ($dnsData, $recordDataOffset, $recordDataOffset + $recordDataLength);
       
-      if (!$Record->parsePayload ($Data, $pOffset, $rdLength))
-        return false;
-      
-      return $Record;
+      return $dnsRecord;
     }
     // }}}
     
@@ -331,36 +340,66 @@
     /**
      * Parse binary data into this object
      * 
-     * @param string $Data
-     * @param int $Offset
-     * @param int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @param int $dataLength (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
+     * @throws LengthException
+     * @throws UnexpectedValueException
      **/
-    public function parse ($Data, &$Offset, $Length = null) {
+    public function parse ($dnsData, &$dataOffset, $dataLength = null) {
       // Check if there is enough data available
-      if ($Length === null)
-        $Length = strlen ($Data);
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
-      if ($Length - $Offset < 10)
-        return false;
+      if ($dataLength < $dataOffset + 10)
+        throw new LengthException ('DNS-Record too short');
       
       // Retrive the label of this record
-      $this->Label = qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset);
+      $this->Label = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset);
       
       // Retrive type, class and TTL
-      $this->Type  = self::parseInt16 ($Data, $Offset);
-      $this->Class = self::parseInt16 ($Data, $Offset);
-      $this->TTL   = self::parseInt32 ($Data, $Offset);
+      $this->Type  = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      $this->Class = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      $this->TTL   = self::parseInt32 ($dnsData, $dataOffset, $dataLength);
       
       // Retrive the payload
-      $rdLength = self::parseInt16 ($Data, $Offset);
-      $this->Payload = substr ($Data, $Offset, $rdLength);
-      $pOffset = $Offset;
-      $Offset += $rdLength;
+      $recordDataLength = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      $this->Payload = substr ($dnsData, $dataOffset, $recordDataLength);
+      $recordDataOffset = $dataOffset;
+      $dataOffset += $recordDataLength;
       
-      return $this->parsePayload ($Data, $pOffset, $rdLength);
+      return $this->parsePayload ($dnsData, $recordDataOffset, $recordDataOffset + $recordDataLength);
+    }
+    // }}}
+    
+    // {{{ parseInt
+    /**
+     * Try to read an integer of an arbitrary size from binary data
+     * 
+     * @param int $intSize
+     * @param string $inputData
+     * @param int $inputOffset
+     * @param int $inputLength (optional)
+     * 
+     * @access protected
+     * @return int
+     **/
+    protected static function parseInt ($intSize, &$inputData, &$inputOffset, $inputLength = null) {
+      if ($inputLength === null)
+        $inputLength = strlen ($inputData);
+      
+      if ($inputLength < $inputOffset + $intSize)
+        throw new LengthException ('Input-Data too short to read integer');
+      
+      $resultValue = 0;
+      
+      for ($i = 0; $i < $intSize; $i++)
+        $resultValue = ($resultValue << 8) | ord ($inputData [$inputOffset++]);
+      
+      return $resultValue;
     }
     // }}}
     
@@ -395,20 +434,37 @@
     }
     // }}}
     
+    // {{{ parseInt48
+    /**
+     * Try to read a 48-bit integer from binary data
+     * 
+     * @param string $inputData
+     * @param int $inputOffset
+     * @param int $inputLength (optional)
+     * 
+     * @access protected
+     + @return int
+     **/
+    protected static function  parseInt48 (&$inputData, &$inputOffset, $inputLength = null) {
+      return self::parseInt (6, $inputData, $inputOffset, $inputLength);
+    }
+    // }}}
+    
     // {{{ parsePayload
     /**
      * Parse a given payload
      * 
-     * @param string $Data
-     * @param int $Offset (optional)
-     * @param int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @param int $dataLength (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function parsePayload ($Data, $Offset = 0, $Length = null) {
-      if ($Length === null)
-        $Length = strlen ($Data) - $Offset;
+    public function parsePayload (&$Data, &$Offset, $Length = null) {
+      // Make sure we know the length of our input-buffer
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
       // Handle the payload
       switch ($this->Type) {
@@ -423,13 +479,13 @@
         case qcEvents_Stream_DNS_Message::TYPE_MF:
         case qcEvents_Stream_DNS_Message::TYPE_MG:
         case qcEvents_Stream_DNS_Message::TYPE_MR:
-          $this->Hostname = qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset);
+          $this->Hostname = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset);
           break;
         
         // Two hostnames
         case qcEvents_Stream_DNS_Message::TYPE_MINFO:
-          #$this->Mailbox = qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset);
-          #$this->errorMailbox = qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset);
+          #$this->Mailbox = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset);
+          #$this->errorMailbox = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset);
           
           #break;
         
@@ -437,8 +493,6 @@
         case qcEvents_Stream_DNS_Message::TYPE_HINFO:
           // CPU / OS Character-Strings
       }
-      
-      return true;
     }
     // }}}
     

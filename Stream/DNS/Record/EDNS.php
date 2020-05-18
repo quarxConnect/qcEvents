@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - EDNS Resource Record
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -128,31 +128,31 @@
     /**
      * Parse a given payload
      * 
-     * @param string $Data
-     * @param int $Offset (optional)
-     * @param int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @param int $dataLength (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
+     * @thows LengthException
      **/
-    public function parsePayload ($Data, $Offset = 0, $Length = null) {
+    public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
       // Parse option-data
-      if ($Length === null)
-        $Length = strlen ($Data) - $Offset;
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
-      $Stop = $Offset + $Length;
       $Options = array ();
       
-      while ($Offset < $Stop) {
-        $Option = self::parseInt16 ($Data, $Offset);
-        $Length = self::parseInt16 ($Data, $Offset);
+      while ($dataOffset + 4 <= $dataLength) {
+        $Option = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+        $Length = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
         
-        $Options [$Option] = substr ($Data, $Offset, $Length);
-        $Offset += $Length;
+        $Options [$Option] = substr ($dnsData, $dataOffset, $Length);
+        $dataOffset += $Length;
       }
       
-      if ($Offset != $Stop)
-        return false;
+      if ($dataOffset != $dataLength)
+        throw new LengthException ('Garbage data on DNS-Record (EDNS)');
       
       $this->Options = $Options;
       
@@ -162,8 +162,6 @@
       $this->RCode = (($TTL >> 24) & 0xFF);  
       $this->Version = (($TTL >> 16) & 0xFF);
       $this->Flags = ($TTL & 0xFFFF);
-      
-      return true;
     }
     // }}}
     

@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS DNSKEY Resource Record
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -286,24 +286,31 @@
     /**
      * Parse a given payload
      * 
-     * @param string $Data
-     * @param int $Offset (optional)
-     * @param int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @param int $dataLength (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
+     * @throws LengthException
+     * @throws UnexpectedValueException
      **/
-    public function parsePayload ($Data, $Offset = 0, $Length = null) {
-      if ($Length === null)
-        $Length = strlen ($Data) - $Offset;
+    public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
+      // Make sure we know the length of our input-buffer
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
-      $Flags = self::parseInt16 ($Data, $Offset);
-      $Protocol = ord ($Data [$Offset++]);
-      $Algorithm = ord ($Data [$Offset++]);
-      $PublicKey = substr ($Data, $Offset, $Length - 4);
+      if ($dataLength < $dataOffset + 6)
+        throw new LengthException ('DNS-Record too short (DNSKEY)');
+      
+      $Flags = self::parseInt16 ($dnsData, $dataOffset);
+      $Protocol = ord ($dnsData [$dataOffset++]);
+      $Algorithm = ord ($dnsData [$dataOffset++]);
+      $PublicKey = substr ($dnsData, $dataOffset, $dataLength - $dataOffset);
+      $dataOffset = $dataLength;
       
       if ($Protocol != 3)
-        return false;
+        throw new UnexpectedValueException ('Invalid protocol (DNSKEY)');
       
       $this->Flags = $Flags;
       $this->Protocol = $Protocol;
@@ -311,8 +318,6 @@
       $this->PublicKey = $PublicKey;
       $this->keyTag = null;
       $this->x509Key = null;
-      
-      return true;
     }
     // }}}
     

@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS NSEC Resource Record
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -42,28 +42,27 @@
     /**
      * Parse a given payload
      * 
-     * @param string $Data
-     * @param int $Offset (optional)
-     * @param int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @param int $dataLength (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
+     * @throws UnexpectedValueException
      **/
-    public function parsePayload ($Data, $Offset = 0, $Length = null) {
-      if ($Length === null)
-        $Length = strlen ($Data) - $Offset;
+    public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
-      $Stop = $Offset + $Length;
+      if (($nextDomainname = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset, false)) === false)
+        throw new UnexpectedValueException ('Failed to read label of DNS-Record (NSEC)');
       
-      if (($nextDomainname = qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset, false)) === false)
-        return false;
-      
-      while ($Offset < $Stop) {
-        $Window = ord ($Data [$Offset++]) * 0x0100;
-        $Length = ord ($Data [$Offset++]);
+      while ($dataOffset + 2 < $dataLength) {
+        $Window = ord ($dnsData [$dataOffset++]) * 0x0100;
+        $Length = ord ($dnsData [$dataOffset++]);
         
         for ($b = 0; $b < $Length; $b++) {
-          $v = ord ($Data [$Offset++]);
+          $v = ord ($dnsData [$dataOffset++]);
           
           if ($v & 0x80) $Types [$Window]     = $Window;
           if ($v & 0x40) $Types [$Window + 1] = $Window + 1;
@@ -80,8 +79,6 @@
       
       $this->nextDomainname = $nextDomainname;
       $this->Types = $Type;
-      
-      return true;
     }
     // }}}
     

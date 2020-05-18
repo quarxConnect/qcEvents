@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS Resource Record
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -172,27 +172,35 @@
     /**
      * Parse a given payload
      * 
-     * @param string $Data
-     * @param int $Offset (optional)
-     * @param int $Length (optional)
+     * @param string $dnsData
+     * @param int $dataOffset
+     * @param int $dataLength (optional)
      * 
      * @access public
-     * @return bool  
+     * @return void
+     * @throws LengthException
+     * @throws UnexpectedValueException
      **/
-    public function parsePayload ($Data, $Offset = 0, $Length = null) {
-      $Priority = self::parseInt16 ($Data, $Offset);
-      $Weight   = self::parseInt16 ($Data, $Offset);
-      $Port     = self::parseInt16 ($Data, $Offset);
+    public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
+      // Make sure we know the length of our input-buffer
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
-      if (!($Hostname = qcEvents_Stream_DNS_Message::getLabel ($Data, $Offset)))
-        return false;
+      // Make sure we have enough data to read
+      if ($dataLength < $dataOffset + 6)
+        throw new LengthException ('DNS-Record too short (SRV)');
+      
+      $Priority = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      $Weight   = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      $Port     = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      
+      if (!($Hostname = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset)))
+        throw new UnexpectedValueException ('Failed to read label of DNS-Record (SRV)');
       
       $this->Priority = $Priority;
       $this->Weight = $Weight;
       $this->Port = $Port;
       $this->Hostname = $Hostname;
-      
-      return true;
     }
     // }}}
     
