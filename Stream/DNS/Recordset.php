@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS Recordset
-   * Copyright (C) 2015 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2015-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -295,6 +295,49 @@ EOF;
         
         return strcmp ($Left->getPayload (), $Right->getPayload ());
       });
+    }
+    // }}}
+    
+    // {{{ pop
+    /**
+     * Return and remove the last element from this recordset
+     * 
+     * @access public
+     * @return qcEvents_Stream_DNS_Record
+     **/
+    public function pop () : ?qcEvents_Stream_DNS_Record {
+      return array_pop ($this->Records);
+    }
+    // }}}
+    
+    // {{{ unshift
+    /**
+     * Push records back to this recordset
+     * 
+     * @access public
+     * @return void
+     **/
+    public function unshift () {
+      $dnsRecords = array ($this->Records);
+      
+      foreach (func_get_args () as $dnsRecord)
+        if ($dnsRecord instanceof qcEvents_Stream_DNS_Record)
+          $dnsRecords [] = $dnsRecord;
+      
+      if (count ($dnsRecords) > 1)
+        call_user_func_array ('unshift', $dnsRecords);
+    }
+    // }}}
+    
+    // {{{ clear
+    /**
+     * Remove all records from this recordset
+     * 
+     * @access public
+     * @return void
+     **/
+    public function clear () {
+      $this->Records = array ();
     }
     // }}}
   }
