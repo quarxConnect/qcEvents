@@ -51,8 +51,12 @@
     const ERROR_NAME_EXISTANT = 0x06; // RFC 2136
     const ERROR_RR_EXISTANT   = 0x07; // RFC 2136
     const ERROR_RR_MISSING    = 0x08; // RFC 2136
-    const ERROR_NOT_AUTH      = 0x09; // RFC 2136, RFC 2845
+    const ERROR_NOT_AUTH      = 0x09; // RFC 2136, RFC 2845 TSIG
     const ERROR_NOT_IN_ZONE   = 0x0A; // RFC 2136
+    
+    const ERROR_BAD_SIG       = 0x10; // RFC 2845 TSIG
+    const ERROR_BAD_KEY       = 0x11; // RFC 2845 TSIG
+    const ERROR_BAD_TIME      = 0x12; // RFC 2845 TSIG
     
     /**
      * DNS Flags
@@ -111,6 +115,8 @@
     const TYPE_RRSIG  = 0x2E;	// RFC 4034
     const TYPE_NSEC   = 0x2F;	// RFC 4034
     const TYPE_DNSKEY = 0x30;	// RFC 4034
+    
+    const TYPE_TSIG   = 0xFA;   // RFC 2845 TSIG
     
     const TYPE_ANY    = 0xFF;	// RFC 1035
     
