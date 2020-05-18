@@ -22,7 +22,11 @@
   require_once ('qcEvents/Stream/DNS/Record.php');
   
   class qcEvents_Stream_DNS_Record_TSIG extends qcEvents_Stream_DNS_Record {
+    /* Default Type of this record */
     const DEFAULT_TYPE = qcEvents_Stream_DNS_Message::TYPE_TSIG;
+    
+    /* Don't allow this record-type to be cached */
+    const ALLOW_CACHING = false;
     
     private $algorithmName = '';
     private $timeSigned = 0;

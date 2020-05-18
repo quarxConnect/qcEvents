@@ -124,7 +124,7 @@
     private $Question = array ();
     private $Answer = null;
     private $Authority = null;
-    private $Additional = null;
+    private $additionalRecords = null;
     
     private $ednsRecord = null;
     
@@ -251,7 +251,7 @@
       $this->messageHeader = new qcEvents_Stream_DNS_Header;
       $this->Answer = new qcEvents_Stream_DNS_Recordset;
       $this->Authority = new qcEvents_Stream_DNS_Recordset;
-      $this->Additional = new qcEvents_Stream_DNS_Recordset;
+      $this->additionalRecords = new qcEvents_Stream_DNS_Recordset;
       
       // Check wheter to parse an existing message
       if ($Data !== null)
@@ -340,7 +340,7 @@
       $this->Question = $questionRecords;
       $this->Answer = $answerRecords;
       $this->Authority = $authorityRecords;
-      $this->Additional = $additionalRecords;
+      $this->additionalRecords = $additionalRecords;
       $this->ednsRecord = $ednsRecord;
       
       return ($errorCode === null ? $this::ERROR_NONE : $errorCode);
@@ -359,7 +359,7 @@
       $this->messageHeader->Questions = count ($this->Question);
       $this->messageHeader->Answers = count ($this->Answer);
       $this->messageHeader->Authorities = count ($this->Authority);
-      $this->messageHeader->Additionals = count ($this->Additional);
+      $this->messageHeader->Additionals = count ($this->additionalRecords);
       
       // Convert the header into a string
       $Data = $this->messageHeader->toString ();
@@ -379,8 +379,8 @@
         $Data .= $A->toString (strlen ($Data), $Labels);
       
       // Append Additional-Section
-      foreach ($this->Additional as $A)
-        $Data .= $A->toString (strlen ($Data), $Labels);
+      foreach ($this->additionalRecords as $additionalRecord)
+        $Data .= $additionalRecord->toString (strlen ($Data), $Labels);
       
       // Return the buffer
       return $Data;
@@ -429,9 +429,9 @@
       if ($Toggle === false) {
         $this->ednsRecord = null;
         
-        foreach ($this->Additional as $ID=>$Record)
-          if ($Record->getType () === self::TYPE_OPT)
-            unset ($this->Additional [$ID]);
+        foreach ($this->additionalRecords as $ID=>$additionalRecord)
+          if ($additionalRecord->getType () === self::TYPE_OPT)
+            unset ($this->additionalRecords [$ID]);
         
         return true;
       // Check if the toggle is something wrong
@@ -442,7 +442,7 @@
       if ($this->ednsRecord)
         return true;
       
-      $this->Additional [] = $this->ednsRecord = new qcEvents_Stream_DNS_Record_EDNS;
+      $this->additionalRecords [] = $this->ednsRecord = new qcEvents_Stream_DNS_Record_EDNS;
       
       return true;
     }
@@ -735,10 +735,10 @@
      * Retrive all additional answers from this message
      * 
      * @access public
-     * @return array
+     * @return qcEvents_Stream_DNS_Recordset
      **/
-    public function getAdditionals () {
-      return $this->Additional;
+    public function getAdditionals () : qcEvents_Stream_DNS_Recordset {
+      return $this->additionalRecords;
     }
     // }}}
     
@@ -782,28 +782,46 @@
      * @return bool
      **/
     public function tuncate () {
+      // Check if we are a question-message
+      $isQuestion = $this->isQuestion ();
+      
+      // Automatically set truncated-bit
+      $this->messageHeader->Truncated = true;
+      
+      // Process TSIG-Responses
+      if (!$isQuestion && (count ($tsigRecords = $this->additionalRecords->getRecords ($this::TYPE_TSIG)) > 0)) {
+        // Make sure we could truncate anything
+        if ((count ($this->Answer) == 0) &&
+            (count ($this->Authority) == 0) &&
+            (count ($this->additionalRecords) == count ($tsigRecords)))
+          return false;
+        
+        $this->Answer->clear ();
+        $this->Authority->clear ();
+        $this->additionalRecords = $tsigRecords;
+      
       // Try to remove all questions first (if we are the answer)
-      if (!($q = $this->isQuestion ()) && (count ($this->Question) > 0))
+      } elseif (!$isQuestion && (count ($this->Question) > 0))
         $this->Question = array ();
       
       // ... or additional informations
-      elseif (count ($this->Additional) > ($this->ednsRecord ? 1 : 0)) {
-        $RR = array_pop ($this->Additional);
+      elseif (count ($this->additionalRecords) > ($this->ednsRecord ? 1 : 0)) {
+        $RR = $this->additionalRecords->pop ();
         
         // Make sure we do not truncate the edns-record
         if ($RR == $this->ednsRecord) {
-          array_pop ($this->Additional);
-          array_unshift ($this->Additional, $RR);
+          $this->additionalRecords->pop ();
+          $this->additionalRecords->unshift ($RR);
         }
       
       // ... maybe no one cares about authorities
       } elseif (count ($this->Authority) > 0)
-        array_pop ($this->Authority);
+        $this->Authority->pop ();
       
       // ... finally do the hard stuff
       elseif (count ($this->Answer) > 0)
-        array_pop ($this->Answer);
-      elseif ($q && (count ($this->Question) > 0))
+        $this->Answer->pop ();
+      elseif (count ($this->Question) > 0)
         array_pop ($this->Question);
       else
         return false;
@@ -840,11 +858,11 @@
       $Response->Question = array ();
       $Response->Answer = array ();
       $Response->Authority = array ();
-      $Response->Additional = array ();
+      $Response->additionalRecords = new qcEvents_Stream_DNS_Recordset;
       
       // Make sure we keep the EDNS-Record if there is one
       if ($this->ednsRecord)
-        $Response->Additional [] = $Response->ednsRecord = clone $this->ednsRecord;
+        $Response->additionalRecords [] = $Response->ednsRecord = clone $this->ednsRecord;
       
       // Invert the response-status
       $Response->messageHeader->isResponse = !$this->messageHeader->isResponse;
@@ -870,7 +888,7 @@
       $Response->messageHeader->Questions = count ($this->Question);
       $Response->messageHeader->Answers = count ($this->Answer);
       $Response->messageHeader->Authorities = count ($this->Authority);
-      $Response->messageHeader->Additionals = count ($this->Additional);
+      $Response->messageHeader->Additionals = count ($this->additionalRecords);
       
       foreach ($this->Question as $Q)
         $Response->Question [] = clone $Q;
@@ -881,8 +899,8 @@
       foreach ($this->Authority as $A)
         $Response->Authority [] = clone $A;
       
-      foreach ($this->Additional as $A)
-        $Response->Additional [] = clone $A;
+      foreach ($this->additionalRecords as $additionalRecord)
+        $Response->additionalRecords [] = clone $additionalRecord;
       
       return $Response;
     }
