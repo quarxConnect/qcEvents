@@ -147,7 +147,7 @@
 
       // Check if the signature-time is valid
       if (abs (time () - $tsigRecord->getSignatureTime ()) > $tsigRecord->getTimeWindow ())
-        return ((qcEvents_Stream_DNS_Message::ERROR_BAD_SIG << 16) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
+        return ((qcEvents_Stream_DNS_Message::ERROR_BAD_TIME << 16) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
 
       // Create MAC for that message
       $messageMac = hash_hmac (
