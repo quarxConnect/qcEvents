@@ -28,6 +28,19 @@
     /* Don't allow this record-type to be cached */
     const ALLOW_CACHING = false;
     
+    /* Default HMAC to use when not specified */
+    const DEFAULT_HMAC = 'hmac-sha256';
+    
+    /* List of supported HMAC-Algorithms (plus mapping to hash_hmac()) */
+    private static $supportedAlgorihtms = array (
+      'hmac-md5.sig-alg.reg.int' => 'md5',
+      'hmac-sha1' => 'sha1',
+      'hmac-sha224' => 'sha224',
+      'hmac-sha256' => 'sha256',
+      'hmac-sha384' => 'sha384',
+      'hmac-sha512' => 'sha512',
+    );
+    
     private $algorithmName = null;
     private $timeSigned = 0;
     private $timeWindow = 0;
@@ -42,11 +55,12 @@
      * 
      * @param qcEvents_Stream_DNS_Message $dnsMessage
      * @param qcEvents_Stream_DNS_Record_TSIG $tsigRecord
+     * @param qcEvents_Stream_DNS_Message $initialMessage (optional)
      * 
      * @access public
      * @return string
      **/
-    public static function messageDigest (qcEvents_Stream_DNS_Message $dnsMessage, qcEvents_Stream_DNS_Record_TSIG $tsigRecord) {
+    public static function messageDigest (qcEvents_Stream_DNS_Message $dnsMessage, qcEvents_Stream_DNS_Record_TSIG $tsigRecord, qcEvents_Stream_DNS_Message $initialMessage = null) {
       // Sanatize the message
       if (count ($dnsMessage->getAdditionals ()->getRecords (qcEvents_Stream_DNS_Message::TYPE_TSIG)) > 0) {
         $dnsMessage = clone $dnsMessage;
@@ -67,21 +81,28 @@
       $algorithmName = qcEvents_Stream_DNS_Message::setLabel ($tsigRecord->getAlgorithm ());
       $otherData = $tsigRecord->getOtherData ();
       
+      if ($initialMessage && $initialMessage->isQuestion () && ($initialTSIG = $initialMessage->getAdditionals ()->getRecords (qcEvents_Stream_DNS_Message::TYPE_TSIG)->pop ()))
+        $initialMac = pack ('n', strlen ($initialTSIG->macData)) . $initialTSIG->macData;
+      else
+        $initialMac = '';
+      
       // Pack the digest
-      return pack (
-        'a' . strlen ($dnsMessageData) . 'a' . strlen ($keyName) . 'nNa' . strlen ($algorithmName) . 'Nnnnna' . strlen ($otherData),
-        $dnsMessage->toString (),
-        $keyName,
-        $tsigRecord->getClass (),
-        $tsigRecord->getTTL (),
-        $algorithmName,
-        $tsigRecord->getSignatureTime () >> 16,
-        $tsigRecord->getSignatureTime () & 0xFFFF,
-        $tsigRecord->getTimeWindow (),
-        $tsigRecord->getErrorCode (),
-        strlen ($otherData),
-        $otherData
-      );
+      return
+        $initialMac .
+        pack (
+          'a' . strlen ($dnsMessageData) . 'a' . strlen ($keyName) . 'nNa' . strlen ($algorithmName) . 'Nnnnna' . strlen ($otherData),
+          $dnsMessage->toString (),
+          $keyName,
+          $tsigRecord->getClass (),
+          $tsigRecord->getTTL (),
+          $algorithmName,
+          $tsigRecord->getSignatureTime () >> 16,
+          $tsigRecord->getSignatureTime () & 0xFFFF,
+          $tsigRecord->getTimeWindow (),
+          $tsigRecord->getErrorCode (),
+          strlen ($otherData),
+          $otherData
+        );
     }
     // }}}
     
@@ -113,28 +134,92 @@
         return null;
       
       // Check for supported message-algorithm
-      if ($tsigRecord->getAlgorithm () != 'hmac-sha256.')
-        return ((qcEvents_Stream_DNS_Message::ERROR_BAD_SIG << 8) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
+      $algorithmName = substr ($tsigRecord->getAlgorithm (), 0, -1);
+      
+      if (!isset (static::$supportedAlgorihtms [$algorithmName]))
+        return ((qcEvents_Stream_DNS_Message::ERROR_BAD_SIG << 16) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
       
       // Check if the key is known
       $keyName = substr ($tsigRecord->getLabel (), 0, -1);
 
       if (!isset ($keyStore [$keyName]))
-        return ((qcEvents_Stream_DNS_Message::ERROR_BAD_KEY << 8) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
+        return ((qcEvents_Stream_DNS_Message::ERROR_BAD_KEY << 16) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
 
       // Check if the signature-time is valid
       if (abs (time () - $tsigRecord->getSignatureTime ()) > $tsigRecord->getTimeWindow ())
-        return ((qcEvents_Stream_DNS_Message::ERROR_BAD_SIG << 8) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
+        return ((qcEvents_Stream_DNS_Message::ERROR_BAD_SIG << 16) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
 
       // Create MAC for that message
       $messageMac = hash_hmac (
-        'sha256',
-        self::messageDigest ($dnsMessage, $tsigRecord),
+        static::$supportedAlgorihtms [$algorithmName],
+        static::messageDigest ($dnsMessage, $tsigRecord),
         base64_decode ($keyStore [$keyName]),
         true
       );
       
-      return (strcmp ($messageMac, $tsigRecord->getSignature ()) == 0 ? qcEvents_Stream_DNS_Message::ERROR_NONE : ((qcEvents_Stream_DNS_Message::ERROR_BAD_SIG << 8) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH));
+      return (strcmp ($messageMac, $tsigRecord->getSignature ()) == 0 ? qcEvents_Stream_DNS_Message::ERROR_NONE : ((qcEvents_Stream_DNS_Message::ERROR_BAD_SIG << 16) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH));
+    }
+    // }}}
+    
+    // {{{ createErrorResponse
+    /**
+     * Create a signed TSIG-Error-Response
+     * 
+     * @param qcEvents_Stream_DNS_Message $dnsMessage
+     * @param array $keyStore
+     * @param int  $errorCode (optional)
+     * 
+     * @access public
+     * @return qcEvents_Stream_DNS_Message
+     * @throws InvalidArgumentException
+     **/
+    public static function createErrorResponse (qcEvents_Stream_DNS_Message $dnsMessage, array $keyStore, $errorCode = null) : qcEvents_Stream_DNS_Message {
+      // Find the original TSIG-Record to respond to
+      if (!is_object ($tsigRecord = $dnsMessage->getAdditionals ()->getRecords (qcEvents_Stream_DNS_Message::TYPE_TSIG)->pop ()))
+        throw new InvalidArgumentException ('Cannot reply to DNS-Message without TSIG-Record');
+      
+      // Check wheter to auto-generate error-code
+      if ($errorCode === null)
+        $errorCode = static::verifyMessage ($dnsMessage);
+      
+      // Check wheter to sign the response
+      $algorithmName = substr ($tsigRecord->algorithmName, 0, -1);
+      
+      if (!isset (static::$supportedAlgorihtms [$algorithmName]))
+        $algorithmName = static::DEFAULT_HMAC;
+      
+      $keyName = substr ($tsigRecord->getLabel (), 0, -1);
+      
+      if (!isset ($keyStore [$keyName]))
+        $signResponse = false;
+      else
+        $signResponse = true;
+      
+      // Create a response-message
+      $dnsResponse = $dnsMessage->createResponse ();
+      $dnsResponse->setOpcode ($dnsMessage->getOpcode ());
+      $dnsResponse->setError ($errorCode & 0xFF);
+      
+      $responseRecord = new static;
+      $responseRecord->setLabel (clone $tsigRecord->getLabel ());
+      $responseRecord->algorithmName = clone $tsigRecord->algorithmName;
+      $responseRecord->timeSigned = time ();
+      $responseRecord->timeWindow = $tsigRecord->timeWindow;
+      $responseRecord->originalID = $tsigRecord->originalID;
+      $responseRecord->errorCode = (($errorCode >> 16) & 0xFFFF);
+      $responseRecord->otherData = '';
+      
+      if ($signResponse)
+        $responseRecord->macData = hash_hmac (
+          static::$supportedAlgorihtms [$algorithmName],
+          static::messageDigest ($dnsResponse, $responseRecord, $dnsMessage),
+          base64_decode ($keyStore [$keyName]),
+          true
+        );
+      
+      $dnsResponse->addAdditional ($responseRecord);
+      
+      return $dnsResponse;
     }
     // }}}
     
@@ -160,6 +245,18 @@
         $this->errorCode . ' ' . # TODO: Convert this to a human-friendly string
         strlen ($this->otherData) . ' ' .
         base64_encode ($this->otherData);
+    }
+    // }}}
+    
+    // {{{ getClass
+    /**
+     * Retrive the class of this record
+     * 
+     * @access public
+     * @return enum
+     **/
+    public function getClass () {
+      return qcEvents_Stream_DNS_Message::CLASS_ALL;
     }
     // }}}
     
@@ -305,7 +402,16 @@
      * @return string
      **/
     public function buildPayload ($dataOffset, &$dnsLabels) {
-      return qcEvents_Stream_DNS_Message::setLabel ($this->algorithmName, $dataOffset, $dnsLabels);
+      return
+        qcEvents_Stream_DNS_Message::setLabel ($this->algorithmName, $dataOffset, $dnsLabels) .
+        $this::writeInt48 ($this->timeSigned) .
+        $this::writeInt16 ($this->timeWindow) .
+        $this::writeInt16 (strlen ($this->macData)) .
+        $this->macData .
+        $this::writeInt16 ($this->originalID) .
+        $this::writeInt16 ($this->errorCode) .
+        $this::writeInt16 (strlen ($this->otherData)) .
+        $this->otherData;
     }
     // }}}
   }

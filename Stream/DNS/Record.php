@@ -510,16 +510,16 @@
       // Create the record-header
       $Data =
         qcEvents_Stream_DNS_Message::setLabel ($this->Label, $Offset, $Labels) .
-        self::buildInt16 ($this->Type) .
-        self::buildInt16 ($this->Class) . 
-        self::buildInt32 ($this->TTL);
+        $this::writeInt16 ($this->Type) .
+        $this::writeInt16 ($this->getClass ()) .
+        $this::writeInt32 ($this->TTL);
       
       // Retrive the payload
       if (($Payload = $this->buildPayload ($Offset + strlen ($Data) + 2, $Labels)) === false)
         return false;
       
       // Append the payload
-      $Data .= self::buildInt16 (strlen ($Payload)) . $Payload;
+      $Data .= $this::writeInt16 (strlen ($Payload)) . $Payload;
       
       return $Data;
     }
@@ -540,6 +540,48 @@
     }
     // }}}
     
+    // {{{ writeInt16
+    /**
+     * Create binary representation of a 16-bit-Integer
+     * 
+     * @param int $intValue
+     * 
+     * @access protected
+     * @return string
+     **/
+    protected static function writeInt16 ($intValue) {
+      return pack ('n', $intValue);
+    }
+    // }}}
+    
+    // {{{ writeInt32
+    /**
+     * Create binary representation of a 32-bit-Integer
+     * 
+     * @param int $intValue
+     * 
+     * @access protected
+     * @return string
+     **/
+    protected static function writeInt32 ($intValue) {
+      return pack ('N', $intValue);
+    }
+    // }}}
+    
+    // {{{ writeInt48
+    /**
+     * Create binary representation of a 48-bit-Integer
+     * 
+     * @param int $intValue
+     * 
+     * @access protected
+     * @return string
+     **/
+    protected static function writeInt48 ($intValue) {
+      return pack ('Nn', $intValue >> 16, $intValue & 0xFFFF);
+    }
+    // }}}
+    
     // {{{ buildInt16
     /**
      * Create a binary representation of a 16-bit integer
@@ -549,8 +591,8 @@
      * @access protected
      * @return string
      **/
-    protected function buildInt16 ($Value) {
-      return chr (($Value & 0xFF00) >> 8) . chr ($Value & 0xFF);
+    protected static function buildInt16 ($Value) {
+      return static::writeInt16 ($Value);
     }
     // }}}
     
@@ -563,10 +605,8 @@
      * @access protected
      * @return string
      **/
-    protected function buildInt32 ($Value) {
-      return
-        chr (($Value & 0xFF000000) >> 24) . chr (($Value & 0x00FF0000) >> 16) .
-        chr (($Value & 0x0000FF00) >>  8) . chr  ($Value & 0x000000FF);
+    protected static function buildInt32 ($Value) {
+      return static::writeInt32 ($Value);
     }
     // }}}
   }
