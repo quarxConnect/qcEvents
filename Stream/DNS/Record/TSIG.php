@@ -28,13 +28,78 @@
     /* Don't allow this record-type to be cached */
     const ALLOW_CACHING = false;
     
-    private $algorithmName = '';
+    private $algorithmName = null;
     private $timeSigned = 0;
     private $timeWindow = 0;
     private $macData = '';
     private $originalID = 0;
     private $errorCode = 0;
     private $otherData = '';
+    
+    // {{{ verifyMessage
+    /**
+     * Verfiy the signature on a DNS-Message
+     * 
+     * @param qcEvents_Stream_DNS_Message $dnsMessage
+     * @param array $keyStore
+     * 
+     * @access public
+     * @return int
+     **/
+    public static function verifyMessage (qcEvents_Stream_DNS_Message $dnsMessage, array $keyStore) {
+      // Try to find a tsig-record
+      $tsigRecord = null;
+
+      foreach ($dnsMessage->getAdditionals () as $additionalRecord) {
+        // Make sure there is no TSIG-Record before the last record
+        if ($tsigRecord !== null)
+          return qcEvents_Stream_DNS_Message::ERROR_FORMAT;
+        
+        elseif ($additionalRecord instanceof qcEvents_Stream_DNS_Record_TSIG)
+          $tsigRecord = $additionalRecord;
+      }
+
+      // No TSIG to check
+      if (!$tsigRecord)
+        return null;
+      
+      // Check for supported message-algorithm
+      if ($tsigRecord->getAlgorithm () != 'hmac-sha256.')
+        return ((qcEvents_Stream_DNS_Message::ERROR_BAD_SIG << 8) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
+
+      // Check if the key is known
+      $keyName = substr ($tsigRecord->getLabel (), 0, -1);
+
+      if (!isset ($keyStore [$keyName]))
+        return ((qcEvents_Stream_DNS_Message::ERROR_BAD_KEY << 8) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
+
+      // Check if the signature-time is valid
+      if (abs (time () - $tsigRecord->getSignatureTime ()) > $tsigRecord->getTimeWindow ())
+        return ((qcEvents_Stream_DNS_Message::ERROR_BAD_SIG << 8) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
+
+      // Create a copy of this message
+      $messageCopy = clone $dnsMessage;
+      $messageCopy->removeAdditional ($messageCopy->getAdditionals ()->getRecords (qcEvents_Stream_DNS_Message::TYPE_TSIG)->pop ());
+      
+      if ($messageCopy->getID () != $tsigRecord->getOriginalID ())
+        $messageCopy->setID ($tsigRecord->getOriginalID ());
+      
+      // Create MAC for that message
+      $messageMac = hash_hmac (
+        'sha256',
+        $messageCopy->toString () .
+        qcEvents_Stream_DNS_Message::setLabel ($tsigRecord->getLabel ()) .
+        pack ('nN', $tsigRecord->getClass (), $tsigRecord->getTTL ()) .
+        qcEvents_Stream_DNS_Message::setLabel ($tsigRecord->getAlgorithm ()) .
+        pack ('Nnnnn', $tsigRecord->getSignatureTime () >> 16, $tsigRecord->getSignatureTime () & 0xFFFF, $tsigRecord->getTimeWindow (), $tsigRecord->getErrorCode (), strlen ($tsigRecord->getOtherData ())) .
+        $tsigRecord->getOtherData (),
+        base64_decode ($keyStore [$keyName]),
+        true
+      );
+      
+      return (strcmp ($messageMac, $tsigRecord->getSignature ()) == 0 ? qcEvents_Stream_DNS_Message::ERROR_NONE : ((qcEvents_Stream_DNS_Message::ERROR_BAD_SIG << 8) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH));
+    }
+    // }}}
     
     // {{{ __toString
     /**
@@ -58,6 +123,90 @@
         $this->errorCode . ' ' . # TODO: Convert this to a human-friendly string
         strlen ($this->otherData) . ' ' .
         base64_encode ($this->otherData);
+    }
+    // }}}
+    
+    // {{{ getAlgorithm
+    /**
+     * Retrive the used algorithm
+     * 
+     * @access public
+     * @return qcEvents_Stream_DNS_Label
+     **/
+    public function getAlgorithm () : ?qcEvents_Stream_DNS_Label {
+      return $this->algorithmName;
+    }
+    // }}}
+    
+    // {{{ getSignature
+    /**
+     * Retrive the Signature/MAC from this record
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getSignature () {
+      return $this->macData;
+    }
+    // }}}
+
+    // {{{ getSignatureTime
+    /**
+     * Retrive timestamp when the signature was supposed to be generated
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getSignatureTime () {
+      return $this->timeSigned;
+    }
+    // }}}
+    
+    // {{{ getTimeWindow
+    /**
+     * Retrive the time-window the signature is supposed to be valid
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getTimeWindow () {
+      return $this->timeWindow;
+    }
+    // }}}
+    
+    // {{{ getOriginalID
+    /**
+     * Retrive the original ID used for the dns-message
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getOriginalID () {
+      return $this->originalID;
+    }
+    // }}}
+    
+    // {{{ getErrorCode
+    /**
+     * Retrive error-code from this record
+     * 
+     * @access public
+     * @return int
+     **/
+    public function getErrorCode () {
+      return $this->errorCode;
+    }
+    // }}}
+    
+    // {{{ getOtherData
+    /**
+     * Retrive other data from this record
+     * 
+     * @access public
+     * @return string
+     **/
+    public function getOtherData () {
+      return $this->otherData;
     }
     // }}}
     
