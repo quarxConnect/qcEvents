@@ -20,7 +20,20 @@
   
   class qcEvents_Stream_DNS_Recordset implements IteratorAggregate, ArrayAccess, Countable {
     /* All records on this set */
-    private $Records = array ();
+    private $dnsRecords = array ();
+    
+    // {{{ __clone
+    /**
+     * Create a copy of this recordset
+     * 
+     * @access friendly
+     * @return void
+     **/
+    function __clone () {
+      foreach ($this->dnsRecords as $recordIndex=>$dnsRecord)
+        $this->dnsRecords [$recordIndex] = clone $dnsRecord;
+    }
+    // }}}
     
     // {{{ getIterator
     /**
@@ -30,7 +43,7 @@
      * @return ArrayIterator
      **/
     public function getIterator () {
-      return new ArrayIterator ($this->Records);
+      return new ArrayIterator ($this->dnsRecords);
     }
     // }}}
     
@@ -44,7 +57,7 @@
      * @return bool
      **/
     public function offsetExists ($Index) {
-      return isset ($this->Records [$Index]);
+      return isset ($this->dnsRecords [$Index]);
     }
     // }}}
     
@@ -58,8 +71,8 @@
      * @return qcEvents_Stream_DNS_Record
      **/
     public function offsetGet ($Index) {
-      if (isset ($this->Records [$Index]))
-        return $this->Records [$Index];
+      if (isset ($this->dnsRecords [$Index]))
+        return $this->dnsRecords [$Index];
     }
     // }}}
     
@@ -78,9 +91,9 @@
         return;
       
       if ($Index === null)
-        $this->Records [] = $Record;
+        $this->dnsRecords [] = $Record;
       else
-        $this->Records [$Index] = $Record;
+        $this->dnsRecords [$Index] = $Record;
     }
     // }}}
     
@@ -94,7 +107,7 @@
      * @return void
      **/
     public function offsetUnset ($Index) {
-      unset ($this->Records [$Index]);
+      unset ($this->dnsRecords [$Index]);
     }
     // }}}
     
@@ -106,7 +119,7 @@
      * @return int
      **/
     public function count () {
-      return count ($this->Records);
+      return count ($this->dnsRecords);
     }
     // }}}
     
@@ -125,14 +138,29 @@
         return $this;
       
       // Create a cloned result
-      $Result = clone $this;
+      $Result = new $this;
       
       // Filter the result
-      foreach ($Result as $ID=>$Record)
-        if ($Record->getType () != $Type)
-          unset ($Result [$ID]);
+      foreach ($this->dnsRecords as $recordIndex=>$dnsRecord)
+        if ($dnsRecord->getType () == $Type)
+          $Result [$recordIndex] = $dnsRecord;
       
       return $Result;
+    }
+    // }}}
+    
+    // {{{ removeRecord
+    /**
+     * Remove a record from this recordset
+     * 
+     * @param qcEvents_Stream_DNS_Record $dnsRecord
+     * 
+     * @access public
+     * @return void
+     **/
+    public function removeRecord (qcEvents_Stream_DNS_Record $dnsRecord) {
+      foreach (array_keys ($this->dnsRecords, $dnsRecord, true) as $recordIndex)
+        unset ($this->dnsRecords [$recordIndex]);
     }
     // }}}
     
@@ -269,32 +297,35 @@ EOF;
      * @return void
      **/
     public function orderCanonical () {
-      usort ($this->Records, function (qcEvents_Stream_DNS_Record $Left, qcEvents_Stream_DNS_Record $Right) {
-        // Compare labels of records
-        $lLen = count ($lLabel = $Left->getLabel ());
-        $rLen = count ($rLabel = $Right->getLabel ());
-        
-        if (($lLen == 0) && ($rLen > 0))
-          return -1;
-        
-        elseif (($rLen == 0) && ($lLen > 0))
-          return 1;
-        
-        while (($lLen-- > 0) && ($rLen-- > 0)) {
-          if (($r = strcasecmp ($lLabel [$lLen], $rLabel [$rLen])) != 0)
-            return $r;
+      usort (
+        $this->dnsRecords,
+        function (qcEvents_Stream_DNS_Record $Left, qcEvents_Stream_DNS_Record $Right) {
+          // Compare labels of records
+          $lLen = count ($lLabel = $Left->getLabel ());
+          $rLen = count ($rLabel = $Right->getLabel ());
+          
+          if (($lLen == 0) && ($rLen > 0))
+            return -1;
+          
+          elseif (($rLen == 0) && ($lLen > 0))
+            return 1;
+          
+          while (($lLen-- > 0) && ($rLen-- > 0)) {
+            if (($r = strcasecmp ($lLabel [$lLen], $rLabel [$rLen])) != 0)
+              return $r;
+          }
+          
+          // Compare the type
+          if (($d = ($Left->getType () - $Right->getType ())) != 0)
+            return $d;
+          
+          // Compare the class
+          if (($d = ($Left->getClass () - $Right->getClass ())) != 0)
+            return $d;
+          
+          return strcmp ($Left->getPayload (), $Right->getPayload ());
         }
-        
-        // Compare the type
-        if (($d = ($Left->getType () - $Right->getType ())) != 0)
-          return $d;
-        
-        // Compare the class
-        if (($d = ($Left->getClass () - $Right->getClass ())) != 0)
-          return $d;
-        
-        return strcmp ($Left->getPayload (), $Right->getPayload ());
-      });
+      );
     }
     // }}}
     
@@ -306,7 +337,7 @@ EOF;
      * @return qcEvents_Stream_DNS_Record
      **/
     public function pop () : ?qcEvents_Stream_DNS_Record {
-      return array_pop ($this->Records);
+      return array_pop ($this->dnsRecords);
     }
     // }}}
     
@@ -318,7 +349,7 @@ EOF;
      * @return void
      **/
     public function unshift () {
-      $dnsRecords = array ($this->Records);
+      $dnsRecords = array ($this->dnsRecords);
       
       foreach (func_get_args () as $dnsRecord)
         if ($dnsRecord instanceof qcEvents_Stream_DNS_Record)
@@ -337,7 +368,7 @@ EOF;
      * @return void
      **/
     public function clear () {
-      $this->Records = array ();
+      $this->dnsRecords = array ();
     }
     // }}}
   }
