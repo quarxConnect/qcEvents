@@ -36,6 +36,55 @@
     private $errorCode = 0;
     private $otherData = '';
     
+    // {{{ messageDigest
+    /**
+     * Create digest for a DNS-Message
+     * 
+     * @param qcEvents_Stream_DNS_Message $dnsMessage
+     * @param qcEvents_Stream_DNS_Record_TSIG $tsigRecord
+     * 
+     * @access public
+     * @return string
+     **/
+    public static function messageDigest (qcEvents_Stream_DNS_Message $dnsMessage, qcEvents_Stream_DNS_Record_TSIG $tsigRecord) {
+      // Sanatize the message
+      if (count ($dnsMessage->getAdditionals ()->getRecords (qcEvents_Stream_DNS_Message::TYPE_TSIG)) > 0) {
+        $dnsMessage = clone $dnsMessage;
+        
+        foreach ($dnsMessage->getAdditionals ()->getRecords (qcEvents_Stream_DNS_Message::TYPE_TSIG) as $additionalRecord)
+          $dnsMessage->removeAdditional ($additionalRecord);
+      }
+      
+      if ($dnsMessage->getID () != $tsigRecord->getOriginalID ()) {
+        $dnsMessage = clone $dnsMessage;
+        
+        $dnsMessage->setID ($tsigRecord->getOriginalID ());
+      }
+      
+      // Gather all required data
+      $dnsMessageData = $dnsMessage->toString ();
+      $keyName = qcEvents_Stream_DNS_Message::setLabel ($tsigRecord->getLabel ());
+      $algorithmName = qcEvents_Stream_DNS_Message::setLabel ($tsigRecord->getAlgorithm ());
+      $otherData = $tsigRecord->getOtherData ();
+      
+      // Pack the digest
+      return pack (
+        'a' . strlen ($dnsMessageData) . 'a' . strlen ($keyName) . 'nNa' . strlen ($algorithmName) . 'Nnnnna' . strlen ($otherData),
+        $dnsMessage->toString (),
+        $keyName,
+        $tsigRecord->getClass (),
+        $tsigRecord->getTTL (),
+        $algorithmName,
+        $tsigRecord->getSignatureTime () >> 16,
+        $tsigRecord->getSignatureTime () & 0xFFFF,
+        $tsigRecord->getTimeWindow (),
+        $tsigRecord->getErrorCode (),
+        strlen ($otherData),
+        $otherData
+      );
+    }
+    // }}}
+    
     // {{{ verifyMessage
     /**
      * Verfiy the signature on a DNS-Message
@@ -66,7 +115,7 @@
       // Check for supported message-algorithm
       if ($tsigRecord->getAlgorithm () != 'hmac-sha256.')
         return ((qcEvents_Stream_DNS_Message::ERROR_BAD_SIG << 8) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
-
+      
       // Check if the key is known
       $keyName = substr ($tsigRecord->getLabel (), 0, -1);
 
@@ -77,22 +126,10 @@
       if (abs (time () - $tsigRecord->getSignatureTime ()) > $tsigRecord->getTimeWindow ())
         return ((qcEvents_Stream_DNS_Message::ERROR_BAD_SIG << 8) | qcEvents_Stream_DNS_Message::ERROR_NOT_AUTH);
 
-      // Create a copy of this message
-      $messageCopy = clone $dnsMessage;
-      $messageCopy->removeAdditional ($messageCopy->getAdditionals ()->getRecords (qcEvents_Stream_DNS_Message::TYPE_TSIG)->pop ());
-      
-      if ($messageCopy->getID () != $tsigRecord->getOriginalID ())
-        $messageCopy->setID ($tsigRecord->getOriginalID ());
-      
       // Create MAC for that message
       $messageMac = hash_hmac (
         'sha256',
-        $messageCopy->toString () .
-        qcEvents_Stream_DNS_Message::setLabel ($tsigRecord->getLabel ()) .
-        pack ('nN', $tsigRecord->getClass (), $tsigRecord->getTTL ()) .
-        qcEvents_Stream_DNS_Message::setLabel ($tsigRecord->getAlgorithm ()) .
-        pack ('Nnnnn', $tsigRecord->getSignatureTime () >> 16, $tsigRecord->getSignatureTime () & 0xFFFF, $tsigRecord->getTimeWindow (), $tsigRecord->getErrorCode (), strlen ($tsigRecord->getOtherData ())) .
-        $tsigRecord->getOtherData (),
+        self::messageDigest ($dnsMessage, $tsigRecord),
         base64_decode ($keyStore [$keyName]),
         true
       );
