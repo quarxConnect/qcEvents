@@ -80,7 +80,6 @@
      * @see http://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-2
      **/
     const CLASS_INTERNET = 0x0001;
-    const CLASS_CSNET    = 0x0002; // Obsoleted
     const CLASS_CHAOS    = 0x0003;
     const CLASS_HESIOD   = 0x0004;
     const CLASS_NONE     = 0x00FE;
@@ -127,6 +126,51 @@
     private $additionalRecords = null;
     
     private $ednsRecord = null;
+    
+    // {{{ getClassName
+    /**
+     * Retrive a human readable name for a given record-class
+     * 
+     * @param int $classNumber
+     * 
+     * @access public
+     * @return string
+     **/
+    public static function getClassName ($classNumber) {
+      static $classNames = array (
+        self::CLASS_INTERNET => 'IN',
+        self::CLASS_CHAOS => 'CH',
+        self::CLASS_HESIOD => 'HS',
+        self::CLASS_NONE => 'NONE',
+        self::CLASS_ALL => 'ANY',
+      );
+
+      return $classNames [$classNumber] ?? 'UNKNOWN';
+    }
+    // }}}
+    
+    // {{{ getTypeName
+    /**
+     * Retrive human readbale name for a given record-type
+     * 
+     * @param int $typeNumber
+     * 
+     * @access public
+     * @return string
+     **/
+    public static function getTypeName ($typeNumber) {
+      static $typeNames = array (
+        self::TYPE_A => 'A',
+        self::TYPE_NS => 'NS',
+        self::TYPE_MD => 'MD',
+        self::TYPE_MF => 'MF',
+        self::TYPE_CNAME => 'CNAME',
+        self::TYPE_SOA => 'SOA',
+      );
+      
+      return $typeNames [$typeNumber] ?? 'UNKNOWN';
+    }
+    // }}}
     
     // {{{ getLabel
     /**

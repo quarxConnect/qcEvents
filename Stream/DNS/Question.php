@@ -59,6 +59,21 @@
     }
     // }}}
     
+    // {{{ __toString
+    /**
+     * Convert this question-record into a human readable string
+     * 
+     * @access friendly
+     * @return string
+     **/
+    function __toString () {
+      return
+        $this->getLabel () . ' ' .
+        qcEvents_Stream_DNS_Message::getClassName ($this->getClass ()) . ' ' .
+        qcEvents_Stream_DNS_Message::getTypeName ($this->getType ());
+    }
+    // }}}
+    
     // {{{ getLabel
     /**
      * Retrive the label of this question

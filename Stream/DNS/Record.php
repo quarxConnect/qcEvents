@@ -265,14 +265,17 @@
     }
     // }}}
     
+    // {{{ getClassName
+    /**
+     * Retrive a human readable representation of our class
+     * 
+     * @access protected
+     * @retrun string
+     **/
     protected function getClassName () {
-      switch ($this->Class) {
-        case qcEvents_Stream_DNS_Message::CLASS_INTERNET:
-          return 'IN';
-      }
-      
-      return $this->Class;
+      return qcEvents_Stream_DNS_Message::getClassName ($this->getClass ());
     }
+    // }}}
     
     // {{{ setClass
     /**
