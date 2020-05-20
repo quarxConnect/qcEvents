@@ -23,7 +23,7 @@
   class qcEvents_Stream_DNS_Record_A extends qcEvents_Stream_DNS_Record {
     const DEFAULT_TYPE = 0x01;
     
-    private $Address = '0.0.0.0';
+    private $ipAddress = '0.0.0.0';
     
     // {{{ __toString
     /**
@@ -33,7 +33,7 @@
      * @return string  
      **/
     function __toString () {
-      return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' A ' . $this->Address;
+      return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' A ' . $this->ipAddress;
     }
     // }}}
     
@@ -45,7 +45,7 @@
      * @return string
      **/
     public function getAddress () {
-      return $this->Address;
+      return $this->ipAddress;
     }  
     // }}}
     
@@ -53,15 +53,15 @@
     /**
      * Store an address for this record
      * 
-     * @param string $Address
+     * @param string $ipAddress
      * 
      * @access public
      * @return bool  
      **/
-    public function setAddress ($Address) {
+    public function setAddress ($ipAddress) {
       # TODO: Check the address
       
-      $this->Address = $Address;
+      $this->ipAddress = $ipAddress;
       
       return true;
     }
@@ -80,14 +80,15 @@
      * @throws LengthException
      **/  
     public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
+      // Make sure we know the length of our buffer
       if ($dataLength === null)
         $dataLength = strlen ($dnsData);
       
-      if ($dataLength < $dataOffset + 4)
-        throw new LengthException ('DNS-Record too short (A)');
-      
-      $this->Address = long2ip (self::parseInt32 ($dnsData, $dataOffset, $dataLength));
-      $dataOffset += 4;
+      // Allow to payload to be empty
+      if ($dataLength - $dataOffset == 0)
+        $this->ipAddress = '0.0.0.0';
+      else
+        $this->ipAddress = long2ip (self::parseInt32 ($dnsData, $dataOffset, $dataLength));
     }
     // }}}
     
@@ -102,7 +103,7 @@
      * @return string
      **/
     public function buildPayload ($Offset, &$Labels) {
-      return self::buildInt32 (ip2long ($this->Address));
+      return self::writeInt32 (ip2long ($this->ipAddress));
     }
     // }}}
   }
