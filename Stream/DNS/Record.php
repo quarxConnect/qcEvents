@@ -130,7 +130,9 @@
       
       // Try to parse the payload
       $dnsRecord->Payload = $recordPayload;
-      $dnsRecord->parsePayload ($dnsData, $recordDataOffset, $recordDataOffset + $recordDataLength);
+      
+      if ($recordDataLength > 0)
+        $dnsRecord->parsePayload ($dnsData, $recordDataOffset, $recordDataOffset + $recordDataLength);
       
       return $dnsRecord;
     }
@@ -385,6 +387,9 @@
       $this->Payload = substr ($dnsData, $dataOffset, $recordDataLength);
       $recordDataOffset = $dataOffset;
       $dataOffset += $recordDataLength;
+      
+      if ($recordDataLength == 0)
+        return;
       
       return $this->parsePayload ($dnsData, $recordDataOffset, $recordDataOffset + $recordDataLength);
     }
