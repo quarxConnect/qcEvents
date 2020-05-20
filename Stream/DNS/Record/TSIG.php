@@ -256,7 +256,7 @@
      * @return enum
      **/
     public function getClass () {
-      return qcEvents_Stream_DNS_Message::CLASS_ALL;
+      return qcEvents_Stream_DNS_Message::CLASS_ANY;
     }
     // }}}
     

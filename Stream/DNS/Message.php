@@ -83,7 +83,7 @@
     const CLASS_CHAOS    = 0x0003;
     const CLASS_HESIOD   = 0x0004;
     const CLASS_NONE     = 0x00FE;
-    const CLASS_ALL      = 0x00FF;
+    const CLASS_ANY      = 0x00FF;
     
     /**
      * DNS-RR-Types
@@ -142,7 +142,7 @@
         self::CLASS_CHAOS => 'CH',
         self::CLASS_HESIOD => 'HS',
         self::CLASS_NONE => 'NONE',
-        self::CLASS_ALL => 'ANY',
+        self::CLASS_ANY => 'ANY',
       );
       
       return $classNames [$classNumber] ?? 'UNKNOWN';
