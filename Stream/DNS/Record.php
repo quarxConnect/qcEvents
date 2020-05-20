@@ -464,7 +464,7 @@
      * @access public
      * @return void
      **/
-    public function parsePayload (&$Data, &$Offset, $Length = null) {
+    public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
       // Make sure we know the length of our input-buffer
       if ($dataLength === null)
         $dataLength = strlen ($dnsData);
