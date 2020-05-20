@@ -195,6 +195,18 @@
     }
     // }}}
     
+    // {{{ __toString
+    /**
+     * Create a human-readable representation from this
+     * 
+     * @access friendly
+     * @return string  
+     **/
+    function __toString () {
+      return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' ' . qcEvents_Stream_DNS_Message::getTypeName ($this->getType ()) . ' ' . bin2hex ($this->Payload);
+    }
+    // }}}
+    
     // {{{ getLabel
     /**
      * Retrive the label of this record

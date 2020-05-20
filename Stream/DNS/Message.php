@@ -145,7 +145,7 @@
         self::CLASS_ANY => 'ANY',
       );
       
-      return $classNames [$classNumber] ?? 'UNKNOWN';
+      return $classNames [$classNumber] ?? 'UNKNOWN(' . $classNumber . ')';
     }
     // }}}
     
@@ -166,9 +166,10 @@
         self::TYPE_MF => 'MF',
         self::TYPE_CNAME => 'CNAME',
         self::TYPE_SOA => 'SOA',
+        self::TYPE_ANY => 'ANY',
       );
       
-      return $typeNames [$typeNumber] ?? 'UNKNOWN';
+      return $typeNames [$typeNumber] ?? 'UNKNOWN(' . $typeNumber . ')';
     }
     // }}}
     
@@ -318,6 +319,39 @@
       
       foreach ($this->questionRecords as $questionIndex=>$questionRecord)
         $this->questionRecords [$questionIndex] = clone $questionRecord;
+    }
+    // }}}
+    
+    // {{{ __toString
+    /**
+     * Create human readable output for this message
+     * 
+     * @access friendly
+     * @return string
+     **/
+    function __toString () {
+      $outputBuffer =
+        ';; QUESTION SECTION:' . "\n";
+      
+      foreach ($this->questionRecords as $questionRecord)
+        $outputBuffer .= $questionRecord . "\n";
+      
+      $outputBuffer .= "\n" . ';; ANSWER SECTION:' . "\n";
+      
+      foreach ($this->answerRecords as $answerRecord)
+        $outputBuffer .= $answerRecord . "\n";
+      
+      $outputBuffer .= "\n" . ';; AUTHORITY SECTION:' . "\n";
+      
+      foreach ($this->authorityRecords as $authorityRecord)
+        $outputBuffer .= $authorityRecord . "\n";
+      
+      $outputBuffer .= "\n" . ';; ADDITIONAL SECTION:' . "\n";
+      
+      foreach ($this->additionalRecords as $additionalRecord)
+        $outputBuffer .= $additionalRecord . "\n";
+      
+      return $outputBuffer;
     }
     // }}}
     
