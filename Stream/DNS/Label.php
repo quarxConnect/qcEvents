@@ -144,6 +144,20 @@
       return new $this (array_slice ($this->Parts, 1));
     }
     // }}}
+    
+    // {{{ isSublabelOf
+    /**
+     * Check if this label is a child of another label
+     * 
+     * @param qcEvents_Stream_DNS_Label $parentLabel
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function isSublabelOf (qcEvents_Stream_DNS_Label $parentLabel) {
+      return ($parentLabel->Parts === array_slice ($this->Parts, -count ($parentLabel->Parts)));
+    }
+    // }}}
   }
 
 ?>
