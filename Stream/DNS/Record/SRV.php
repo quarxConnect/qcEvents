@@ -33,7 +33,7 @@
     private $Port = null;
     
     /* The hostname assigned to this record */
-    private $Hostname = null;
+    private $destinationHost = null;
     
     // {{{ __toString
     /**
@@ -43,7 +43,7 @@
      * @return string  
      **/
     function __toString () {
-      return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' SRV ' . $this->Priority . ' ' . $this->Weight . ' ' . $this->Port . ' ' . $this->Hostname;
+      return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' SRV ' . $this->Priority . ' ' . $this->Weight . ' ' . $this->Port . ' ' . $this->destinationHost;
     }
     // }}}
     
@@ -148,7 +148,7 @@
      * @return string
      **/
     public function getHostname () {
-      return $this->Hostname;
+      return $this->destinationHost;
     }  
     // }}}
       
@@ -156,15 +156,13 @@
     /**
      * Store a hostname on this record
      * 
-     * @param string $Hostname 
+     * @param string $destinationHost 
      * 
      * @access public
-     * @return bool  
+     * @return void
      **/
-    public function setHostname ($Hostname) {
-      $this->Hostname = $Hostname;
-      
-      return true;
+    public function setHostname ($destinationHost) {
+      $this->destinationHost = $destinationHost;
     }
     // }}}
     
@@ -187,20 +185,25 @@
         $dataLength = strlen ($dnsData);
       
       // Make sure we have enough data to read
-      if ($dataLength < $dataOffset + 6)
-        throw new LengthException ('DNS-Record too short (SRV)');
+      if ($dataLength < $dataOffset + 6) {
+        $Priority = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+        $Weight   = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+        $Port     = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+        
+        if (!($destinationHost = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset)))
+          throw new UnexpectedValueException ('Failed to read label of DNS-Record (SRV)');
+        
+        $this->Priority = $Priority;
+        $this->Weight = $Weight;
+        $this->Port = $Port;
+        $this->destinationHost = $destinationHost;
       
-      $Priority = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
-      $Weight   = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
-      $Port     = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      // Check for empty record
+      } elseif ($dataLength == $dataOffset)
+        $this->destinationHost = $this->Priority = $this->Weight = $this->Port = null;
       
-      if (!($Hostname = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset)))
-        throw new UnexpectedValueException ('Failed to read label of DNS-Record (SRV)');
-      
-      $this->Priority = $Priority;
-      $this->Weight = $Weight;
-      $this->Port = $Port;
-      $this->Hostname = $Hostname;
+      else
+        throw new LengthException ('DNS-Record has invalid size (SRV)');
     }
     // }}}
     
@@ -215,11 +218,14 @@
      * @return string
      **/
     public function buildPayload ($Offset, &$Labels) {
+      if ($this->destinationHost === null)
+        return '';
+      
       return
         self::buildInt16 ($this->Priority) .
         self::buildInt16 ($this->Weight) .
         self::buildInt16 ($this->Port) .
-        qcEvents_Stream_DNS_Message::setLabel ($this->Hostname, $Offset + 6, $Labels);
+        qcEvents_Stream_DNS_Message::setLabel ($this->destinationHost, $Offset + 6, $Labels);
     }
     // }}}
   }
