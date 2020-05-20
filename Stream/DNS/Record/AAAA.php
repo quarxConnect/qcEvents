@@ -18,12 +18,13 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
+  require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/Stream/DNS/Record.php');
   
   class qcEvents_Stream_DNS_Record_AAAA extends qcEvents_Stream_DNS_Record {
     const DEFAULT_TYPE = 0x1C;
     
-    private $Address = '[::0]';
+    private $ipAddress = null;
     
     // {{{ __toString
     /**
@@ -33,7 +34,7 @@
      * @return string  
      **/
     function __toString () {
-      return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' AAAA ' . $this->Address;
+      return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' AAAA ' . $this->ipAddress;
     }
     // }}}
     
@@ -45,7 +46,7 @@
      * @return string
      **/
     public function getAddress () {
-      return $this->Address;
+      return $this->ipAddress ?? '[::0]';
     }  
     // }}}
     
@@ -53,17 +54,20 @@
     /**
      * Store an address for this record
      * 
-     * @param string $Address
+     * @param string $ipAddress
      * 
      * @access public
-     * @return bool  
+     * @return void
+     * @throws InvalidArgumentException
      **/
-    public function setAddress ($Address) {
-      # TODO: Check the address
+    public function setAddress ($ipAddress) {
+      if (!qcEvents_Socket::isIPv6 ($ipAddress))
+        throw new InvalidArgumentException ('Invalid IPv6');
       
-      $this->Address = $Address;
+      if ($ipAddress [0] != '[')
+        $ipAddress = '[' . $ipAddress . ']';
       
-      return true;
+      $this->ipAddress = $ipAddress;
     }
     // }}}
     
@@ -80,22 +84,44 @@
      * @throws LengthException
      **/  
     public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
+      // Make sure we know the length of our input-buffer
       if ($dataLength === null)
         $dataLength = strlen ($dnsData);
       
-      if ($dataLength < $dataOffset + 16)
-        throw new LengthException ('DNS-Record too short (AAAA)');
+      // Handle empty payload
+      if ($dataLength - $dataOffset == 0)
+        $this->ipAddress = null;
       
-      $this->Address = '[' . bin2hex (substr ($dnsData, $dataOffset,      2)) . ':' .
-                             bin2hex (substr ($dnsData, $dataOffset +  2, 2)) . ':' .
-                             bin2hex (substr ($dnsData, $dataOffset +  4, 2)) . ':' .
-                             bin2hex (substr ($dnsData, $dataOffset +  6, 2)) . ':' .
-                             bin2hex (substr ($dnsData, $dataOffset +  8, 2)) . ':' .
-                             bin2hex (substr ($dnsData, $dataOffset + 10, 2)) . ':' .
-                             bin2hex (substr ($dnsData, $dataOffset + 12, 2)) . ':' .
-                             bin2hex (substr ($dnsData, $dataOffset + 14, 2)) . ']';
+      // Make sure we have enough input
+      if ($dataLength - $dataOffset == 16) {
+        $this->ipAddress = qcEvents_Socket::ip6fromBinary (substr ($dnsData, $dataOffset, 16));
+        $dataOffset += 16;
       
-      $dataOffset += 16;
+      // Handle empty payload
+      } elseif ($dataLength - $dataOffset == 0)
+        $this->ipAddress = null;
+      
+      // Raise an error for anything else
+      else
+        throw new LengthException ('DNS-Record of invalid size (AAAA)');
+    }
+    // }}}
+    
+    // {{{ buildPayload
+    /**
+     * Retrive the payload of this record
+     * 
+     * @param int $Offset
+     * @param array &$Labels
+     * 
+     * @access public
+     * @return string
+     **/
+    public function buildPayload ($Offset, &$Labels) {
+      if ($this->ipAddress === null)
+        return '';
+      
+      return qcEvents_Socket::ip6toBinary ($this->ipAddress);
     }
     // }}}
   }

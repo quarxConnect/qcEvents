@@ -295,7 +295,7 @@
         $IP = array_merge (array_slice ($IP, 0, $b + ($b == 0 ? 2 : 1)), array_slice ($IP, $b + $m));
       
       // Return the IPv6
-      return implode (':', $IP);
+      return '[' . implode (':', $IP) . ']';
     }
     // }}}
     
