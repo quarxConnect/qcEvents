@@ -24,7 +24,7 @@
     const DEFAULT_TYPE = 0x0C;
     
     /* The hostname assigned to this record */
-    private $Hostname = null;
+    private $destinationHost = null;
     
     // {{{ __toString
     /**
@@ -34,7 +34,7 @@
      * @return string  
      **/
     function __toString () {
-      return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' PTR ' . $this->Hostname;
+      return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' PTR ' . $this->destinationHost;
     }
     // }}}
     
@@ -46,7 +46,7 @@
      * @return string
      **/
     public function getHostname () {
-      return $this->Hostname;
+      return $this->destinationHost;
     }  
     // }}}
     
@@ -54,15 +54,13 @@
     /**
      * Store a hostname on this record
      * 
-     * @param string $Hostname
+     * @param string $destinationHost
      * 
      * @access public
-     * @return bool  
+     * @return void
      **/
-    public function setHostname ($Hostname) {
-      $this->Hostname = $Hostname;
-      
-      return true;
+    public function setHostname ($destinationHost) {
+      $this->destinationHost = $destinationHost;
     }
     // }}}
     
@@ -79,10 +77,17 @@
      * @throws UnexpectedValueException
      **/
     public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
-      if (!($Hostname = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset)))
-        throw new UnexpectedValueException ('Failed to read label of DNS-Record (PTR)');
+      // Make sure we know the length of our input-buffer
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
-      $this->Hostname = $Hostname;
+      // Check for empty record
+      if ($dataLength == $dataOffset)
+        $this->destinationHost = null;
+      elseif ($destinationHost = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset))
+        $this->destinationHost = $destinationHost;
+      else
+        throw new UnexpectedValueException ('Failed to read label of DNS-Record (PTR)');
     }
     // }}}
     
@@ -97,7 +102,10 @@
      * @return string
      **/
     public function buildPayload ($Offset, &$Labels) {
-      return qcEvents_Stream_DNS_Message::setLabel ($this->Hostname, $Offset, $Labels);
+      if ($this->destinationHost === null)
+        return '';
+      
+      return qcEvents_Stream_DNS_Message::setLabel ($this->destinationHost, $Offset, $Labels);
     }
     // }}}
   }
