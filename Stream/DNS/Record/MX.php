@@ -27,7 +27,7 @@
     private $Priority = null;
     
     /* The hostname assigned to this record */
-    private $Hostname = null;
+    private $destinationHost = null;
     
     // {{{ __toString
     /**
@@ -37,7 +37,7 @@
      * @return string  
      **/
     function __toString () {
-      return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' MX ' . $this->Priority . ' ' . $this->Hostname;
+      return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' MX ' . $this->Priority . ' ' . $this->destinationHost;
     }
     // }}}
     
@@ -80,7 +80,7 @@
      * @return string
      **/
     public function getHostname () {
-      return $this->Hostname;
+      return $this->destinationHost;
     }  
     // }}}
       
@@ -88,15 +88,13 @@
     /**
      * Store a hostname on this record
      * 
-     * @param string $Hostname 
+     * @param string $destinationHost 
      * 
      * @access public
-     * @return bool  
+     * @return void
      **/
-    public function setHostname ($Hostname) {
-      $this->Hostname = $Hostname;
-      
-      return true;
+    public function setHostname ($destinationHost) {
+      $this->destinationHost = $destinationHost;
     }
     // }}}
     
@@ -113,13 +111,21 @@
      * @throws UnexpectedValueException
      **/
     public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
-      $Priority = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+      // Make sure we know the length of our input-buffer
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
       
-      if (!($Hostname = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset)))
-        throw new UnexpectedValueException ('Failed to read hostname (MX)');
-      
-      $this->Priority = $Priority;
-      $this->Hostname = $Hostname;
+      // Check for an empty record
+      if ($dataLength - $dataOffset > 0) {
+        $Priority = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
+        
+        if (!($destinationHost = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset)))
+          throw new UnexpectedValueException ('Failed to read hostname (MX)');
+        
+        $this->Priority = $Priority;
+        $this->destinationHost = $destinationHost;
+      } else
+        $this->Priority = $this->destinationHost = null;
     }
     // }}}
     
@@ -134,9 +140,12 @@
      * @return string
      **/
     public function buildPayload ($Offset, &$Labels) {
+      if ($this->destinationHost === null)
+        return '';
+      
       return
         self::buildInt16 ($this->Priority) .
-        qcEvents_Stream_DNS_Message::setLabel ($this->Hostname, $Offset + 2, $Labels);
+        qcEvents_Stream_DNS_Message::setLabel ($this->destinationHost, $Offset + 2, $Labels);
     }
     // }}}
   }
