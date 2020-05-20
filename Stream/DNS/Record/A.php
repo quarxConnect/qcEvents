@@ -23,7 +23,7 @@
   class qcEvents_Stream_DNS_Record_A extends qcEvents_Stream_DNS_Record {
     const DEFAULT_TYPE = 0x01;
     
-    private $ipAddress = '0.0.0.0';
+    private $ipAddress = null;
     
     // {{{ __toString
     /**
@@ -45,7 +45,7 @@
      * @return string
      **/
     public function getAddress () {
-      return $this->ipAddress;
+      return $this->ipAddress ?? '0.0.0.0';
     }  
     // }}}
     
@@ -86,7 +86,7 @@
       
       // Allow to payload to be empty
       if ($dataLength - $dataOffset == 0)
-        $this->ipAddress = '0.0.0.0';
+        $this->ipAddress = null;
       else
         $this->ipAddress = long2ip (self::parseInt32 ($dnsData, $dataOffset, $dataLength));
     }
@@ -103,6 +103,9 @@
      * @return string
      **/
     public function buildPayload ($Offset, &$Labels) {
+      if ($this->ipAddress === null)
+        return '';
+      
       return self::writeInt32 (ip2long ($this->ipAddress));
     }
     // }}}
