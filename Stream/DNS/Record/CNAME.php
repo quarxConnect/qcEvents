@@ -77,6 +77,10 @@
      * @throws UnexpectedValueException
      **/
     public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
+      // Make sure we know the length of our input-buffer
+      if ($dataLength === null)
+        $dataLength = strlen ($dnsData);
+      
       if ($dataLength - $dataOffset == 0)
         $this->destinationHost = null;
       elseif ($destinationHost = qcEvents_Stream_DNS_Message::getLabel ($dnsData, $dataOffset))
