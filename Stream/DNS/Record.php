@@ -410,14 +410,15 @@
     /**
      * Read a 16-bit integer from binary
      * 
-     * @param string $Data
-     * @param int $Offset
+     * @param string $inputData
+     * @param int $inputOffset
+     * @param int $inputLength (optional)
      * 
      * @access protected
      * @return int
      **/
-    protected static function parseInt16 ($Data, &$Offset) {
-      return (ord ($Data [$Offset++]) << 8) | ord ($Data [$Offset++]);
+    protected static function parseInt16 (&$inputData, &$inputOffset, $inputLength = null) {
+      return static::parseInt (2, $inputData, $inputOffset, $inputLength);
     }
     // }}}
     
@@ -425,15 +426,15 @@
     /**
      * Read a 32-bit integer from binary
      * 
-     * @param string $Data
-     * @param int $Offset
+     * @param string $inputData
+     * @param int $inputOffset
+     * @param int $inputLength (optional)
      * 
      * @access protected
      * @return int
      **/
-    protected static function parseInt32 ($Data, &$Offset) {
-      return (ord ($Data [$Offset++]) << 24) | (ord ($Data [$Offset++]) << 16) |
-             (ord ($Data [$Offset++]) <<  8) |  ord ($Data [$Offset++]);
+    protected static function parseInt32 (&$inputData, &$inputOffset, $inputLength = null) {
+      return static::parseInt (4, $inputData, $inputOffset, $inputLength);
     }
     // }}}
     
