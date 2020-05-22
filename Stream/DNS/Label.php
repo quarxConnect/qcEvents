@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - DNS Label
-   * Copyright (C) 2015 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2015-2020 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@
   
   class qcEvents_Stream_DNS_Label implements Countable, ArrayAccess {
     /* All parts of this label */
-    private $Parts = array ();
+    private $labelParts = array ();
     
     // {{{ __construct
     /**
@@ -29,8 +29,8 @@
      * @access friendly
      * @return void
      **/
-    function __construct (array $Parts = array ()) {
-      $this->Parts = $Parts;
+    function __construct (array $labelParts = array ()) {
+      $this->labelParts = $labelParts;
     }
     // }}}
     
@@ -44,8 +44,8 @@
      * @return string NULL if Index is out of bounds
      **/
     public function offsetGet ($Index) {
-      if (isset ($this->Parts [$Index]))
-        return $this->Parts [$Index];
+      if (isset ($this->labelParts [$Index]))
+        return $this->labelParts [$Index];
     }
     // }}}
     
@@ -63,9 +63,9 @@
       # TODO: Validate the label
       
       if ($Index !== null)
-        $this->Parts [(int)$Index] = $Value;
+        $this->labelParts [(int)$Index] = $Value;
       else
-        array_unshift ($this->Parts, $Value);
+        array_unshift ($this->labelParts, $Value);
     }
     // }}}
     
@@ -79,7 +79,7 @@
      * @return int
      **/
     public function offsetExists ($Index) {
-      return isset ($this->Parts [$Index]);
+      return isset ($this->labelParts [$Index]);
     }
     // }}}
     
@@ -93,7 +93,7 @@
      * @return void
      **/
     public function offsetUnset ($Index) {
-      unset ($this->Parts [$Index]);
+      unset ($this->labelParts [$Index]);
     }
     // }}}
     
@@ -105,7 +105,7 @@
      * @return string
      **/
     function __toString () {
-      return implode ('.', $this->Parts) . '.';
+      return implode ('.', $this->labelParts) . '.';
     }
     // }}}
     
@@ -117,7 +117,7 @@
      * @return int
      **/
     public function count () {
-      return count ($this->Parts);
+      return count ($this->labelParts);
     }
     // }}}
     
@@ -128,8 +128,8 @@
      * @access public
      * @return array
      **/
-    public function getParts () {
-      return $this->Parts;
+    public function getParts () : array {
+      return $this->labelParts;
     }
     // }}}
     
@@ -140,8 +140,8 @@
      * @access public
      * @return qcEvents_Stream_DNS_Label
      **/
-    public function getParentLabel () {
-      return new $this (array_slice ($this->Parts, 1));
+    public function getParentLabel () : qcEvents_Stream_DNS_Label {
+      return new $this (array_slice ($this->labelParts, 1));
     }
     // }}}
     
@@ -155,7 +155,24 @@
      * @return bool
      **/
     public function isSublabelOf (qcEvents_Stream_DNS_Label $parentLabel) {
-      return ($parentLabel->Parts === array_slice ($this->Parts, -count ($parentLabel->Parts)));
+      return ($parentLabel->labelParts === array_slice ($this->labelParts, -count ($parentLabel->labelParts)));
+    }
+    // }}}
+    
+    // {{{ subLabel
+    /**
+     * Truncate another label from this one and return a new instance
+     * 
+     * @param qcEvents_Stream_DNS_Label $parentLabel
+     * 
+     * @access public
+     * @return qcEvents_Stream_DNS_Label
+     **/
+    public function subLabel (qcEvents_Stream_DNS_Label $parentLabel) : qcEvents_Stream_DNS_Label {
+      if (!$this->isSublabelOf ($parentLabel))
+        return clone $this;
+      
+      return new $this (array_slice ($this->labelParts, 0, count ($this->labelParts) - count ($parentLabel->labelParts)));
     }
     // }}}
   }
