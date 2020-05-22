@@ -45,14 +45,15 @@
     const ERROR_NONE          = 0x00;
     const ERROR_FORMAT        = 0x01;
     const ERROR_SERVER        = 0x02;
-    const ERROR_NAME          = 0x03;
+    const ERROR_NAME          = 0x03; # TODO: Remove this
+    const ERROR_NXDOMAIN      = 0x03;
     const ERROR_UNSUP         = 0x04;
     const ERROR_REFUSED       = 0x05;
-    const ERROR_NAME_EXISTANT = 0x06; // RFC 2136
-    const ERROR_RR_EXISTANT   = 0x07; // RFC 2136
-    const ERROR_RR_MISSING    = 0x08; // RFC 2136
-    const ERROR_NOT_AUTH      = 0x09; // RFC 2136, RFC 2845 TSIG
-    const ERROR_NOT_IN_ZONE   = 0x0A; // RFC 2136
+    const ERROR_YXDOMAIN      = 0x06; // RFC 2136 Update
+    const ERROR_YXRRSET       = 0x07; // RFC 2136 Update
+    const ERROR_NXRRSET       = 0x08; // RFC 2136 Update
+    const ERROR_NOT_AUTH      = 0x09; // RFC 2136 Update, RFC 2845 TSIG
+    const ERROR_NOTZONE       = 0x0A; // RFC 2136 Update
     
     const ERROR_BAD_SIG       = 0x10; // RFC 2845 TSIG
     const ERROR_BAD_KEY       = 0x11; // RFC 2845 TSIG
@@ -330,23 +331,25 @@
      * @return string
      **/
     function __toString () {
+      $messageOpcode = $this->getOpcode ();
+      
       $outputBuffer =
-        ';; QUESTION SECTION:' . "\n";
+        ';; ' . ($messageOpcode == $this::OPCODE_UPDATE ? 'ZONE SECTION' : 'QUESTION SECTION') . ':' . "\n";
       
       foreach ($this->questionRecords as $questionRecord)
         $outputBuffer .= $questionRecord . "\n";
       
-      $outputBuffer .= "\n" . ';; ANSWER SECTION:' . "\n";
+      $outputBuffer .= "\n" . ';; ' . ($messageOpcode == $this::OPCODE_UPDATE ? 'PREREQUISITE SECTION' : 'ANSWER SECTION') . ':' . "\n";
       
       foreach ($this->answerRecords as $answerRecord)
         $outputBuffer .= $answerRecord . "\n";
       
-      $outputBuffer .= "\n" . ';; AUTHORITY SECTION:' . "\n";
+      $outputBuffer .= "\n" . ';; ' . ($messageOpcode == $this::OPCODE_UPDATE ? 'UPDATE SECTION' : 'AUTHORITY SECTION') . ':' . "\n";
       
       foreach ($this->authorityRecords as $authorityRecord)
         $outputBuffer .= $authorityRecord . "\n";
       
-      $outputBuffer .= "\n" . ';; ADDITIONAL SECTION:' . "\n";
+      $outputBuffer .= "\n" . ';; ' . ($messageOpcode == $this::OPCODE_UPDATE ? 'TSIG PSEUDOSECTION' : 'ADDITIONAL SECTION') . ':' . "\n";
       
       foreach ($this->additionalRecords as $additionalRecord)
         $outputBuffer .= $additionalRecord . "\n";
