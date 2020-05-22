@@ -228,12 +228,13 @@
      * @param string $Label
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function setLabel ($Label) {
-      $this->Label = $Label;
+    public function setLabel ($recordLabel) {
+      if (!($recordLabel instanceof qcEvents_Stream_DNS_Label))
+        $recordLabel = new qcEvents_Stream_DNS_Label (explode ('.', $recordLabel));
       
-      return true;
+      $this->Label = $recordLabel;
     }
     // }}}
     
