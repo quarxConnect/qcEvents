@@ -49,6 +49,48 @@
     private $errorCode = 0;
     private $otherData = '';
     
+    // {{{ getRecordFromMessage
+    /**
+     * Retrive TSIG-Record from DNS-Message
+     * 
+     * @param qcEvents_Stream_DNS_Message $dnsMessage
+     * 
+     * @access public
+     * @return qcEvents_Stream_DNS_Record_TSIG
+     **/
+    public static function getRecordFromMessage (qcEvents_Stream_DNS_Message $dnsMessage) : ?qcEvents_Stream_DNS_Record_TSIG {
+      $tsigRecord = null;
+      
+      foreach ($dnsMessage->getAdditionals () as $additionalRecord)
+        if ($tsigRecord !== null)
+          throw new InvalidArgumentException ('TSIG-Record not at last position');
+        
+        elseif ($additionalRecord instanceof qcEvents_Stream_DNS_Record_TSIG)
+          $tsigRecord = $additionalRecord;
+      
+      return $tsigRecord;
+    }
+    // }}}
+    
+    // {{{ getKeyName
+    /**
+     * Retrive the name of a TSIG-Key used on a given DNS-Message
+     * 
+     * @param qcEvents_Stream_DNS_Message $dnsMessage
+     * 
+     * @access public
+     * @return string
+     **/
+    public static function getKeyName (qcEvents_Stream_DNS_Message $dnsMessage) {
+      try {
+        if ($tsigRecord = static::getRecordFromMessage ($dnsMessage))
+          return $tsigRecord->getLabel ();
+      } catch (Throwable $error) {
+        return null;
+      }
+    }
+    // }}}
+    
     // {{{ messageDigest
     /**
      * Create digest for a DNS-Message
@@ -62,11 +104,9 @@
      **/
     public static function messageDigest (qcEvents_Stream_DNS_Message $dnsMessage, qcEvents_Stream_DNS_Record_TSIG $tsigRecord, qcEvents_Stream_DNS_Message $initialMessage = null) {
       // Sanatize the message
-      if (count ($dnsMessage->getAdditionals ()->getRecords (qcEvents_Stream_DNS_Message::TYPE_TSIG)) > 0) {
+      if ($dormantTSIG = static::getRecordFromMessage ($dnsMessage)) {
         $dnsMessage = clone $dnsMessage;
-        
-        foreach ($dnsMessage->getAdditionals ()->getRecords (qcEvents_Stream_DNS_Message::TYPE_TSIG) as $additionalRecord)
-          $dnsMessage->removeAdditional ($additionalRecord);
+        $dnsMessage->removeAdditional (static::getRecordFromMessage ($dnsMessage));
       }
       
       if ($dnsMessage->getID () != $tsigRecord->getOriginalID ()) {
@@ -81,7 +121,7 @@
       $algorithmName = qcEvents_Stream_DNS_Message::setLabel ($tsigRecord->getAlgorithm ());
       $otherData = $tsigRecord->getOtherData ();
       
-      if ($initialMessage && $initialMessage->isQuestion () && ($initialTSIG = $initialMessage->getAdditionals ()->getRecords (qcEvents_Stream_DNS_Message::TYPE_TSIG)->pop ()))
+      if ($initialMessage && $initialMessage->isQuestion () && ($initialTSIG = static::getRecordFromMessage ($initialMessage)))
         $initialMac = pack ('n', strlen ($initialTSIG->macData)) . $initialTSIG->macData;
       else
         $initialMac = '';
@@ -118,20 +158,17 @@
      **/
     public static function verifyMessage (qcEvents_Stream_DNS_Message $dnsMessage, array $keyStore) {
       // Try to find a tsig-record
-      $tsigRecord = null;
-
-      foreach ($dnsMessage->getAdditionals () as $additionalRecord) {
-        // Make sure there is no TSIG-Record before the last record
-        if ($tsigRecord !== null)
-          return qcEvents_Stream_DNS_Message::ERROR_FORMAT;
+      try {
+        $tsigRecord = static::getRecordFromMessage ($dnsMessage);
         
-        elseif ($additionalRecord instanceof qcEvents_Stream_DNS_Record_TSIG)
-          $tsigRecord = $additionalRecord;
-      }
-
-      // No TSIG to check
-      if (!$tsigRecord)
+        // No TSIG to check
+        if (!$tsigRecord)
+          return null;
+      } catch (InvalidArgumentException $error) {
+        return qcEvents_Stream_DNS_Message::ERROR_FORMAT;
+      } catch (Throwable $error) {
         return null;
+      }
       
       // Check for supported message-algorithm
       $algorithmName = substr ($tsigRecord->getAlgorithm (), 0, -1);
@@ -175,7 +212,7 @@
      **/
     public static function createErrorResponse (qcEvents_Stream_DNS_Message $dnsMessage, array $keyStore, $errorCode = null) : qcEvents_Stream_DNS_Message {
       // Find the original TSIG-Record to respond to
-      if (!is_object ($tsigRecord = $dnsMessage->getAdditionals ()->getRecords (qcEvents_Stream_DNS_Message::TYPE_TSIG)->pop ()))
+      if (!is_object ($tsigRecord = static::getRecordFromMessage ($dnsMessage)))
         throw new InvalidArgumentException ('Cannot reply to DNS-Message without TSIG-Record');
       
       // Check wheter to auto-generate error-code
