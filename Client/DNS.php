@@ -209,7 +209,7 @@
               // Register callbacks
               $Stream->addHook (
                 'dnsResponseReceived', 
-                function (qcEvents_Stream_DNS $Stream, qcEvents_Stream_DNS_Message $Response)
+                function (qcEvents_Stream_DNS $Stream, qcEvents_Stream_DNS_Message $dnsResponse)
                 use ($resolve, $reject, $Socket, $Message, $ID) {
                   // Retrive the ID of that message
                   $ID = $Message->getID ();
@@ -221,11 +221,11 @@
                   $Socket->close ();
                   
                   // Check if an error was received
-                  if (($Error = $Response->getError ()) != 0)
-                    return $reject ('Error-Code recevied: ' . $Error);
+                  if (($errorCode = $dnsResponse->getError ()) != $dnsResponse::ERROR_NONE)
+                    return $reject ('Error-Code recevied: ' . $errorCode, $dnsResponse);
                   
                   // Post-process answers
-                  $Answers = $Response->getAnswers ();
+                  $Answers = $dnsResponse->getAnswers ();
                   
                   if ($this::$DNS64_Prefix !== null)
                     foreach ($Answers as $Answer)
@@ -244,9 +244,9 @@
                   } else
                     $Hostname = null;
                   
-                  $this->___callback ('dnsResult', $Hostname, $Answers, $Response->getAuthorities (), $Response->getAdditionals (), $Response);
+                  $this->___callback ('dnsResult', $Hostname, $Answers, $dnsResponse->getAuthorities (), $dnsResponse->getAdditionals (), $dnsResponse);
                   
-                  $resolve ($Answers, $Response->getAuthorities (), $Response->getAdditionals (), $Response);
+                  $resolve ($Answers, $dnsResponse->getAuthorities (), $dnsResponse->getAdditionals (), $dnsResponse);
                 }
               );
             }
