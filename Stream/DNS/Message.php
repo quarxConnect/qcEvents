@@ -107,8 +107,10 @@
     const TYPE_MINFO  = 0x0E;	// RFC 1035
     const TYPE_MX     = 0x0F;	// RFC 1035
     const TYPE_TXT    = 0x10;	// RFC 1035
+    const TYPE_RP     = 0x11;	// RFC 1183
     const TYPE_AAAA   = 0x1C;	// RFC 3596
     const TYPE_SRV    = 0x21;	// RFC 2782
+    const TYPE_NAPTR  = 0x23;	// RFC 2168
     const TYPE_OPT    = 0x29;	// RFC 6891 EDNS
     
     const TYPE_DS     = 0x2B;	// RFC 4034
@@ -167,6 +169,13 @@
         self::TYPE_MF => 'MF',
         self::TYPE_CNAME => 'CNAME',
         self::TYPE_SOA => 'SOA',
+        self::TYPE_PTR => 'PTR',
+        self::TYPE_HINFO => 'HINFO',
+        self::TYPE_MX => 'MX',
+        self::TYPE_TXT => 'TXT',
+        self::TYPE_RP => 'RP',
+        self::TYPE_SRV => 'SRV',
+        self::TYPE_NAPTR => 'NAPTR',
         self::TYPE_ANY => 'ANY',
       );
       
