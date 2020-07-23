@@ -89,84 +89,91 @@
     /**
      * Create a promise that settles when a whole set of promises have settled
      * 
-     * @param array $Values
-     * @param qcEvents_Base $Base (optional)
+     * @param Iterable $promiseValues
+     * @param qcEvents_Base $eventBase (optional) Defer execution of callbacks using this eventbase
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function all (array $Values, qcEvents_Base $Base = null) {
+    public static function all (Iterable $promiseValues, qcEvents_Base $eventBase = null) {
       // Pre-Filter the promises
-      $Promises = $Values;
+      $realPromises = array ();
+      $resultValues = array ();
       
-      foreach ($Promises as $ID=>$Promise)
-        if (!($Promise instanceof qcEvents_Promise))
-          unset ($Promises [$ID]);
-        # TODO: Get Base here if undefined?
+      foreach ($promiseValues as $promiseIndex=>$promiseValue)
+        if ($promiseValue instanceof qcEvents_Promise) {
+          $realPromises [$promiseIndex] = $promiseValue;
+          $resultValues [$promiseIndex] = null;
+          
+          if (!$eventBase)
+            $eventBase = $promiseValue->eventBase;
+        } else
+          $resultValues [$promiseIndex] = array ($promiseValue);
       
       // Check if there is any promise to wait for
-      if (count ($Promises) == 0) {
-        if ($Base)
-          return static::resolve ($Values, $Base);
+      if (count ($realPromises) == 0) {
+        if ($eventBase)
+          return static::resolve ($resultValues, $eventBase);
         
-        return static::resolve ($Values);
+        return static::resolve ($resultValues);
       }
       
-      return new static (function ($resolve, $reject) use ($Values, $Promises) {
-        // Track if the promise is settled
-        $Done = false;
-        $Pending = count ($Promises);
-        
-        foreach ($Values as $ID=>$Value)
-          $Values [$ID] = array ($Values);
-        
-        // Register handlers
-        foreach ($Promises as $ID=>$Promise)
-          $Promise->then (
-            function () use (&$Done, &$Values, &$Pending, $ID, $resolve) {
-              // Check if the promise is already settled
-              if ($Done)
-                return;
-              
-              // Remember the result
-              $Values [$ID] = func_get_args ();
-              
-              // Check if we are done
-              if ($Pending-- > 1)
-                return;
-              
-              // Mark the promise as settled
-              $Done = true;
-              
-              // Forward the result
-              $Result = array ();
-              
-              foreach ($Values as $ID=>$Results)
-                if ((count ($Results) == 1) && !isset ($Result [$ID]))
-                  $Result [$ID] = array_shift ($Results);
-                else
-                  foreach ($Results as $V)
-                    $Result [] = $V;
-              
-              call_user_func ($resolve, $Result);
-              
-              return $Result;
-            },
-            function () use (&$Done, $reject) {
-              // Check if the promise is settled
-              if ($Done)
-                return;
-              
-              // Mark the promise as settled
-              $Done = true;
-              
-              // Forward the result
-              call_user_func_array ($reject, func_get_args ());
-              
-              throw new qcEvents_Promise_Solution (func_get_args ());
-            }
-          );
-      }, $Base);
+      return new static (
+        function (callable $resolve, callable $reject)
+        use ($resultValues, $realPromises) {
+          // Track if the promise is settled
+          $promiseDone = false;
+          $promisePending = count ($realPromises);
+          
+          // Register handlers
+          foreach ($realPromises as $promiseIndex=>$realPromise)
+            $realPromise->then (
+              function () use (&$promiseDone, &$resultValues, &$promisePending, $promiseIndex, $resolve) {
+                // Check if the promise is already settled
+                if ($promiseDone)
+                  return;
+                
+                // Remember the result
+                $resultValues [$promiseIndex] = func_get_args ();
+                
+                // Check if we are done
+                if ($promisePending-- > 1)
+                  return;
+                
+                // Mark the promise as settled
+                $promiseDone = true;
+                
+                // Forward the result
+                $promiseResult = array ();
+                
+                foreach ($resultValues as $resultIndex=>$currentResults)
+                  if ((count ($currentResults) == 1) && !isset ($promiseResult [$resultIndex]))
+                    $promiseResult [$resultIndex] = array_shift ($currentResults);
+                  else
+                    foreach ($currentResults as $currentResult)
+                      $promiseResult [] = $currentResult;
+                
+                call_user_func ($resolve, $promiseResult);
+                
+                return new qcEvents_Promise_Solution (func_get_args ());
+              },
+              function () use (&$promiseDone, $reject) {
+                // Check if the promise is settled
+                if ($promiseDone)
+                  return;
+                
+                // Mark the promise as settled
+                $promiseDone = true;
+                
+                // Forward the result
+                call_user_func_array ($reject, func_get_args ());
+                
+                throw new qcEvents_Promise_Solution (func_get_args ());
+              }
+            );
+        },
+        $eventBase
+      );
     }
     // }}}
     
