@@ -294,7 +294,7 @@
       
       // Check if there is any promise to wait for
       # TODO: This is a violation of the Spec, but a promise that is forever pending is not suitable for long-running applications
-      if (!$forceSpec && (count ($watchPromises) == 0)) {
+      if (!$forceSpec && ($promiseCountdown == 0)) {
         if ($eventBase)
           return static::reject ($eventBase);
         
@@ -351,7 +351,7 @@
     /**
      * Create a promise that settles whenever another promise of a given set settles as well
      * 
-     * @param array $Promises
+     * @param Iterable $watchPromises
      * @param qcEvents_Base $Base (optional)
      * @param bool $ignoreRejections (optional) NON-STANDARD DEPRECATED Ignore rejections as long as one promise fullfills
      * @param bool $forceSpec (optional) Enforce behaviour along specification, don't fullfill the promise if there are no promises given
@@ -359,19 +359,22 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function race (array $Promises, qcEvents_Base $Base = null, $ignoreRejections = false, $forceSpec = false) {
+    public static function race (Iterable $watchPromises, qcEvents_Base $Base = null, $ignoreRejections = false, $forceSpec = false) {
       // Check for non-promises first
-      foreach ($Promises as $Promise)
+      $promiseCount = 0;
+      
+      foreach ($watchPromises as $Promise)
         if (!($Promise instanceof qcEvents_Promise)) {
           if ($Base)
             return static::resolve ($Promise, $Base);
           
           return static::resolve ($Promise);
-        }
+        } else
+          $promiseCount++;
       
       // Check if there is any promise to wait for
       # TODO: This is a violation of the Spec, but a promise that is forever pending is not suitable for long-running applications
-      if (!$forceSpec && (count ($Promises) == 0)) {
+      if (!$forceSpec && ($promiseCount == 0)) {
         if ($Base)
           return static::reject ($Base);
         
@@ -383,13 +386,12 @@
         trigger_error ('Please use qcEvents_Promise::any() instead of qcEvents_Promise::race() if you want to ingnore rejections', E_USER_DEPRECATED);
       
       return new static (
-        function ($resolve, $reject) use ($Promises, $ignoreRejections) {
+        function ($resolve, $reject) use ($watchPromises, $ignoreRejections, $promiseCount) {
           // Track if the promise is settled
           $Done = false;
-          $Countdown = count ($Promises);
           
           // Register handlers
-          foreach ($Promises as $Promise)
+          foreach ($watchPromises as $Promise)
             $Promise->then (
               function () use (&$Done, $resolve) {
                 // Check if the promise is already settled
@@ -404,13 +406,13 @@
            
                 return new qcEvents_Promise_Solution (func_get_args ());
               },
-              function () use (&$Done, &$Countdown, $reject, $ignoreRejections) {
+              function () use (&$Done, &$promiseCount, $reject, $ignoreRejections) {
                 // Check if the promise is settled
                 if ($Done)
                   return;
                 
                 // Check if we ignore rejections until one was fullfilled
-                if ($ignoreRejections && (--$Countdown > 0))
+                if ($ignoreRejections && (--$promiseCount > 0))
                   return;
                 
                 // Mark the promise as settled
