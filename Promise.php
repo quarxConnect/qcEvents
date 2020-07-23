@@ -268,6 +268,82 @@
     }
     // }}}
     
+    // {{{ any
+    /**
+     * Create a promise that settles whenever another promise of a given set settles as well and only reject if all promises were rejected
+     * 
+     * @param array $watchPromises
+     * @param qcEvents_Base $eventBase (optional)
+     * @param bool $forceSpec (optional) Enforce behaviour along specification, don't fullfill the promise if there are no promises given
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public static function any (array $watchPromises, qcEvents_Base $eventBase = null, $forceSpec = false) : qcEvents_Promise {
+      // Check for non-promises first
+      foreach ($watchPromises as $watchPromise)
+        if (!($watchPromise instanceof qcEvents_Promise)) {
+          if ($eventBase)
+            return static::resolve ($watchPromise, $eventBase);
+          
+          return static::resolve ($watchPromise);
+        }
+      
+      // Check if there is any promise to wait for
+      # TODO: This is a violation of the Spec, but a promise that is forever pending is not suitable for long-running applications
+      if (!$forceSpec && (count ($watchPromises) == 0)) {
+        if ($eventBase)
+          return static::reject ($eventBase);
+        
+        return static::reject ();
+      }
+      
+      return new static (
+        function ($resolve, $reject) use ($watchPromises) {
+          // Track if the promise is settled
+          $promiseDone = false;
+          $promiseCountdown = count ($watchPromises);
+          
+          // Register handlers
+          foreach ($watchPromises as $watchPromise)
+            $watchPromise->then (
+              function () use (&$promiseDone, $resolve) {
+                // Check if the promise is already settled
+                if ($promiseDone)
+                  return;
+                
+                // Mark the promise as settled
+                $promiseDone = true;
+                
+                // Forward the result
+                call_user_func_array ($resolve, func_get_args ());
+           
+                return new qcEvents_Promise_Solution (func_get_args ());
+              },
+              function () use (&$promiseDone, &$promiseCountdown, $reject) {
+                // Check if the promise is settled
+                if ($promiseDone)
+                  return;
+                
+                // Check if we ignore rejections until one was fullfilled
+                if (--$promiseCountdown > 0)
+                  return;
+                
+                // Mark the promise as settled
+                $promiseDone = true;
+                
+                // Forward the result
+                call_user_func_array ($reject, func_get_args ());
+                
+                throw new qcEvents_Promise_Solution (func_get_args ());
+              }
+            );
+        },
+        $eventBase
+      );
+    }
+    // }}}
+
     // {{{ race
     /**
      * Create a promise that settles whenever another promise of a given set settles as well
@@ -349,81 +425,6 @@
     }
     // }}}
     
-    // {{{ any
-    /**
-     * Create a promise that settles whenever another promise of a given set settles as well and only reject if all promises were rejected
-     * 
-     * @param array $watchPromises
-     * @param qcEvents_Base $eventBase (optional)
-     * @param bool $forceSpec (optional) Enforce behaviour along specification, don't fullfill the promise if there are no promises given
-     * 
-     * @access public
-     * @return qcEvents_Promise
-     **/
-    public static function any (array $watchPromises, qcEvents_Base $eventBase = null, $forceSpec = false) : qcEvents_Promise {
-      // Check for non-promises first
-      foreach ($watchPromises as $watchPromise)
-        if (!($watchPromise instanceof qcEvents_Promise)) {
-          if ($eventBase)
-            return static::resolve ($watchPromise, $eventBase);
-          
-          return static::resolve ($watchPromise);
-        }
-      
-      // Check if there is any promise to wait for
-      # TODO: This is a violation of the Spec, but a promise that is forever pending is not suitable for long-running applications
-      if (!$forceSpec && (count ($watchPromises) == 0)) {
-        if ($eventBase)
-          return static::reject ($eventBase);
-        
-        return static::reject ();
-      }
-      
-      return new static (
-        function ($resolve, $reject) use ($watchPromises) {
-          // Track if the promise is settled
-          $promiseDone = false;
-          $promiseCountdown = count ($watchPromises);
-          
-          // Register handlers
-          foreach ($watchPromises as $watchPromise)
-            $watchPromise->then (
-              function () use (&$promiseDone, $resolve) {
-                // Check if the promise is already settled
-                if ($promiseDone)
-                  return;
-                
-                // Mark the promise as settled
-                $promiseDone = true;
-                
-                // Forward the result
-                call_user_func_array ($resolve, func_get_args ());
-           
-                return new qcEvents_Promise_Solution (func_get_args ());
-              },
-              function () use (&$promiseDone, &$promiseCountdown, $reject) {
-                // Check if the promise is settled
-                if ($promiseDone)
-                  return;
-                
-                // Check if we ignore rejections until one was fullfilled
-                if (--$promiseCountdown > 0)
-                  return;
-                
-                // Mark the promise as settled
-                $promiseDone = true;
-                
-                // Forward the result
-                call_user_func_array ($reject, func_get_args ());
-                
-                throw new qcEvents_Promise_Solution (func_get_args ());
-              }
-            );
-        },
-        $eventBase
-      );
-    }
-    // }}}
     
     // {{{ walk
     /**
