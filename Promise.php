@@ -272,22 +272,25 @@
     /**
      * Create a promise that settles whenever another promise of a given set settles as well and only reject if all promises were rejected
      * 
-     * @param array $watchPromises
+     * @param Iterable $watchPromises
      * @param qcEvents_Base $eventBase (optional)
      * @param bool $forceSpec (optional) Enforce behaviour along specification, don't fullfill the promise if there are no promises given
      * 
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function any (array $watchPromises, qcEvents_Base $eventBase = null, $forceSpec = false) : qcEvents_Promise {
+    public static function any (Iterable $watchPromises, qcEvents_Base $eventBase = null, $forceSpec = false) : qcEvents_Promise {
       // Check for non-promises first
+      $promiseCountdown = 0;
+      
       foreach ($watchPromises as $watchPromise)
         if (!($watchPromise instanceof qcEvents_Promise)) {
           if ($eventBase)
             return static::resolve ($watchPromise, $eventBase);
           
           return static::resolve ($watchPromise);
-        }
+        } else
+          $promiseCountdown++;
       
       // Check if there is any promise to wait for
       # TODO: This is a violation of the Spec, but a promise that is forever pending is not suitable for long-running applications
@@ -299,10 +302,10 @@
       }
       
       return new static (
-        function ($resolve, $reject) use ($watchPromises) {
+        function ($resolve, $reject)
+        use ($watchPromises, $promiseCountdown) {
           // Track if the promise is settled
           $promiseDone = false;
-          $promiseCountdown = count ($watchPromises);
           
           // Register handlers
           foreach ($watchPromises as $watchPromise)
