@@ -177,6 +177,97 @@
     }
     // }}}
     
+    // {{{ allSettled
+    /**
+     * Create a promise that settles if all given promises have settled as well
+     * 
+     * @param Iterable $promiseValues
+     * @param qcEvents_Base $eventBase (optional) Defer execution of callbacks using this eventbase
+     * 
+     * @access public
+     * @return qcEvents_Promise
+     **/
+    public static function allSettled (Iterable $promiseValues, qcEvents_Base $eventBase = null) : qcEvents_Promise {
+      // Pre-Filter the promises
+      $realPromises = array ();
+      $resultValues = array ();
+      
+      foreach ($promiseValues as $promiseIndex=>$promiseValue) {
+        $resultValues [$promiseIndex] = new stdClass;
+        
+        if ($promiseValue instanceof qcEvents_Promise) {
+          $realPromises [$promiseIndex] = $promiseValue;
+          $resultValues [$promiseIndex]->status = 'pending';
+          
+          if (!$eventBase)
+            $eventBase = $promiseValue->eventBase;
+        } elseif ($promiseValue instanceof Throwable) {
+          $resultValues [$promiseIndex]->status = 'rejected';
+          $resultValues [$promiseIndex]->reason = $promiseValue;
+          $resultValues [$promiseIndex]->args = array ($promiseValue);
+        } else {
+          $resultValues [$promiseIndex]->status = 'fulfilled';
+          $resultValues [$promiseIndex]->value = $promiseValue;
+          $resultValues [$promiseIndex]->args = array ($promiseValue);
+        }
+      }
+      
+      // Check if there is any promise to wait for
+      if (count ($realPromises) == 0) {
+        if ($eventBase)
+          return static::resolve ($resultValues, $eventBase);
+       
+        return static::resolve ($resultValues);
+      }
+      
+      return new static (
+        function (callable $resolve, callable $reject)
+        use ($realPromises, $resultValues) {
+          // Track if the promise is settled
+          $promisePending = count ($realPromises);
+          
+          // Register handlers
+          foreach ($realPromises as $promiseIndex=>$realPromise)
+            $realPromise->then (
+              function ($resultValue)
+              use (&$resultValues, &$promisePending, $promiseIndex, $resolve) {
+                // Push to results
+                $resultValues [$promiseIndex]->status = 'fulfilled';
+                $resultValues [$promiseIndex]->value = $resultValue;
+                $resultValues [$promiseIndex]->args = func_get_args (); // NON-STANDARD
+                
+                // Check if we are done
+                if ($promisePending-- > 1)
+                  return;
+                
+                // Forward the result
+                call_user_func ($resolve, $resultValues);
+       
+                return new qcEvents_Promise_Solution (func_get_args ());
+              },
+              function (Throwable $errorReason)
+              use (&$resultValues, &$promisePending, $promiseIndex, $resolve) {
+                // Push to results
+                $resultValues [$promiseIndex]->status = 'rejected';
+                $resultValues [$promiseIndex]->reason = $errorReason;
+                $resultValues [$promiseIndex]->args = func_get_args (); // NON-STANDARD
+                
+                // Check if we are done
+                if ($promisePending-- > 1)
+                  return;
+                
+                // Forward the result
+                call_user_func_array ($reject, func_get_args ());
+                
+                throw new qcEvents_Promise_Solution (func_get_args ());
+              }
+            );
+        },
+        $eventBase
+      );
+    }
+    // }}}
+    
     // {{{ race
     /**
      * Create a promise that settles whenever another promise of a given set settles as well
