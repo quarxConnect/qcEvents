@@ -117,6 +117,10 @@
             break;
           } while ($csvEnclosureOffset < $this->csvBufferLength);
           
+          // Check if there is data after the enclosure on the buffer
+          if ($csvEnclosureOffset + $csvEnclosureLength >= $this->csvBufferLength)
+            break;
+          
           // Read the entire field
           $this->csvRecord [] = str_replace ($this->csvEnclosure . $this->csvEnclosure, $this->csvEnclosure, substr ($this->csvBuffer, $csvOffset + $csvEnclosureLength, $csvEnclosureOffset - $csvOffset - $csvEnclosureLength));
           
