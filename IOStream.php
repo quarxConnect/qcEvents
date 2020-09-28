@@ -343,6 +343,9 @@
     public function close ($Force = false) : qcEvents_Promise {
       // Check if there is a pending close
       if ($this->isClosing instanceof qcEvents_Promise) {
+        // Remember the promise here as it might be removed by force-callbacks
+        $closePromise = $this->isClosing;
+        
         // Clear write-buffer if forced
         if ($Force) {
           foreach ($this->writeBuffer as $writeBuffer)
@@ -353,7 +356,7 @@
           $this->___callback ('eventDrained');
         }
         
-        return $this->isClosing;
+        return $closePromise;
       }
       
       // Check if there are writes pending
