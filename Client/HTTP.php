@@ -64,6 +64,18 @@
     }
     // }}}
     
+    // {{{ getSocketPool
+    /**
+     * Retrive the socket-pool for this client
+     * 
+     * @access public
+     * @return qcEvents_Socket_Pool
+     **/
+    public function getSocketPool () : qcEvents_Socket_Pool {
+      return $this->socketPool;
+    }
+    // }}}
+    
     // {{{ getSessionCookies
     /**
      * Retrive all session-cookies from this client
@@ -190,7 +202,9 @@
         $orgCookies = null;
       
       // Acquire a socket for this
-      return $this->socketPool->acquireSocket (
+      $socketPool = $this->getSocketPool ();
+      
+      return $socketPool->acquireSocket (
         $Request->getHostname (),
         $Request->getPort (),
         qcEvents_Socket::TYPE_TCP,
@@ -215,7 +229,7 @@
         }
       )->then (
         function (qcEvents_Stream_HTTP_Header $Header = null, $Body = null)
-        use ($Request, $authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies) {
+        use ($Request, $authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies, $socketPool) {
           // Remove from request-queue
           unset ($this->httpRequests [$Index]);
           
@@ -237,7 +251,7 @@
             
             // Release the socket (allow to reuse it)
             $Socket->unpipe ($Request);
-            $this->socketPool->releaseSocket ($Socket);
+            $socketPool->releaseSocket ($Socket);
           }
           
           // Abort here if no header was received
@@ -477,7 +491,7 @@
      **/
     public function setMaxRequests ($Maximum) {
       // Just forward to our pool
-      return $this->socketPool->setMaximumSockets ($Maximum);
+      return $this->getSocketPool ()->setMaximumSockets ($Maximum);
     }
     // }}}
     
