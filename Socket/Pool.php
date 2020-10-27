@@ -21,6 +21,7 @@
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/Promise.php');
+  require_once ('qcEvents/Socket/Pool/Session.php');
   
   class qcEvents_Socket_Pool extends qcEvents_Hookable {
     /* The event-base to use */
@@ -48,6 +49,9 @@
     
     /* Enqueued Socket-Requests */
     private $SocketQueue = array ();
+    
+    /* Sessions on this pool */
+    private $socketSessions = array ();
     
     /* Maximum number of open sockets */
     private $maxSockets = 64;
@@ -82,36 +86,66 @@
     }
     // }}}
     
-    // {{{ acquireSocket
+    // {{{ getSession
     /**
-     * Request a socket from this pool
+     * Create a new session on this pool
      * 
-     * @param mixed $Host
-     * @param int $Port
-     * @param enum $Type
-     * @param bool $TLS
+     * @access public
+     * @return qcEvents_Socket_Pool_Session
+     **/
+    public function getSession () : qcEvents_Socket_Pool_Session {
+      return ($this->socketSessions [] =new qcEvents_Socket_Pool_Session);
+    }
+    // }}}
+    
+    // {{{ removeSession
+    /**
+     * Remove a session from this pool
      * 
      * @access public
      * @return void
      **/
-    public function acquireSocket ($Host, $Port, $Type, $TLS) : qcEvents_Promise {
-      // Sanatize parameters
-      $Port = (int)$Port;
-      $Type = (int)$Type;
-      $TLS = !!$TLS;
+    public function removeSession (qcEvents_Socket_Pool_Session $poolSession) {
+      if (($sessionIndex = array_search ($poolSession, $this->socketSessions, true)) === false)
+        return;
       
-      if (($Type != qcEvents_Socket::TYPE_TCP) && ($Type != qcEvents_Socket::TYPE_UDP))
+      unset ($this->socketSessions [$sessionIndex]);
+    }
+    // }}}
+    
+    // {{{ acquireSocket
+    /**
+     * Request a socket from this pool
+     * 
+     * @param mixed $remoteHost
+     * @param int $remotePort
+     * @param enum $socketType
+     * @param bool $useTLS
+     * 
+     * @access public
+     * @return void
+     **/
+    public function acquireSocket ($remoteHost, $remotePort, $socketType, $useTLS, qcEvents_Socket_Pool_Session $poolSession = null) : qcEvents_Promise {
+      // Sanatize parameters
+      $remotePort = (int)$remotePort;
+      $socketType = (int)$socketType;
+      $useTLS = !!$useTLS;
+      
+      if (($socketType != qcEvents_Socket::TYPE_TCP) && ($socketType != qcEvents_Socket::TYPE_UDP))
         return qcEvents_Promise::reject ('Invalid socket-type given');
       
-      if (($Port < 1) || ($Port > 0xFFFF))
+      if (($remotePort < 1) || ($remotePort > 0xFFFF))
         return qcEvents_Promise::reject ('Invalid port given');
       
+      if (!is_array ($remoteHost))
+        $remoteHost = array ($remoteHost);
+      
       // Create a key for the requested socket
-      $Key = strtolower (is_array ($Host) ? implode ('-', $Host) : $Host) . '-' . $Port . '-' . $Type . ($TLS ? '-tls' : '');
+      $socketKey = strtolower (implode ('-', $remoteHost)) . '-' . $remotePort . '-' . $socketType . ($useTLS ? '-tls' : '');
       
       // Check if we have a socket available
-      if (isset ($this->SocketMaps [$Key]))
-        foreach ($this->SocketMaps [$Key] as $Index)
+      if (isset ($this->SocketMaps [$socketKey]))
+        foreach ($this->SocketMaps [$socketKey] as $Index)
           if ($this->SocketStatus [$Index] == self::STATUS_AVAILABLE) {
             $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
             
@@ -133,8 +167,8 @@
         // Check if enough sockets were released
         if (count ($this->Sockets) >= $this->maxSockets)
           return new qcEvents_Promise (
-            function ($resolve, $reject) use ($Host, $Port, $Type, $TLS) {
-              $this->SocketQueue [] = array ($Host, $Port, $Type, $TLS, $resolve, $reject);
+            function ($resolve, $reject) use ($remoteHost, $remotePort, $socketType, $useTLS) {
+              $this->SocketQueue [] = array ($remoteHost, $remotePort, $socketType, $useTLS, $resolve, $reject);
             }
           );
       }
@@ -151,14 +185,14 @@
       $this->SocketStatus [$Index] = self::STATUS_CONNECTING;
       $this->SocketPipes [$Index] = null;
       
-      if (isset ($this->SocketMaps [$Key]))
-        $this->SocketMaps [$Key][$Index] = $Index;
+      if (isset ($this->SocketMaps [$socketKey]))
+        $this->SocketMaps [$socketKey][$Index] = $Index;
       else
-        $this->SocketMaps [$Key] = array ($Index => $Index);
+        $this->SocketMaps [$socketKey] = array ($Index => $Index);
       
       // Try to connect
-      return $Socket->connect ($Host, $Port, $Type, $TLS)->then (
-        function () use ($Socket, $Key, $Index) {
+      return $Socket->connect ($remoteHost, $remotePort, $socketType, $useTLS)->then (
+        function () use ($Socket, $socketKey, $Index) {
           // Check wheter to further setup the socket
           if (count ($this->getHooks ('socketConnected')) == 0) {
             $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
@@ -174,20 +208,20 @@
             $this->___callback ('socketConnected', $Socket);
           });
         },
-        function () use ($Key, $Index) {
+        function () use ($socketKey, $Index) {
           // Quickly de-register the socket
-          unset ($this->Sockets [$Index], $this->SocketStatus [$Index], $this->SocketPipes [$Index], $this->SocketCallbacks [$Index], $this->SocketMaps [$Key][$Index]);
+          unset ($this->Sockets [$Index], $this->SocketStatus [$Index], $this->SocketPipes [$Index], $this->SocketCallbacks [$Index], $this->SocketMaps [$socketKey][$Index]);
           
-          if (count ($this->SocketMaps [$Key]) > 0) {
+          if (count ($this->SocketMaps [$socketKey]) > 0) {
             // Check if there is another socket available for usage
-            foreach ($this->SocketMaps [$Key] as $Index)
+            foreach ($this->SocketMaps [$socketKey] as $Index)
               if ($this->SocketStatus [$Index] == self::STATUS_AVAILABLE) {
                 $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
                 
                 return new qcEvents_Promise_Solution (array ($this->Sockets [$Index], $this->SocketPipes [$Index]));
               }
           } else
-            unset ($this->SocketMaps [$Key]);
+            unset ($this->SocketMaps [$socketKey]);
           
           // Check if we could connect queued sockets
           $this->checkSocketQueue ();
