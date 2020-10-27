@@ -51,8 +51,11 @@
     /* Enqueued Socket-Requests */
     private $socketQueue = array ();
     
-    /* Sessions on this pool */
+    /* Sessions of sockets */
     private $socketSessions = array ();
+    
+    /* Sessions on this pool */
+    private $activeSessions = array ();
     
     /* Maximum number of open sockets */
     private $maxSockets = 64;
@@ -68,6 +71,21 @@
      **/
     function __construct (qcEvents_Base $eventBase) {
       $this->eventBase = $eventBase;
+    }
+    // }}}
+    
+    // {{{ __debugInfo
+    /**
+     * Prepare output for var_dump()
+     * 
+     * @access friendly
+     * @return array
+     **/
+    function __debugInfo () : array {
+      return array (
+        'sockets' => count ($this->Sockets),
+        'sessions' => count ($this->activeSessions),
+      );
     }
     // }}}
     
@@ -95,7 +113,7 @@
      * @return qcEvents_Socket_Pool_Session
      **/
     public function getSession () : qcEvents_Socket_Pool_Session {
-      return ($this->socketSessions [] = new qcEvents_Socket_Pool_Session ($this));
+      return ($this->activeSessions [] = new qcEvents_Socket_Pool_Session ($this));
     }
     // }}}
     
@@ -107,10 +125,10 @@
      * @return void
      **/
     public function removeSession (qcEvents_Socket_Pool_Session $poolSession) {
-      if (($sessionIndex = array_search ($poolSession, $this->socketSessions, true)) === false)
-        return;
+      if (($sessionIndex = array_search ($poolSession, $this->activeSessions, true)) === false)
+        unset ($this->activeSessions [$sessionIndex]);
       
-      unset ($this->socketSessions [$sessionIndex]);
+      $this->checkSocketQueue ();
     }
     // }}}
     
@@ -144,10 +162,10 @@
       // Push request to queue
       $deferedPromise = new qcEvents_Defered ($this->eventBase);
       
-      $this->socketQueue [] = array ($remoteHost, $remotePort, $socketType, $useTLS, $deferedPromise);
+      $this->socketQueue [] = array ($remoteHost, $remotePort, $socketType, $useTLS, $poolSession, $deferedPromise);
       
       // Try to run the queue
-      $this->checkSocketQueue ();
+      $this->checkSocketQueue ($poolSession);
       
       // Return the promise
       return $deferedPromise->getPromise ();
@@ -166,29 +184,28 @@
      **/
     public function enableSocket (qcEvents_Socket $Socket, qcEvents_Interface_Stream_Consumer $Pipe = null) {
       // Try to find the socket on pool
-      if (($Index = array_search ($Socket, $this->Sockets, true)) === false) {
+      if (($socketIndex = array_search ($Socket, $this->Sockets, true)) === false) {
         trigger_error ('Trying to enable unknown socket');
         
         return false;
       }
       
       // Check the status
-      if ($this->socketStatus [$Index] != self::STATUS_ENABLING) {
-        trigger_error ('Cannot enable socket on this status');
-        
-        return false;
-      }
+      if ($this->socketStatus [$socketIndex] != self::STATUS_ENABLING)
+        throw new Error ('Cannot enable socket on this status');
       
       // Enable the socket
-      $this->socketPipes [$Index] = $Pipe;
+      $this->socketPipes [$socketIndex] = $Pipe;
       
-      if (isset ($this->socketPromises [$Index])) {
-        $this->socketStatus [$Index] = self::STATUS_ACQUIRED;
-        $this->socketPromises [$Index]->resolve ($Socket, $Pipe);
+      if (isset ($this->socketPromises [$socketIndex])) {
+        $this->socketStatus [$socketIndex] = self::STATUS_ACQUIRED;
+        $this->socketPromises [$socketIndex]->resolve ($Socket, $Pipe);
         
-        unset ($this->socketPromises [$Index]);
-      } else
-        $this->socketStatus [$Index] = self::STATUS_AVAILABLE;
+        unset ($this->socketPromises [$socketIndex]);
+      } else {
+        $this->socketStatus [$socketIndex] = self::STATUS_AVAILABLE;
+        $this->checkSocketQueue ($this->socketSessions [$socketIndex]);
+      }
     }
     // }}}
     
@@ -203,13 +220,10 @@
      **/
     public function releaseSocket (qcEvents_Socket $Socket) {
       // Try to find the socket on pool
-      if (($Index = array_search ($Socket, $this->Sockets, true)) === false) {
-        trigger_error ('Trying to release unknown socket');
-        
-        return false;
-      }
+      if (($socketIndex = array_search ($Socket, $this->Sockets, true)) === false)
+        return;
       
-      return $this->releaseSocketByIndex ($Index);
+      return $this->releaseSocketByIndex ($socketIndex);
     }
     // }}}
     
@@ -217,28 +231,44 @@
     /**
      * Remove a socket by index from this pool
      * 
-     * @param int $Index
+     * @param int $socketIndex
      * 
      * @access private
      * @return void
      **/
-    private function releaseSocketByIndex ($Index) {
+    private function releaseSocketByIndex ($socketIndex) {
+      // Check if the socket is known
+      if (!isset ($this->Sockets [$socketIndex]))
+        return;
+      
+      // Get the socket from pool
+      $releasedSocket = $this->Sockets [$socketIndex];
+      unset ($this->Sockets [$socketIndex]);
+      
       // Check wheter to run a failed-callback
-      if (($this->socketStatus [$Index] == self::STATUS_ENABLING) && isset ($this->socketPromises [$Index]))
-        $this->socketPromises [$Index]->reject ('Socket was released');
+      if (($this->socketStatus [$socketIndex] == self::STATUS_ENABLING) &&
+          isset ($this->socketPromises [$socketIndex]))
+        $this->socketPromises [$socketIndex]->reject ('Socket was released');
       
       // Call close
-      if ($this->socketPipes [$Index])
-        $this->socketPipes [$Index]->close ();
+      if ($this->socketPipes [$socketIndex])
+        $this->socketPipes [$socketIndex]->close ();
       else
-        $this->Sockets [$Index]->close ();
+        $releasedSocket->close ();
+      
+      $socketSession = $this->socketSessions [$socketIndex];
       
       // Cleanup
-      unset ($this->Sockets [$Index], $this->socketStatus [$Index], $this->socketPipes [$Index], $this->socketPromises [$Index]);
+      unset (
+        $this->socketStatus [$socketIndex],
+        $this->socketPipes [$socketIndex],
+        $this->socketPromises [$socketIndex],
+        $this->socketSessions [$socketIndex]
+      );
       
       foreach ($this->socketMaps as $Key=>$Map)
-        if (isset ($Map [$Index])) {
-          unset ($this->socketMaps [$Key][$Index]);
+        if (isset ($Map [$socketIndex])) {
+          unset ($this->socketMaps [$Key][$socketIndex]);
           
           if (count ($this->socketMaps [$Key]) == 0)
             unset ($this->socketMaps [$Key]);
@@ -247,7 +277,7 @@
         }
       
       // Check if we could connect queued sockets
-      $this->checkSocketQueue ();
+      $this->checkSocketQueue ($socketSession);
     }
     // }}}
     
@@ -255,10 +285,12 @@
     /**
      * Check if we can connect sockets from our queue
      * 
+     * @param qcEvents_Socket_Pool_Session $forSession (optional)
+     * 
      * @access private
      * @return void
      **/
-    private function checkSocketQueue () {
+    private function checkSocketQueue (qcEvents_Socket_Pool_Session $forSession = null) {
       // Check for available sockets
       if (count ($this->socketMaps) > 0)
         foreach ($this->socketQueue as $queueIndex=>$queueInfo) {
@@ -267,7 +299,11 @@
           $remotePort = $queueInfo [1];
           $socketType = $queueInfo [2];
           $useTLS = $queueInfo [3];
-          $deferedPromise = $queueInfo [4];
+          $poolSession = $queueInfo [4];
+          $deferedPromise = $queueInfo [5];
+          
+          if ($forSession && ($forSession !== $poolSession))
+            continue;
           
           // Create a key for the requested socket
           $socketKey = strtolower (implode ('-', $remoteHost)) . '-' . $remotePort . '-' . $socketType . ($useTLS ? '-tls' : '');
@@ -315,15 +351,19 @@
         return;
       
       // Process the queue again
-      while (($activeSockets < $this->maxSockets) && ($requiredSockets > 0)) {
+      foreach ($this->socketQueue as $queueIndex=>$queueInfo) {
         // Unpack the info
-        $queueInfo = array_shift ($this->socketQueue);
-        $requiredSockets--;
         $remoteHost = $queueInfo [0];
         $remotePort = $queueInfo [1];
         $socketType = $queueInfo [2];
         $useTLS = $queueInfo [3];
-        $deferedPromise = $queueInfo [4];
+        $poolSession = $queueInfo [4];
+        $deferedPromise = $queueInfo [5];
+        
+        if ($forSession && ($forSession !== $poolSession))
+          continue;
+        
+        unset ($this->socketQueue [$queueIndex]);
         
         // Create a key for the requested socket
         $socketKey = strtolower (implode ('-', $remoteHost)) . '-' . $remotePort . '-' . $socketType . ($useTLS ? '-tls' : '');
@@ -346,6 +386,7 @@
         
         $this->socketStatus [$socketIndex] = self::STATUS_CONNECTING;
         $this->socketPipes [$socketIndex] = null;
+        $this->socketSessions [$socketIndex] = $poolSession;
         
         $activeSockets++;
         
@@ -370,15 +411,19 @@
             // Fire the callback
             $this->___callback ('socketConnected', $newSocket);
           },
-          function () use ($newSocket, $socketKey, $socketIndex, $deferedPromise) {
+          function () use ($newSocket, $socketKey, $socketIndex, $deferedPromise, $poolSession) {
             // Quickly de-register the socket
             unset (
               $this->Sockets [$socketIndex],
               $this->socketStatus [$socketIndex],
               $this->socketPipes [$socketIndex],
               $this->socketPromises [$socketIndex],
-              $this->socketMaps [$socketKey][$socketIndex]
+              $this->socketMaps [$socketKey][$socketIndex],
+              $this->socketSessions [$socketIndex]
             );
+            
+            if (count ($this->socketMaps [$socketKey]) == 0)
+              unset ($this->socketMaps [$socketKey]);
             
             if (count ($this->socketMaps [$socketKey]) > 0) {
               // Check if there is another socket available for usage
@@ -398,10 +443,26 @@
               call_user_func_array (array ($deferedPromise, 'reject'), func_get_args ());
             
             // Check if we could connect queued sockets
+            $this->checkSocketQueue ($poolSession);
+          }
+        );
+        
+        $newSocket->once ('eventClosed')->then (
+          function () use ($socketIndex) {
+            $this->releaseSocketByIndex ($socketIndex);
+          }
+        );
+        
+        if ($activeSockets >= $this->maxSockets)
+          break;
+      }
+      
+      if ($forSession)
+        $this->eventBase->forceCallback (
+          function () {
             $this->checkSocketQueue ();
           }
         );
-      }
     }
     // }}}
     
