@@ -21,6 +21,7 @@
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Socket.php');
   require_once ('qcEvents/Promise.php');
+  require_once ('qcEvents/Defered.php');
   require_once ('qcEvents/Socket/Pool/Session.php');
   
   class qcEvents_Socket_Pool extends qcEvents_Hookable {
@@ -36,19 +37,19 @@
     const STATUS_AVAILABLE = 2;
     const STATUS_ACQUIRED = 3;
     
-    private $SocketStatus = array ();
+    private $socketStatus = array ();
     
     /* Stream-Consumers for sockets */
-    private $SocketPipes = array ();
+    private $socketPipes = array ();
     
     /* Map socket-keys to Socket */
-    private $SocketMaps = array ();
+    private $socketMaps = array ();
     
-    /* Enqueued Callbacks */
-    private $SocketCallbacks = array ();
+    /* Defered Promises when enabling sockets */
+    private $socketPromises = array ();
     
     /* Enqueued Socket-Requests */
-    private $SocketQueue = array ();
+    private $socketQueue = array ();
     
     /* Sessions on this pool */
     private $socketSessions = array ();
@@ -140,96 +141,16 @@
       if (!is_array ($remoteHost))
         $remoteHost = array ($remoteHost);
       
-      // Create a key for the requested socket
-      $socketKey = strtolower (implode ('-', $remoteHost)) . '-' . $remotePort . '-' . $socketType . ($useTLS ? '-tls' : '');
+      // Push request to queue
+      $deferedPromise = new qcEvents_Defered ($this->eventBase);
       
-      // Check if we have a socket available
-      if (isset ($this->SocketMaps [$socketKey]))
-        foreach ($this->SocketMaps [$socketKey] as $Index)
-          if ($this->SocketStatus [$Index] == self::STATUS_AVAILABLE) {
-            $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
-            
-            return qcEvents_Promise::resolve ($this->Sockets [$Index], $this->SocketPipes [$Index]);
-          }
+      $this->socketQueue [] = array ($remoteHost, $remotePort, $socketType, $useTLS, $deferedPromise);
       
-      // Check if we may create a new socket
-      if (count ($this->Sockets) >= $this->maxSockets) {
-        // Check if we could kick some sockets
-        foreach (array_keys ($this->SocketStatus, self::STATUS_AVAILABLE) as $kKey) {
-          // Release the socket
-          $this->releaseSocketByIndex ($kKey);
-          
-          // Check if we may proceed already
-          if (count ($this->Sockets) < $this->maxSockets)
-            break;
-        }
-        
-        // Check if enough sockets were released
-        if (count ($this->Sockets) >= $this->maxSockets)
-          return new qcEvents_Promise (
-            function ($resolve, $reject) use ($remoteHost, $remotePort, $socketType, $useTLS) {
-              $this->SocketQueue [] = array ($remoteHost, $remotePort, $socketType, $useTLS, $resolve, $reject);
-            }
-          );
-      }
+      // Try to run the queue
+      $this->checkSocketQueue ();
       
-      // Create new socket
-      $Socket = new qcEvents_Socket ($this->eventBase);
-      
-      // Register the socket
-      $this->Sockets [] = $Socket;
-      
-      if (($Index = array_search ($Socket, $this->Sockets, true)) === false)
-        return qcEvents_Promise::reject ('Lost socket... Strange!');
-      
-      $this->SocketStatus [$Index] = self::STATUS_CONNECTING;
-      $this->SocketPipes [$Index] = null;
-      
-      if (isset ($this->SocketMaps [$socketKey]))
-        $this->SocketMaps [$socketKey][$Index] = $Index;
-      else
-        $this->SocketMaps [$socketKey] = array ($Index => $Index);
-      
-      // Try to connect
-      return $Socket->connect ($remoteHost, $remotePort, $socketType, $useTLS)->then (
-        function () use ($Socket, $socketKey, $Index) {
-          // Check wheter to further setup the socket
-          if (count ($this->getHooks ('socketConnected')) == 0) {
-            $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
-            
-            return $Socket;
-          }
-          
-          // Try to enable the socket
-          return new qcEvents_Promise (function ($resolve, $reject) use ($Index, $Socket) {
-            $this->SocketStatus [$Index] = self::STATUS_ENABLING;
-            $this->SocketCallbacks [$Index] = array ($resolve, $reject);
-            
-            $this->___callback ('socketConnected', $Socket);
-          });
-        },
-        function () use ($socketKey, $Index) {
-          // Quickly de-register the socket
-          unset ($this->Sockets [$Index], $this->SocketStatus [$Index], $this->SocketPipes [$Index], $this->SocketCallbacks [$Index], $this->SocketMaps [$socketKey][$Index]);
-          
-          if (count ($this->SocketMaps [$socketKey]) > 0) {
-            // Check if there is another socket available for usage
-            foreach ($this->SocketMaps [$socketKey] as $Index)
-              if ($this->SocketStatus [$Index] == self::STATUS_AVAILABLE) {
-                $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
-                
-                return new qcEvents_Promise_Solution (array ($this->Sockets [$Index], $this->SocketPipes [$Index]));
-              }
-          } else
-            unset ($this->SocketMaps [$socketKey]);
-          
-          // Check if we could connect queued sockets
-          $this->checkSocketQueue ();
-          
-          // Forward the error
-          throw new qcEvents_Promise_Solution (func_get_args ());
-        }
-      );
+      // Return the promise
+      return $deferedPromise->getPromise ();
     }
     // }}}
     
@@ -252,23 +173,22 @@
       }
       
       // Check the status
-      if ($this->SocketStatus [$Index] != self::STATUS_ENABLING) {
+      if ($this->socketStatus [$Index] != self::STATUS_ENABLING) {
         trigger_error ('Cannot enable socket on this status');
         
         return false;
       }
       
       // Enable the socket
-      $this->SocketPipes [$Index] = $Pipe;
+      $this->socketPipes [$Index] = $Pipe;
       
-      if (isset ($this->SocketCallbacks [$Index])) {
-        $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
+      if (isset ($this->socketPromises [$Index])) {
+        $this->socketStatus [$Index] = self::STATUS_ACQUIRED;
+        $this->socketPromises [$Index]->resolve ($Socket, $Pipe);
         
-        call_user_func ($this->SocketCallbacks [$Index][0], $Socket, $Pipe);
-        
-        unset ($this->SocketCallbacks [$Index]);
+        unset ($this->socketPromises [$Index]);
       } else
-        $this->SocketStatus [$Index] = self::STATUS_AVAILABLE;
+        $this->socketStatus [$Index] = self::STATUS_AVAILABLE;
     }
     // }}}
     
@@ -304,24 +224,24 @@
      **/
     private function releaseSocketByIndex ($Index) {
       // Check wheter to run a failed-callback
-      if (($this->SocketStatus [$Index] == self::STATUS_ENABLING) && isset ($this->SocketCallbacks [$Index]))
-        call_user_func ($this->SocketCallbacks [$Index][1], 'Socket was released');
+      if (($this->socketStatus [$Index] == self::STATUS_ENABLING) && isset ($this->socketPromises [$Index]))
+        $this->socketPromises [$Index]->reject ('Socket was released');
       
       // Call close
-      if ($this->SocketPipes [$Index])
-        $this->SocketPipes [$Index]->close ();
+      if ($this->socketPipes [$Index])
+        $this->socketPipes [$Index]->close ();
       else
         $this->Sockets [$Index]->close ();
       
       // Cleanup
-      unset ($this->Sockets [$Index], $this->SocketStatus [$Index], $this->SocketPipes [$Index], $this->SocketCallbacks [$Index]);
+      unset ($this->Sockets [$Index], $this->socketStatus [$Index], $this->socketPipes [$Index], $this->socketPromises [$Index]);
       
-      foreach ($this->SocketMaps as $Key=>$Map)
+      foreach ($this->socketMaps as $Key=>$Map)
         if (isset ($Map [$Index])) {
-          unset ($this->SocketMaps [$Key][$Index]);
+          unset ($this->socketMaps [$Key][$Index]);
           
-          if (count ($this->SocketMaps [$Key]) == 0)
-            unset ($this->SocketMaps [$Key]);
+          if (count ($this->socketMaps [$Key]) == 0)
+            unset ($this->socketMaps [$Key]);
           
           break;
         }
@@ -340,36 +260,147 @@
      **/
     private function checkSocketQueue () {
       // Check for available sockets
-      foreach ($this->SocketQueue as $Pos=>$Info) {
-        $Host = $Info [0];
-        $Port = $Info [1];
-        $Type = $Info [2];
-        $TLS = $Info [3];
-        
-        $Key = strtolower (is_array ($Host) ? implode ('-', $Host) : $Host) . '-' . $Port . '-' . $Type . ($TLS ? '-tls' : '');
-        
-        // Check if we have a socket available
-        if (isset ($this->SocketMaps [$Key]))
-          foreach ($this->SocketMaps [$Key] as $Index)
-            if ($this->SocketStatus [$Index] == self::STATUS_AVAILABLE) {
-              // Mark the socket as acquired
-              $this->SocketStatus [$Index] = self::STATUS_ACQUIRED;
-              
-              // Remove from queue
-              unset ($this->SocketQueue [$Pos]);
-              
-              // Push the socket
-              call_user_func ($Info [4], $this->Sockets [$Index], $this->SocketPipes [$Index]);
-            }
-      }
+      if (count ($this->socketMaps) > 0)
+        foreach ($this->socketQueue as $queueIndex=>$queueInfo) {
+          // Unpack the info
+          $remoteHost = $queueInfo [0];
+          $remotePort = $queueInfo [1];
+          $socketType = $queueInfo [2];
+          $useTLS = $queueInfo [3];
+          $deferedPromise = $queueInfo [4];
+          
+          // Create a key for the requested socket
+          $socketKey = strtolower (implode ('-', $remoteHost)) . '-' . $remotePort . '-' . $socketType . ($useTLS ? '-tls' : '');
+          
+          // Check if we have a socket available
+          if (!isset ($this->socketMaps [$socketKey]))
+            continue;
+          
+          foreach (array_keys ($this->socketMaps [$socketKey]) as $socketIndex) {
+            if ($this->socketStatus [$socketIndex] != self::STATUS_AVAILABLE)
+              continue;
+            
+            // Mark the socket as acquired
+            $this->socketStatus [$socketIndex] = self::STATUS_ACQUIRED;
+            
+            // Remove from queue
+            unset ($this->socketQueue [$queueIndex]);
+            
+            // Push the socket
+            $deferedPromise->resolve ($this->Sockets [$socketIndex], $this->socketPipes [$socketIndex]);
+            
+            // Move to next queued socket
+            continue (2);
+          }
+        }
       
-      // Connect sockets as long as possible
-      while ((count ($this->Sockets) < $this->maxSockets) && (count ($this->SocketQueue) > 0)) {
-        // Get the next request from queue
-        $Info = array_shift ($this->SocketQueue);
+      // Check if we should release some sockets
+      $activeSockets = count ($this->Sockets);
+      $requiredSockets = count ($this->socketQueue);
+      
+      if ($activeSockets + $requiredSockets > $this->maxSockets)
+        foreach (array_keys ($this->socketStatus, self::STATUS_AVAILABLE) as $socketIndex) {
+          // Release the socket
+          $this->releaseSocketByIndex ($socketIndex);
+          
+          $activeSockets--;
+          
+          // Check if we may proceed already
+          if ($activeSockets + $requiredSockets <= $this->maxSockets)
+            break;
+        }
+      
+      // Make sure we may do anything
+      if ($activeSockets >= $this->maxSockets)
+        return;
+      
+      // Process the queue again
+      while (($activeSockets < $this->maxSockets) && ($requiredSockets > 0)) {
+        // Unpack the info
+        $queueInfo = array_shift ($this->socketQueue);
+        $requiredSockets--;
+        $remoteHost = $queueInfo [0];
+        $remotePort = $queueInfo [1];
+        $socketType = $queueInfo [2];
+        $useTLS = $queueInfo [3];
+        $deferedPromise = $queueInfo [4];
         
-        // Re-Request the socket
-        $this->acquireSocket ($Info [0], $Info [1], $Info [2], $Info [3])->then ($Info [4], $Info [5]);
+        // Create a key for the requested socket
+        $socketKey = strtolower (implode ('-', $remoteHost)) . '-' . $remotePort . '-' . $socketType . ($useTLS ? '-tls' : '');
+        
+        // Create a new socket
+        $this->Sockets [] = $newSocket = new qcEvents_Socket ($this->eventBase);
+        
+        // Get index of new socket
+        if (($socketIndex = array_search ($newSocket, $this->Sockets, true)) === false) {
+          $deferedPromise->reject ('Just lost a socket... Strange!');
+          
+          continue;
+        }
+        
+        // Setup sockets status
+        if (isset ($this->socketMaps [$socketKey]))
+          $this->socketMaps [$socketKey][$socketIndex] = $newSocket;
+        else
+          $this->socketMaps [$socketKey] = array ($socketIndex => $newSocket);
+        
+        $this->socketStatus [$socketIndex] = self::STATUS_CONNECTING;
+        $this->socketPipes [$socketIndex] = null;
+        
+        $activeSockets++;
+        
+        // Try to connect
+        $newSocket->connect ($remoteHost, $remotePort, $socketType, $useTLS)->then (
+          function () use ($newSocket, $socketKey, $socketIndex, $deferedPromise) {
+            // Check wheter to further setup the socket
+            if (count ($this->getHooks ('socketConnected')) == 0) {
+              // Mark the socket as aquired
+              $this->socketStatus [$socketIndex] = self::STATUS_ACQUIRED;
+              
+              // Push socket to promise
+              $deferedPromise->resolve ($newSocket, null);
+              
+              return;
+            }
+            
+            // Try to enable the socket
+            $this->socketStatus [$socketIndex] = self::STATUS_ENABLING;
+            $this->socketPromises [$socketIndex] = $deferedPromise;
+            
+            // Fire the callback
+            $this->___callback ('socketConnected', $newSocket);
+          },
+          function () use ($newSocket, $socketKey, $socketIndex, $deferedPromise) {
+            // Quickly de-register the socket
+            unset (
+              $this->Sockets [$socketIndex],
+              $this->socketStatus [$socketIndex],
+              $this->socketPipes [$socketIndex],
+              $this->socketPromises [$socketIndex],
+              $this->socketMaps [$socketKey][$socketIndex]
+            );
+            
+            if (count ($this->socketMaps [$socketKey]) > 0) {
+              // Check if there is another socket available for usage
+              foreach ($this->socketMaps [$socketKey] as $socketIndex) {
+                if ($this->socketStatus [$socketIndex] != self::STATUS_AVAILABLE)
+                  continue;
+                
+                $this->socketStatus [$socketIndex] = self::STATUS_ACQUIRED;
+                
+                $deferedPromise->resolve ($this->Sockets [$socketIndex], $this->socketPipes [$socketIndex]);
+                $deferedPromise = null;
+              }
+            } else
+              unset ($this->socketMaps [$socketKey]);
+            
+            if ($deferedPromise)
+              call_user_func_array (array ($deferedPromise, 'reject'), func_get_args ());
+            
+            // Check if we could connect queued sockets
+            $this->checkSocketQueue ();
+          }
+        );
       }
     }
     // }}}
