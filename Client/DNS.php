@@ -196,33 +196,16 @@
           // Write out the message
           $Stream->dnsStreamSendMessage ($Message);
           
-          return new qcEvents_Promise (
-            function ($resolve, $reject) use ($Socket, $Stream, $Message, $ID) {
-              # TODO: This is merely a hack
+          return qcEvents_Promise::race (
+            array (
               $Stream->once (
-                'dnsQuestionTimeout',
-                function () use ($reject) {
-                  $reject ('Query timed out');
-                }
-              );
-              
-              // Register callbacks
-              $Stream->addHook (
-                'dnsResponseReceived', 
-                function (qcEvents_Stream_DNS $Stream, qcEvents_Stream_DNS_Message $dnsResponse)
-                use ($resolve, $reject, $Socket, $Message, $ID) {
-                  // Retrive the ID of that message
-                  $ID = $Message->getID ();
-                  
-                  // Remove the active query
-                  unset ($this->Queries [$ID]);
-                  
-                  // Close the socket
-                  $Socket->close ();
-                  
+                'dnsResponseReceived'
+              )->then (
+                function (qcEvents_Stream_DNS_Message $dnsResponse)
+                use ($Message) {
                   // Check if an error was received
                   if (($errorCode = $dnsResponse->getError ()) != $dnsResponse::ERROR_NONE)
-                    return $reject ('Error-Code recevied: ' . $errorCode, $dnsResponse);
+                    throw new exception ('Error-Code recevied: ' . $errorCode); # , $dnsResponse);
                   
                   // Post-process answers
                   $Answers = $dnsResponse->getAnswers ();
@@ -246,36 +229,46 @@
                   
                   $this->___callback ('dnsResult', $Hostname, $Answers, $dnsResponse->getAuthorities (), $dnsResponse->getAdditionals (), $dnsResponse);
                   
-                  $resolve ($Answers, $dnsResponse->getAuthorities (), $dnsResponse->getAdditionals (), $dnsResponse);
+                  return new qcEvents_Promise_Solution (array ($Answers, $dnsResponse->getAuthorities (), $dnsResponse->getAdditionals (), $dnsResponse));
                 }
-              );
+              ),
+              $Stream->once (
+                'dnsQuestionTimeout'
+              )->then (
+                function () {
+                  // Forward the error
+                  throw new exception ('Query timed out');
+                }
+              )
+            )
+          )->catch (
+            function (Throwable $error) use ($Message) {
+              // Fire callbacks
+              $Hostname = $Message->getQuestions ();
+              
+              if (count ($Hostname) > 0) {
+                $Hostname = array_shift ($Hostname);
+                $Hostname->getLabel ();
+              } else
+                $Hostname = null;
+              
+              $this->___callback ('dnsResult', $Hostname, null, null, null);
+              
+              // Just pass the message
+              throw new qcEvents_Promise_Solution (func_get_args ());
+            }
+          )->finally (
+            function () use ($Socket, $Message) {
+              // Retrive the ID of that message
+              $ID = $Message->getID ();
+              
+              // Remove the active query
+              unset ($this->Queries [$ID]);
+              
+              // Close the socket
+              $Socket->close ();
             }
           );
-        }
-      )->catch (
-        function () use ($Socket, $Message) {
-          // Retrive the ID of that message
-          $ID = $Message->getID ();
-          
-          // Remove the active query
-          unset ($this->Queries [$ID]);
-          
-          // Make sure the socket is closed after error
-          $Socket->close (true);
-          
-          // Fire callbacks
-          $Hostname = $Message->getQuestions ();
-          
-          if (count ($Hostname) > 0) {
-            $Hostname = array_shift ($Hostname);
-            $Hostname->getLabel ();
-          } else
-            $Hostname = null;
-          
-          $this->___callback ('dnsResult', $Hostname, null, null, null);
-          
-          // Forward the error
-          throw new qcEvents_Promise_Solution (func_get_args ());
         }
       );
     }
