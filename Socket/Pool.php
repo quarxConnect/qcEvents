@@ -95,7 +95,7 @@
      * @return qcEvents_Socket_Pool_Session
      **/
     public function getSession () : qcEvents_Socket_Pool_Session {
-      return ($this->socketSessions [] =new qcEvents_Socket_Pool_Session);
+      return ($this->socketSessions [] = new qcEvents_Socket_Pool_Session ($this));
     }
     // }}}
     
@@ -124,7 +124,7 @@
      * @param bool $useTLS
      * 
      * @access public
-     * @return void
+     * @return qcEvents_Promise
      **/
     public function acquireSocket ($remoteHost, $remotePort, $socketType, $useTLS, qcEvents_Socket_Pool_Session $poolSession = null) : qcEvents_Promise {
       // Sanatize parameters

@@ -19,7 +19,76 @@
    **/
   
   class qcEvents_Socket_Pool_Session {
-  
+    private $socketPool = null;
+    
+    // {{{ __construct
+    /**
+     * Create a new pool-session
+     * 
+     * @param qcEvents_Socket_Pool $socketPool
+     * 
+     * @access friendly
+     * @return void
+     **/
+    function __construct (qcEvents_Socket_Pool $socketPool) {
+      $this->socketPool = $socketPool;
+    }
+    // }}}
+    
+    // {{{ getSocketPool
+    /**
+     * Retrive the socket-pool of this session
+     * 
+     * @access public
+     * @return qcEvents_Socket_Pool
+     **/
+    public function getSocketPool () : qcEvents_Socket_Pool {
+      return $this->socketPool;
+    }
+    // }}}
+    
+    // {{{ acquireSocket
+    /**
+     * Request a socket from this pool-session
+     * 
+     * @param mixed $remoteHost
+     * @param int $remotePort
+     * @param enum $socketType
+     * @param bool $useTLS
+     * 
+     * @access public
+     * @return void
+     **/
+    public function acquireSocket ($remoteHost, $remotePort, $socketType, $useTLS) : qcEvents_Promise {
+      return $this->socketPool->acquireSocket ($remoteHost, $remotePort, $socketType, $useTLS, $this);
+    }
+    // }}}
+    
+    // {{{ releaseSocket
+    /**
+     * Remove a socket from this pool
+     * 
+     * @param qcEvents_Socket $Socket
+     * 
+     * @access public
+     * @return void
+     **/
+    public function releaseSocket (qcEvents_Socket $Socket) {
+      return $this->socketPool->releaseSocket ($Socket);
+    }
+    // }}}
+    
+    // {{{ close
+    /**
+     * Close this session
+     * 
+     * @access public
+     * @return void
+     **/
+    public function close () {
+      return $this->socketPool->removeSession ($this);
+    }
+    // }}}
   }
 
 ?>
