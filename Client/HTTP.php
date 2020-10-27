@@ -202,9 +202,9 @@
         $orgCookies = null;
       
       // Acquire a socket for this
-      $socketPool = $this->getSocketPool ();
+      $socketSession = $this->getSocketPool ()->getSession ();
       
-      return $socketPool->acquireSocket (
+      return $socketSession->acquireSocket (
         $Request->getHostname (),
         $Request->getPort (),
         qcEvents_Socket::TYPE_TCP,
@@ -229,7 +229,7 @@
         }
       )->then (
         function (qcEvents_Stream_HTTP_Header $Header = null, $Body = null)
-        use ($Request, $authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies, $socketPool) {
+        use ($Request, $authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies, $socketSession) {
           // Remove from request-queue
           unset ($this->httpRequests [$Index]);
           
@@ -251,7 +251,7 @@
             
             // Release the socket (allow to reuse it)
             $Socket->unpipe ($Request);
-            $socketPool->releaseSocket ($Socket);
+            $socketSession->releaseSocket ($Socket);
           }
           
           // Abort here if no header was received
