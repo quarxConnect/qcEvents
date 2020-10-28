@@ -707,8 +707,10 @@
      **/
     public function socketHandleConnected () {
       // Make sure we don't time out
-      if ($this->socketConnectTimer)
+      if ($this->socketConnectTimer) {
         $this->socketConnectTimer->cancel ();
+        $this->socketConnectTimer = null;
+      }
       
       // Unwatch writes - as we are buffered all the time, this should be okay
       $this->watchWrite (false);
@@ -944,6 +946,7 @@
       $this->socketConnectTimer->then (
         function () {
           $this->socketHandleConnectFailed ($this::ERROR_NET_TIMEOUT, 'Timeout reached');
+          $this->socketConnectTimer = null;
         }
       );
     }
