@@ -16,13 +16,16 @@
   
   $Promise->then (
     function () {
-      echo 'Promise was fullfilled', "\n\n";
+      echo 'Promise was fullfilled (GOOD)', "\n\n";
     },
     function () {
-      echo 'Promise was REJECTED', "\n";
+      echo 'Promise was REJECTED (INVALID)', "\n";
       exit (1);
     }
   );
+  
+  unset ($Promise);
+  gc_collect_cycles ();
   
   // Expect promise to be rejected
   require_once ('qcEvents/Promise.php');
@@ -37,17 +40,20 @@
 
   $Promise->then (
     function () {
-      echo 'Promise was FULLFILLED', "\n";
+      echo 'Promise was FULLFILLED (INVALID)', "\n";
       exit (1);
     },
     function () {
-      echo 'Promise was rejected', "\n\n";
+      echo 'Promise was rejected (GOOD)', "\n\n";
     }
   );
   
+  unset ($Promise);
+  gc_collect_cycles ();
+  
   // Expect a promise to be fullfilled with a value
   require_once ('qcEvents/Promise.php');
-
+  
   echo 'Expecting fullfillment with 42...', "\n";
 
   $Promise = new qcEvents_Promise (
@@ -63,13 +69,16 @@
         exit (1);
       }
       
-      echo 'Promise was fullfilled with ', $Arg, "\n\n";
+      echo 'Promise was fullfilled with ', $Arg, ' (GOOD)', "\n\n";
     },
     function () {
-      echo 'Promise was REJECTED', "\n";
+      echo 'Promise was REJECTED (INVALID)', "\n";
       exit (1);
     }
   );
+  
+  unset ($Promise);
+  gc_collect_cycles ();
   
   // Expect promise to be rejected with a value
   require_once ('qcEvents/Promise.php');
@@ -84,7 +93,7 @@
 
   $Promise->then (
     function () {
-      echo 'Promise was FULLFILLED', "\n";
+      echo 'Promise was FULLFILLED (INVALID)', "\n";
       exit (1);
     },
     function (Throwable $Arg) {
@@ -93,9 +102,12 @@
         exit (1);
       }
       
-      echo 'Promise was rejected with ', $Arg, "\n\n";
+      echo 'Promise was rejected with ', $Arg->getMessage (), ' (GOOD)', "\n\n";
     }
   );
+  
+  unset ($Promise);
+  gc_collect_cycles ();
   
   // Expect a promise to be fullfilled with number of values
   require_once ('qcEvents/Promise.php');
@@ -117,13 +129,16 @@
         exit (1);
       }
       
-      echo 'Promise was fullfilled with ', implode (', ', $Args), "\n\n";
+      echo 'Promise was fullfilled with ', implode (', ', $Args), ' (GOOD)', "\n\n";
     },
     function () {
-      echo 'Promise was REJECTED', "\n";
+      echo 'Promise was REJECTED (INVALID)', "\n";
       exit (1);
     }
   );
+  
+  unset ($Promise);
+  gc_collect_cycles ();
   
   // Expect promise to be rejected with a number of values
   require_once ('qcEvents/Promise.php');
@@ -138,20 +153,24 @@
 
   $Promise->then (
     function () {
-      echo 'Promise was FULLFILLED', "\n";
+      echo 'Promise was FULLFILLED (INVALID)', "\n";
       exit (1);
     },
     function () {
       $Args = func_get_args ();
+      $Args [0] = $Args [0]->getMessage ();
       
-      if ((count ($Args) != 3) || ($Args [0]->getMessage () != 23) || ($Args [1] !== 42) || ($Args [2] !== 19)) {
+      if ((count ($Args) != 3) || ($Args [0] != 23) || ($Args [1] !== 42) || ($Args [2] !== 19)) {
         echo 'Promise was rejected with ', implode (', ', $Args), ' (INVALID)', "\n";
         exit (1);
       }
       
-      echo 'Promise was rejected with ', implode (', ', $Args), "\n\n";
+      echo 'Promise was rejected with ', implode (', ', $Args), ' (GOOD)', "\n\n";
     }
   );
+  
+  unset ($Promise);
+  gc_collect_cycles ();
   
   // Expect chained fullfillment
   echo 'Expecting chained fullfillment...', "\n";
@@ -167,18 +186,21 @@
       return 2;
     },
     function () {
-      echo 'Promise was REJECTED', "\n";
+      echo 'Promise was REJECTED (INVALID)', "\n";
       exit (1);
     }
   )->then (
     function () {
-      echo 'Chained fullfillment succeeded', "\n\n";
+      echo 'Chained fullfillment succeeded (GOOD)', "\n\n";
     },
     function () {
-      echo 'Promise was REJECTED on chain', "\n";
+      echo 'Promise was REJECTED on chain (INVALID)', "\n";
       exit (1);
     }
   );
+  
+  unset ($Promise);
+  gc_collect_cycles ();
   
   // Expect chained fullfillment
   echo 'Expecting chained rejection...', "\n";
@@ -194,18 +216,21 @@
       throw new exception ('Reject after fullfillment');
     },
     function () {
-      echo 'Promise was REJECTED', "\n";
+      echo 'Promise was REJECTED (INVALID)', "\n";
       exit (1);
     }
   )->then (
     function () {
-      echo 'Promise was FULLFILLED on chain', "\n";
+      echo 'Promise was FULLFILLED on chain (INVALID)', "\n";
       exit (1);
     },
     function () {
-      echo 'Promise was rejected after fullfillment', "\n\n";
+      echo 'Promise was rejected after fullfillment (GOOD)', "\n\n";
     }
   );
+  
+  unset ($Promise);
+  gc_collect_cycles ();
   
   // Expect fullfillments to pass the chain
   echo 'Expecting fullfillment to pass...', "\n";
@@ -218,18 +243,21 @@
 
   $Promise->catch (
     function () {
-      echo 'Promise was REJECTED', "\n";
+      echo 'Promise was REJECTED (INVALID)', "\n";
       exit (1);
     }
   )->then (
     function () {
-      echo 'Chained fullfillment succeeded', "\n\n";
+      echo 'Chained fullfillment succeeded (GOOD)', "\n\n";
     },
     function () {
-      echo 'Promise was REJECTED on chain', "\n";
+      echo 'Promise was REJECTED on chain (INVALID)', "\n";
       exit (1);
     }
   );
+  
+  unset ($Promise);
+  gc_collect_cycles ();
   
   // Expect rejections to pass the chain
   echo 'Expecting rejection to pass the chain...', "\n";
@@ -242,18 +270,21 @@
 
   $Promise->then (
     function () {
-      echo 'Promise was FULLFILLED', "\n";
+      echo 'Promise was FULLFILLED (INVALID)', "\n";
       exit (1);
     }
   )->then (
     function () {
-      echo 'Chain was FULLFILLED', "\n";
+      echo 'Chain was FULLFILLED (INVALID)', "\n";
       exit (1);
     },
     function () {
-      echo 'Rejection passed', "\n\n";
+      echo 'Rejection passed (GOOD)', "\n\n";
     }
   );
+  
+  unset ($Promise);
+  gc_collect_cycles ();
   
   // Expect a promise to resolve once
   echo 'Expecting a promise to resolve once...', "\n";
@@ -273,17 +304,20 @@
       echo 'Resolved... ', ++$c, "\n";
       
       if ($c > 1) {
-        echo 'Limit reached', "\n";
+        echo 'Limit reached (INVALID)', "\n";
         exit (1);
       }
     },
     function () {
-      echo 'Promise was REJECTED', "\n";
+      echo 'Promise was REJECTED (INVALID)', "\n";
       exit (1);
     }
   );
   
   echo "\n";
+  
+  unset ($Promise);
+  gc_collect_cycles ();
   
   // Expect a promise to reject once
   echo 'Expecting a promise to reject once...', "\n";
@@ -298,7 +332,7 @@
 
   $Promise->then (
     function () {
-      echo 'Promise was REJECTED', "\n";
+      echo 'Promise was REJECTED (INVALID)', "\n";
       exit (1);
     },
     function () {
@@ -307,13 +341,16 @@
       echo 'Rejected... ', ++$c, "\n";
 
       if ($c > 1) {
-        echo 'Limit reached', "\n";
+        echo 'Limit reached (INVALID)', "\n";
         exit (1);
       }
     }
   );
 
   echo "\n";
+  
+  unset ($Promise);
+  gc_collect_cycles ();
   
   // Resolve defered
   require_once ('qcEvents/Defered.php');
@@ -324,15 +361,18 @@
   
   $Defered->getPromise ()->then (
     function () {
-      echo 'Defered promise was fullfilled', "\n\n";
+      echo 'Defered promise was fullfilled (GOOD)', "\n\n";
     },
     function () {
-      echo 'Defered promise was REJECTED', "\n";
+      echo 'Defered promise was REJECTED (INVALID)', "\n";
       exit (1);
     }
   );
   
   $Defered->resolve ();
+  
+  unset ($Defered);
+  gc_collect_cycles ();
   
   // Resolve defered with values
   require_once ('qcEvents/Defered.php');
@@ -350,15 +390,18 @@
         exit (1);
       }
       
-      echo 'Defered promise was fullfilled with ', implode (', ', $Args), "\n\n";
+      echo 'Defered promise was fullfilled with ', implode (', ', $Args), ' (GOOD)', "\n\n";
     },
     function () {
-      echo 'Defered promise was REJECTED', "\n";
+      echo 'Defered promise was REJECTED (INVALID)', "\n";
       exit (1);
     }
   );
 
   $Defered->resolve (19, 23, 42);
+  
+  unset ($Defered);
+  gc_collect_cycles ();
   
   // Resolve defered
   require_once ('qcEvents/Defered.php');
@@ -369,15 +412,18 @@
 
   $Defered->getPromise ()->then (
     function () {
-      echo 'Defered promise was FULLFILLED', "\n";
+      echo 'Defered promise was FULLFILLED (INVALID)', "\n";
       exit (1);
     },
     function () {
-      echo 'Defered promise was rejected', "\n\n";
+      echo 'Defered promise was rejected (GOOD)', "\n\n";
     }
   );
 
   $Defered->reject ();
+  
+  unset ($Defered);
+  gc_collect_cycles ();
   
   # TODO: Check with event-base
   

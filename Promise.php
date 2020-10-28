@@ -19,10 +19,6 @@
    **/
   
   class qcEvents_Promise {
-    /* NoOp-Indicator to create an empty promise */
-    private static $noopResolve = null;
-    private static $noopReject = null;
-    
     /* Assigned event-base */
     private $eventBase = null;
     
@@ -523,31 +519,25 @@
     /**
      * Create a new promise
      * 
-     * @param callable $Callback
+     * @param callable $initCallback (optional)
      * @param qcEvents_Base $eventBase (optional)
      + 
      * @access friendly
      * @return void
      **/
-    function __construct (callable $Callback, qcEvents_Base $eventBase = null) {
-      // Make sure we have a NoOp-Indicator
-      if (self::$noopResolve === null) {
-        self::$noopResolve = function () { return new qcEvents_Promise_Solution (func_get_args ()); };
-        self::$noopReject  = function () { throw  new qcEvents_Promise_Solution (func_get_args ()); };
-      }
-      
+    function __construct (callable $initCallback = null, qcEvents_Base $eventBase = null) {
       // Store the assigned base
       $this->eventBase = $eventBase;
       
       // Check wheter to invoke the callback
-      if ($Callback === self::$noopResolve)
+      if ($initCallback === null)
         return;
       
       // Invoke/Enqueue the callback
-      $Invoke = function () use ($Callback) {
+      $Invoke = function () use ($initCallback) {
         try {
           call_user_func (
-            $Callback,
+            $initCallback,
             function () { $this->finish ($this::DONE_FULLFILL, func_get_args ()); },
             function () { $this->finish ($this::DONE_REJECT,   func_get_args ()); }
           );
@@ -691,21 +681,29 @@
     /**
      * Invoke a callback for this promise
      * 
-     * @param callable $callback
+     * @param callable $directCallback (optional)
      * @param qcEvents_Promise $childPromise (optional)
      * 
      * @access private
      * @return void
      **/
-    private function invoke (callable $callback, qcEvents_Promise $childPromise = null) {
+    private function invoke (callable $directCallback = null, qcEvents_Promise $childPromise = null) {
       // Run the callback
-      try {
-        $ResultType = $this::DONE_FULLFILL;
-        $Result = call_user_func_array ($callback, $this->result);
-        $Result = ($Result instanceof qcEvents_Promise_Solution ? $Result->getArgs () : array ($Result));
-      } catch (Throwable $errorException) {
-        $ResultType = $this::DONE_REJECT;
-        $Result = ($errorException instanceof qcEvents_Promise_Solution ? $errorException->getArgs () : array ($errorException));
+      if ($directCallback) {
+        $resultType = $this::DONE_FULLFILL;
+        
+        try {
+          $resultValues = call_user_func_array ($directCallback, $this->result);
+          $resultValues = ($resultValues instanceof qcEvents_Promise_Solution ? $resultValues->getArgs () : array ($resultValues));
+        } catch (Throwable $errorException) {
+          $resultType = $this::DONE_REJECT;
+          $resultValues = $errorException;
+        }
+        
+        $resultValues = ($resultValues instanceof qcEvents_Promise_Solution ? $resultValues->getArgs () : array ($resultValues));
+      } else {
+        $resultType = $this->done;
+        $resultValues = $this->result;
       }
       
       // Quit if there is no child-promise to fullfill
@@ -713,7 +711,7 @@
         return;
       
       // Finish the child-promise
-      $childPromise->finish ($ResultType, $Result);
+      $childPromise->finish ($resultType, $resultValues);
     }
     // }}}
     
@@ -729,37 +727,27 @@
      **/
     public function then (callable $resolve = null, callable $reject = null) {
       // Create an empty promise
-      $Promise = new self (self::$noopResolve, $this->eventBase);
-      
-      // Polyfill callbacks
-      if ($resolve === null)
-        $resolve = self::$noopResolve;
-      
-      if ($reject === null)
-        $reject = self::$noopReject;
+      $childPromise = new self (null, $this->eventBase);
       
       // Check if we are not already done
       if (($this->done == $this::DONE_NONE) || !$this->resetCallbacks) {
-        if ($resolve)
-          $this->callbacks [$this::DONE_FULLFILL][] = array ($resolve, $Promise);
-        
-        if ($reject)
-          $this->callbacks [$this::DONE_REJECT][] = array ($reject, $Promise);
+        $this->callbacks [$this::DONE_FULLFILL][] = array ($resolve, $childPromise);
+        $this->callbacks [$this::DONE_REJECT][] = array ($reject, $childPromise);
         
         if ($this->done == $this::DONE_NONE)
-          return $Promise;
+          return $childPromise;
       }
       
       // Check if we were fullfilled
       if ($this->done == $this::DONE_FULLFILL)
-        $this->invoke ($resolve, $Promise);
+        $this->invoke ($resolve, $childPromise);
       
       // Check if we were rejected
       elseif ($this->done == $this::DONE_REJECT)
-        $this->invoke ($reject, $Promise);
+        $this->invoke ($reject, $childPromise);
       
       // Return a promise
-      return $Promise;
+      return $childPromise;
     }
     // }}}
     
