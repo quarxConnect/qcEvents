@@ -533,13 +533,17 @@
       if ($initCallback === null)
         return;
       
-      // Invoke/Enqueue the callback
-      $Invoke = function () use ($initCallback) {
+      // Invoke/Enqueue the init-callback
+      $invokeCallback = function () use ($initCallback) {
         try {
           call_user_func (
             $initCallback,
-            function () { $this->finish ($this::DONE_FULLFILL, func_get_args ()); },
-            function () { $this->finish ($this::DONE_REJECT,   func_get_args ()); }
+            function () {
+              $this->finish ($this::DONE_FULLFILL, func_get_args ());
+            },
+            function () {
+              $this->finish ($this::DONE_REJECT,   func_get_args ());
+            }
           );
         } catch (Throwable $errorException) {
           $this->finish ($this::DONE_REJECT, ($errorException instanceof qcEvents_Promise_Solution ? $errorException->getArgs () : array ($errorException)));
@@ -547,9 +551,9 @@
       };
       
       if ($eventBase)
-        return $eventBase->forceCallback ($Invoke);
+        return $eventBase->forceCallback ($invokeCallback);
       
-      $Invoke ();
+      $invokeCallback ();
     }
     // }}}
     
@@ -592,6 +596,27 @@
     }
     // }}}
     
+    // {{{ setEventBase
+    /**
+     * Assign a new event-base
+     * 
+     * @param qcEvents_Base $eventBase (optional)
+     * @param bool $forwardToChildren (optional)
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setEventBase (qcEvents_Base $eventBase = null, $forwardToChildren = true) {
+      $this->eventBase = $eventBase;
+      
+      // Forward to child-promises
+      if ($forwardToChildren)
+        foreach ($this->callbacks as $type=>$callbacks)
+          foreach ($callbacks as $callbackData)
+            $callbackData [1]->setEventBase ($eventBase, true);
+    }
+    // }}}
+    
     // {{{ getDone
     /**
      * Retrive our done-state
@@ -601,6 +626,34 @@
      **/
     protected function getDone () {
       return $this->done;
+    }
+    // }}}
+    
+    // {{{ promiseFullfill
+    /**
+     * Trigger a fullfillment of this promise
+     * 
+     * @param ...
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function promiseFullfill () {
+      return $this->finish ($this::DONE_FULLFILL, func_get_args ());
+    }
+    // }}}
+    
+    // {{{ promiseReject
+    /**
+     * Trigger a rejection of this promise
+     *  
+     * @param ...
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function promiseReject () {
+      return $this->finish ($this::DONE_REJECT, func_get_args ());
     }
     // }}}
     

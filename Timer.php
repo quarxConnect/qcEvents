@@ -36,12 +36,6 @@
     /* Repeat the timer */
     private $Repeat = false;
     
-    /* Callback to fullfill the promise */
-    private $fullfill = null;
-    
-    /* Callback to reject the promise */
-    private $reject = null;
-    
     // {{{ __construct
     /**
      * Create a new timer
@@ -60,17 +54,10 @@
       $this->resetCallbacks = false;
       
       // Inherit to our parent
-      parent::__construct (
-        function ($resolve, $reject) use ($eventBase) {
-          // Store our promise-functions
-          $this->fullfill = $resolve;
-          $this->reject = $reject;
-          
-          // Arm the timer
-          $eventBase->addTimer ($this);
-        },
-        $eventBase
-      );
+      parent::__construct (null, $eventBase);
+      
+      // Arm the timer
+      $eventBase->addTimer ($this);
     }
     // }}}
     
@@ -138,8 +125,7 @@
       $Repeat = $this->Repeat;
       
       // Fullfill the promise
-      if ($this->fullfill)
-        call_user_func ($this->fullfill);
+      $this->promiseFullfill ();
       
       // Re-Arm the timer
       if ($this->Repeat) {
@@ -180,8 +166,7 @@
         return;
       
       // Reject the promise
-      if ($this->reject)
-        call_user_func ($this->reject, 'canceled');
+      $this->promiseReject ('canceled');
       
       // Reset our state
       $this->reset ();
