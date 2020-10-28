@@ -747,7 +747,6 @@
         
         try {
           $resultValues = call_user_func_array ($directCallback, $this->result);
-          $resultValues = ($resultValues instanceof qcEvents_Promise_Solution ? $resultValues->getArgs () : array ($resultValues));
         } catch (Throwable $errorException) {
           $resultType = $this::DONE_REJECT;
           $resultValues = $errorException;

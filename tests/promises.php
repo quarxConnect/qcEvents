@@ -177,7 +177,7 @@
   
   $Promise = new qcEvents_Promise (
     function (callable $Resolve, callable $Reject) {
-      $Resolve ();
+      $Resolve (1);
     }
   );
   
@@ -190,7 +190,12 @@
       exit (1);
     }
   )->then (
-    function () {
+    function ($v) {
+      if ($v !== 2) {
+        echo 'Chained fullfillment with invalid value (INVALID)', "\n";
+        exit (1);
+      }
+      
       echo 'Chained fullfillment succeeded (GOOD)', "\n\n";
     },
     function () {
