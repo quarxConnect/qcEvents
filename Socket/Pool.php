@@ -457,7 +457,7 @@
           break;
       }
       
-      if ($forSession)
+      if ($forSession && ($activeSockets < $this->maxSockets))
         $this->eventBase->forceCallback (
           function () {
             $this->checkSocketQueue ();
