@@ -303,14 +303,20 @@
               throw new qcEvents_Promise_Solution (func_get_args ());
             }
           )->finally (
-            function () use ($Socket, $Message) {
+            function () use ($Socket, $Stream, $Message) {
               // Retrive the ID of that message
               $ID = $Message->getID ();
               
               // Remove the active query
               unset ($this->Queries [$ID]);
               
+              // Close the stream
+              $Stream->removeHooks ();
+              $Stream->close ();
+              
               // Close the socket
+              $Socket->removeHooks ();
+              $Socket->unpipe ($Stream);
               $Socket->close ();
             }
           );
