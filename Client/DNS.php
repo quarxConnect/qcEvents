@@ -39,6 +39,8 @@
     /* DNS64-Prefix-Hack */
     public static $DNS64_Prefix = null;
     
+    private static $dnsCache = array ();
+    
     /* Our assigned event-base */
     private $eventBase = null;
     
@@ -135,9 +137,8 @@
      * @return void
      **/
     public function resolve ($dnsName, $dnsType = null, $dnsClass = null) : qcEvents_Promise {
-      // Create a DNS-Query
-      $dnsMessage = new qcEvents_Stream_DNS_Message;
-      $dnsMessage->isQuestion (true);
+      // Sanatize parameters
+      $dnsName = strtolower ($dnsName);
       
       if ($dnsType === null)
         $dnsType = qcEvents_Stream_DNS_Message::TYPE_A;
@@ -145,10 +146,54 @@
       if ($dnsClass === null)
         $dnsClass = qcEvents_Stream_DNS_Message::CLASS_INTERNET;
       
+      // Check the cache
+      $dnsKey = $dnsName . '-' . $dnsType . '-' . $dnsClass;
+      
+      if (isset (self::$dnsCache [$dnsKey])) {
+        $timeDiff = time () - self::$dnsCache [$dnsKey]['timestamp'];
+        $dnsInvalid = false;
+        
+        foreach (self::$dnsCache [$dnsKey]['answers'] as $dnsRecord)
+          if ($dnsInvalid = ($dnsRecord->getTTL () < $timeDiff))
+            break;
+        
+        if (!$dnsInvalid)
+          foreach (self::$dnsCache [$dnsKey]['authorities'] as $dnsRecord)
+            if ($dnsInvalid = ($dnsRecord->getTTL () < $timeDiff))
+              break;
+        
+        if (!$dnsInvalid)
+          foreach (self::$dnsCache [$dnsKey]['additionals']as $dnsRecord)
+            if ($dnsInvalid = ($dnsRecord->getTTL () < $timeDiff))
+              break;
+        
+        if ($dnsInvalid)
+          unset (self::$dnsCache [$dnsKey]);
+        else
+          return qcEvents_Promise::resolve (self::$dnsCache [$dnsKey]['answers'], self::$dnsCache [$dnsKey]['authorities'], self::$dnsCache [$dnsKey]['additionals'], self::$dnsCache [$dnsKey]['response']);
+      }
+      
+      // Create a DNS-Query
+      $dnsMessage = new qcEvents_Stream_DNS_Message;
+      $dnsMessage->isQuestion (true);
+      
       $dnsMessage->addQuestion (new qcEvents_Stream_DNS_Question ($dnsName, $dnsType, $dnsClass));
       
       // Enqueue the query
-      return $this->enqueueQuery ($dnsMessage);
+      return $this->enqueueQuery ($dnsMessage)->then (
+        function (qcEvents_Stream_DNS_Recordset $dnsAnswers, qcEvents_Stream_DNS_Recordset $dnsAuthorities, qcEvents_Stream_DNS_Recordset $dnsAdditionnals, qcEvents_Stream_DNS_Message $dnsResponse) use ($dnsKey) {
+          self::$dnsCache [$dnsKey] = array (
+            'timestamp' => time (),
+            'answers' => $dnsAnswers,
+            'authorities' => $dnsAuthorities,
+            'additionals' => $dnsAdditionnals,
+            'response' => $dnsResponse,
+          );
+          
+          // Just pass the result
+          return new qcEvents_Promise_Solution (func_get_args ());
+        }
+      );
     }
     // }}}
     
