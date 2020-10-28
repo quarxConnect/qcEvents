@@ -175,6 +175,29 @@
         $authenticationPreflight = (($argc < 5) || ($argv [4] === true));
       }
       
+      // Create new socket-session
+      $socketSession = $this->getSocketPool ()->getSession ();
+      
+      return $this->requestInternal ($socketSession, $Request, $authenticationPreflight)->finally (
+        function () use ($socketSession) {
+          $socketSession->close ();
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ requestInternal
+    /**
+     * Enqueue a request on a socket-session
+     * 
+     * @param qcEvents_Socket_Pool_Session $socketSession
+     * @param qcEvents_Stream_HTTP_Request $Request
+     * @param bool $authenticationPreflight
+     * 
+     * @access private
+     * @return qcEvents_Promise
+     **/
+    private function requestInternal (qcEvents_Socket_Pool_Session $socketSession, qcEvents_Stream_HTTP_Request $Request, $authenticationPreflight) : qcEvents_Promise {
       // Push to our request-queue
       $this->httpRequests [] = $Request;
       
@@ -202,8 +225,6 @@
         $orgCookies = null;
       
       // Acquire a socket for this
-      $socketSession = $this->getSocketPool ()->getSession ();
-      
       return $socketSession->acquireSocket (
         $Request->getHostname (),
         $Request->getPort (),
@@ -278,7 +299,7 @@
             $Request->setCredentials ($Username, $Password);
             
             // Re-enqueue the request
-            return $this->request ($Request, false);
+            return $this->requestInternal ($socketSession, $Request, false);
           }
           
           // Check for redirects
@@ -319,7 +340,7 @@
             }
             
             // Re-Enqueue the request
-            return $this->request ($Request);
+            return $this->requestInternal ($socketSession, $Request, true);
           }
           
           // Fire the callbacks
