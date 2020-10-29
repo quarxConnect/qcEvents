@@ -41,7 +41,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function readFileContents (qcEvents_Base $Base, $Filename) : qcEvents_Promise {
+    public static function readFileContents (qcEvents_Base $Base, $Filename) {
       // Try to create a file-stream
       try {
         $File = new static ($Base, $Filename, true, false, false);
@@ -84,7 +84,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function writeFileContents (qcEvents_Base $Base, $Filename, $Content) : qcEvents_Promise {
+    public static function writeFileContents (qcEvents_Base $Base, $Filename, $Content) {
       // Try to create a file-stream
       try {
         $File = new static ($Base, $Filename, false, true, true);

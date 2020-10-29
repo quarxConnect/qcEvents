@@ -42,7 +42,7 @@
      * @access public
      * @return qcEvents_Socket_Pool
      **/
-    public function getSocketPool () : qcEvents_Socket_Pool {
+    public function getSocketPool () {
       return $this->socketPool;
     }
     // }}}
@@ -59,7 +59,7 @@
      * @access public
      * @return void
      **/
-    public function acquireSocket ($remoteHost, $remotePort, $socketType, $useTLS) : qcEvents_Promise {
+    public function acquireSocket ($remoteHost, $remotePort, $socketType, $useTLS) {
       return $this->socketPool->acquireSocket ($remoteHost, $remotePort, $socketType, $useTLS, $this);
     }
     // }}}

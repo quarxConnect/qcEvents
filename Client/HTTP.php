@@ -71,7 +71,7 @@
      * @access public
      * @return qcEvents_Socket_Pool
      **/
-    public function getSocketPool () : qcEvents_Socket_Pool {
+    public function getSocketPool () {
       return $this->socketPool;
     }
     // }}}
@@ -83,7 +83,7 @@
      * @access public
      * @return array
      **/
-    public function getSessionCookies () : array {
+    public function getSessionCookies () {
       if ($this->sessionCookies === null)
         return array ();
       
@@ -147,7 +147,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function request () : qcEvents_Promise {
+    public function request () {
       // Process function-arguements
       $argv = func_get_args ();
       $argc = count ($argv);
@@ -178,7 +178,7 @@
       // Create new socket-session
       $socketSession = $this->getSocketPool ()->getSession ();
       
-      return $this->requestInternal ($socketSession, $Request, $authenticationPreflight)->finally (
+      return $this->requestInternal ($socketSession, $Request, $authenticationPreflight)->finally5 (
         function () use ($socketSession) {
           $socketSession->close ();
         }
@@ -197,7 +197,7 @@
      * @access private
      * @return qcEvents_Promise
      **/
-    private function requestInternal (qcEvents_Socket_Pool_Session $socketSession, qcEvents_Stream_HTTP_Request $Request, $authenticationPreflight) : qcEvents_Promise {
+    private function requestInternal (qcEvents_Socket_Pool_Session $socketSession, qcEvents_Stream_HTTP_Request $Request, $authenticationPreflight) {
       // Push to our request-queue
       $this->httpRequests [] = $Request;
       
@@ -488,7 +488,7 @@
         
         // Run the final callback
         if ($File)
-          return $File->close ()->finally (
+          return $File->close ()->finally5 (
             function () use ($Callback, $Private, $URL, $Destination, $Header) {
               $this->___raiseCallback ($Callback, $URL, $Destination, ($Header && !$Header->isError () ? ($Header->hasBody () ? true : null) : false), $Private);
             }

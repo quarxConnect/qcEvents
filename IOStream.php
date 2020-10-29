@@ -242,7 +242,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function write ($Data) : qcEvents_Promise {
+    public function write ($Data) {
       return new qcEvents_Promise (function ($resolve, $reject) use ($Data) {
         // Enqueue the packet
         $this->writeBuffer [] = array ($Data, $resolve, $reject);
@@ -340,7 +340,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function close ($Force = false) : qcEvents_Promise {
+    public function close ($Force = false) {
       // Check if there is a pending close
       if ($this->isClosing instanceof qcEvents_Promise) {
         // Remember the promise here as it might be removed by force-callbacks
@@ -530,7 +530,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) {
       // Raise a callback for this
       $this->___callback ('eventPipedStream', $Source);
       
@@ -548,7 +548,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) {
       $this->___callback ('eventUnpiped', $Source);
       
       return qcEvents_Promise::resolve ();

@@ -292,7 +292,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function once ($Name) : qcEvents_Promise {
+    public function once ($Name) {
       return new qcEvents_Promise (
         function ($resolve, $reject) use ($Name) {
           $Callback = function () use ($resolve) {

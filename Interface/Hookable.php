@@ -110,7 +110,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function once ($Name) : qcEvents_Promise;
+    public function once ($Name);
     // }}}
   }
 

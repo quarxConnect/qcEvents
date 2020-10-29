@@ -148,7 +148,7 @@
         self::CLASS_ANY => 'ANY',
       );
       
-      return $classNames [$classNumber] ?? 'UNKNOWN(' . $classNumber . ')';
+      return (isset ($classNames [$classNumber]) ? $classNames [$classNumber] : 'UNKNOWN(' . $classNumber . ')');
     }
     // }}}
     
@@ -179,7 +179,7 @@
         self::TYPE_ANY => 'ANY',
       );
       
-      return $typeNames [$typeNumber] ?? 'UNKNOWN(' . $typeNumber . ')';
+      return (isset ($typeNames [$typeNumber]) ? $typeNames [$typeNumber] : 'UNKNOWN(' . $typeNumber . ')');
     }
     // }}}
     
@@ -563,7 +563,7 @@
      * @access public
      * @return qcEvents_Stream_DNS_Header
      **/
-    public function getHeader () : ?qcEvents_Stream_DNS_Header {
+    public function getHeader () {
       return $this->messageHeader;
     }
     // }}}
@@ -751,7 +751,7 @@
      * @access public
      * @return array
      **/
-    public function getQuestions () : array {
+    public function getQuestions () {
       return $this->questionRecords;
     }
     // }}}
@@ -777,7 +777,7 @@
      * @access public
      * @return qcEvents_Stream_DNS_Recordset
      **/
-    public function getAnswers () : qcEvents_Stream_DNS_Recordset {
+    public function getAnswers () {
       return $this->answerRecords;
     }
     // }}}
@@ -819,7 +819,7 @@
      * @access public
      * @return qcEvents_Stream_DNS_Recordset
      **/
-    public function getAuthorities () : qcEvents_Stream_DNS_Recordset {
+    public function getAuthorities () {
       return $this->authorityRecords;
     }
     // }}}
@@ -845,7 +845,7 @@
      * @access public
      * @return qcEvents_Stream_DNS_Recordset
      **/
-    public function getAdditionals () : qcEvents_Stream_DNS_Recordset {
+    public function getAdditionals () {
       return $this->additionalRecords;
     }
     // }}}

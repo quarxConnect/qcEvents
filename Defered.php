@@ -83,7 +83,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function getPromise () : qcEvents_Promise {
+    public function getPromise () {
       return $this->Promise;
     }
     // }}}

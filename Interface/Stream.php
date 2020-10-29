@@ -34,7 +34,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function pipeStream (qcEvents_Interface_Stream_Consumer $Handler, $Finish = true) : qcEvents_Promise;
+    public function pipeStream (qcEvents_Interface_Stream_Consumer $Handler, $Finish = true);
     // }}}
     
     // {{{ unpipe
@@ -46,7 +46,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function unpipe (qcEvents_Interface_Consumer_Common $Handler) : qcEvents_Promise;
+    public function unpipe (qcEvents_Interface_Consumer_Common $Handler);
     // }}}
   }
 

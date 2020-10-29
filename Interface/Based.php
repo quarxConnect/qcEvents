@@ -26,7 +26,7 @@
      * @access public
      * @return qcEvents_Base
      **/
-    public function getEventBase () : ?qcEvents_Base;
+    public function getEventBase ();
     // }}}
     
     // {{{ setEventBase

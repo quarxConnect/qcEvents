@@ -91,7 +91,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function all (Iterable $promiseValues, qcEvents_Base $eventBase = null) {
+    public static function all ($promiseValues, qcEvents_Base $eventBase = null) {
       // Pre-Filter the promises
       $realPromises = array ();
       $resultValues = array ();
@@ -183,7 +183,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function allSettled (Iterable $promiseValues, qcEvents_Base $eventBase = null) : qcEvents_Promise {
+    public static function allSettled ($promiseValues, qcEvents_Base $eventBase = null) {
       // Pre-Filter the promises
       $realPromises = array ();
       $resultValues = array ();
@@ -275,7 +275,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function any (Iterable $watchPromises, qcEvents_Base $eventBase = null, $forceSpec = false) : qcEvents_Promise {
+    public static function any ($watchPromises, qcEvents_Base $eventBase = null, $forceSpec = false) {
       // Check for non-promises first
       $promiseCountdown = 0;
       
@@ -355,7 +355,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function race (Iterable $watchPromises, qcEvents_Base $Base = null, $ignoreRejections = false, $forceSpec = false) {
+    public static function race ($watchPromises, qcEvents_Base $Base = null, $ignoreRejections = false, $forceSpec = false) {
       // Check for non-promises first
       $promiseCount = 0;
       
@@ -439,7 +439,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public static function walk ($walkArray, callable $itemCallback, $justSettle = false, qcEvents_Base $eventBase = null) : qcEvents_Promise {
+    public static function walk ($walkArray, callable $itemCallback, $justSettle = false, qcEvents_Base $eventBase = null) {
       // Make sure we have an iterator
       if (is_array ($walkArray))
         $arrayIterator = new ArrayIterator ($walkArray);
@@ -564,7 +564,7 @@
      * @access public
      * @return array
      **/
-    public function __debugInfo () : array {
+    public function __debugInfo () {
       static $doneMap = array (
         self::DONE_NONE     => 'pending',
         self::DONE_FULLFILL => 'fullfilled',
@@ -591,7 +591,7 @@
      * @access public
      * @return qcEvents_Base
      **/
-    public function getEventBase () : ?qcEvents_Base {
+    public function getEventBase () {
       return $this->eventBase;
     }
     // }}}
@@ -812,7 +812,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function catch (callable $callback) {
+    public function catch5 (callable $callback) {
       return $this->then (null, $callback);
     }
     // }}}
@@ -826,7 +826,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function finally (callable $callback) {
+    public function finally5 (callable $callback) {
       return $this->then (
         function () use ($callback) {
           // Invoke the callback

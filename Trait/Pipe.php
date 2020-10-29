@@ -112,7 +112,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function pipeStream (qcEvents_Interface_Stream_Consumer $Handler, $Finish = true) : qcEvents_Promise {
+    public function pipeStream (qcEvents_Interface_Stream_Consumer $Handler, $Finish = true) {
       // Check if there is already such pipe
       if (($key = $this->getPipeHandlerKey ($Handler)) !== false) {
         $this->Pipes [$key][1] = $Finish;
@@ -159,7 +159,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function unpipe (qcEvents_Interface_Consumer_Common $Handler) : qcEvents_Promise {
+    public function unpipe (qcEvents_Interface_Consumer_Common $Handler) {
       // Check if there is already such pipe
       if (($key = $this->getPipeHandlerKey ($Handler)) === false)
         return qcEvents_Promise::reject ('Consumer not found');

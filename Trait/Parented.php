@@ -29,7 +29,7 @@
      * @access public
      * @return qcEvents_Base May be NULL if none is assigned
      **/
-    public function getEventBase () : ?qcEvents_Base {
+    public function getEventBase () {
       return $this->eventLoop;
     }  
     // }}}

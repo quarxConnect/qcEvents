@@ -128,7 +128,7 @@
      * @access public
      * @return array
      **/
-    public function getParts () : array {
+    public function getParts () {
       return $this->labelParts;
     }
     // }}}
@@ -140,7 +140,7 @@
      * @access public
      * @return qcEvents_Stream_DNS_Label
      **/
-    public function getParentLabel () : qcEvents_Stream_DNS_Label {
+    public function getParentLabel () {
       return new $this (array_slice ($this->labelParts, 1));
     }
     // }}}
@@ -168,7 +168,7 @@
      * @access public
      * @return qcEvents_Stream_DNS_Label
      **/
-    public function subLabel (qcEvents_Stream_DNS_Label $parentLabel) : qcEvents_Stream_DNS_Label {
+    public function subLabel (qcEvents_Stream_DNS_Label $parentLabel) {
       if (!$this->isSublabelOf ($parentLabel))
         return clone $this;
       

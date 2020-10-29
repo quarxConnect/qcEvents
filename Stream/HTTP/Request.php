@@ -584,7 +584,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) {
       // Inherit to our parent
       return parent::initStreamConsumer ($Source)->then (
         function () use ($Source) {

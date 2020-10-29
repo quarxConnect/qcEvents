@@ -336,7 +336,7 @@ EOF;
      * @access public
      * @return qcEvents_Stream_DNS_Record
      **/
-    public function pop () : ?qcEvents_Stream_DNS_Record {
+    public function pop () {
       return array_pop ($this->dnsRecords);
     }
     // }}}

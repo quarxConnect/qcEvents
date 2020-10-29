@@ -272,7 +272,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function close () : qcEvents_Promise {
+    public function close () {
       // Unregister the source
       $this->Source->removeHook ('eventClosed', array ($this, 'httpStreamClosed'));
       $this->Source = null;
@@ -317,7 +317,7 @@
       else
         $Promise = qcEvents_Promise::resolve ();
       
-      $Promise->finally (
+      $Promise->finally5 (
         function () use ($Source, $Callback, $Private) {
           // Reset ourself
           $this->reset ();
@@ -348,14 +348,14 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) {
       // Check if this source is already set
       if ($this->Source === $Source)
         return qcEvents_Promise::resolve ();
       
       // Check if there is an existing source
       if ($this->Source)
-        $Promise = $this->deinitConsumer ($this->Source)->catch (function () { });
+        $Promise = $this->deinitConsumer ($this->Source)->catch5 (function () { });
       else
         $Promise = qcEvents_Promise::resolve ();
       
@@ -389,7 +389,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) {
       // Check if this is the right source
       if ($this->Source !== $Source)
         return qcEvents_Promise::reject ('Invalid source');
@@ -474,7 +474,7 @@
      * @access protected
      * @return qcEvents_Promise
      **/
-    protected function httpHeaderWrite (qcEvents_Stream_HTTP_Header $Header) : qcEvents_Promise {
+    protected function httpHeaderWrite (qcEvents_Stream_HTTP_Header $Header) {
       // Make sure we have the right source for this
       if (!$this->Source || !($this->Source instanceof qcEvents_Interface_Sink))
         return qcEvents_Promise::reject ('No suitable source to write headers');

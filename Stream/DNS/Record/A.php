@@ -45,7 +45,7 @@
      * @return string
      **/
     public function getAddress () {
-      return $this->ipAddress ?? '0.0.0.0';
+      return ($this->ipAddress ? $this->ipAddress : '0.0.0.0');
     }  
     // }}}
     

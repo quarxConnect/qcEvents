@@ -81,7 +81,7 @@
      * @access friendly
      * @return array
      **/
-    function __debugInfo () : array {
+    function __debugInfo () {
       return array (
         'sockets' => count ($this->Sockets),
         'sessions' => count ($this->activeSessions),
@@ -112,7 +112,7 @@
      * @access public
      * @return qcEvents_Socket_Pool_Session
      **/
-    public function getSession () : qcEvents_Socket_Pool_Session {
+    public function getSession () {
       return ($this->activeSessions [] = new qcEvents_Socket_Pool_Session ($this));
     }
     // }}}
@@ -144,7 +144,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function acquireSocket ($remoteHost, $remotePort, $socketType, $useTLS, qcEvents_Socket_Pool_Session $poolSession = null) : qcEvents_Promise {
+    public function acquireSocket ($remoteHost, $remotePort, $socketType, $useTLS, qcEvents_Socket_Pool_Session $poolSession = null) {
       // Sanatize parameters
       $remotePort = (int)$remotePort;
       $socketType = (int)$socketType;

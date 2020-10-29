@@ -41,7 +41,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function close () : qcEvents_Promise;
+    public function close ();
     // }}}
     
     // {{{ deinitConsumer
@@ -53,7 +53,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise;
+    public function deinitConsumer (qcEvents_Interface_Source $Source);
     // }}}
     
     

@@ -68,7 +68,7 @@
      * @access public
      * @return array
      **/
-    public function __debugInfo () : array {
+    public function __debugInfo () {
       // Retrive info for our parent promise
       $Result = parent::__debugInfo ();
       

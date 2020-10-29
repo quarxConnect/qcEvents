@@ -296,7 +296,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function close () : qcEvents_Promise {
+    public function close () {
       // Just raise callbacks
       $this->___callback ('eventClosed');
       
@@ -347,7 +347,7 @@
       else
         $Promise = qcEvents_Promise::resolve ();
       
-      $Promise->finally (
+      $Promise->finally5 (
         function () use ($Source, $Callback, $Private) {
           // Reset ourself
           $this->reset ();
@@ -372,14 +372,14 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+    public function initStreamConsumer (qcEvents_Interface_Stream $Source) {
       // Check if this source is already set
       if ($this->Source === $Source)
         return qcEvents_Promise::resolve ();
       
       // Check if there is an existing source
       if ($this->Source)
-        $Promise = $this->deinitConsumer ($this->Source)->catch (function () { });
+        $Promise = $this->deinitConsumer ($this->Source)->catch5 (function () { });
       else
         $Promise = qcEvents_Promise::resolve ();
       
@@ -409,7 +409,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
+    public function deinitConsumer (qcEvents_Interface_Source $Source) {
       // Check if this is the right source
       if ($this->Source !== $Source)
         return qcEvents_Promise::reject ('Invalid source');

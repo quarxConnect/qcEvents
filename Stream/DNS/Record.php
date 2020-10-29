@@ -91,7 +91,7 @@
      * @throws LengthException
      * @throws UnexpectedValueException
      **/
-    public static function fromString (&$dnsData, &$dataOffset, $dataLength = null) : qcEvents_Stream_DNS_Record {
+    public static function fromString (&$dnsData, &$dataOffset, $dataLength = null) {
       // Check if there is enough data available
       if ($dataLength === null)
         $dataLength = strlen ($dnsData);

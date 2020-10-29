@@ -428,7 +428,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function connect ($Hosts, $Port = null, $Type = null, $enableTLS = false) : qcEvents_Promise {
+    public function connect ($Hosts, $Port = null, $Type = null, $enableTLS = false) {
       // Check wheter to use the default socket-type
       if ($Type === null)
         $Type = $this::DEFAULT_TYPE;
@@ -523,7 +523,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function connectService ($Domain, $Service, $Type = null, $enableTLS = false) : qcEvents_Promise {
+    public function connectService ($Domain, $Service, $Type = null, $enableTLS = false) {
       // Check wheter to use the default socket-type
       if ($Type === null)
         $Type = $this::DEFAULT_TYPE;
@@ -1285,7 +1285,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function write ($Data) : qcEvents_Promise {
+    public function write ($Data) {
       // Bypass write-buffer in UDP-Server-Mode
       if ($this->Type == self::TYPE_UDP_SERVER) {
         if ($this->___write ($Data) === false)

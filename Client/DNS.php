@@ -136,7 +136,7 @@
      * @access public
      * @return void
      **/
-    public function resolve ($dnsName, $dnsType = null, $dnsClass = null) : qcEvents_Promise {
+    public function resolve ($dnsName, $dnsType = null, $dnsClass = null) {
       // Sanatize parameters
       $dnsName = strtolower ($dnsName);
       
@@ -206,7 +206,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function enqueueQuery (qcEvents_Stream_DNS_Message $Message) : qcEvents_Promise {
+    public function enqueueQuery (qcEvents_Stream_DNS_Message $Message) {
       // Make sure we have nameservers registered
       if ((count ($this->Nameservers) == 0) && !$this->useSystemNameserver ())
         return qcEvents_Promise::reject ('No nameservers known', $this->getEventBase ());
@@ -286,7 +286,7 @@
                 }
               )
             )
-          )->catch (
+          )->catch5 (
             function (Throwable $error) use ($Message) {
               // Fire callbacks
               $Hostname = $Message->getQuestions ();
@@ -302,7 +302,7 @@
               // Just pass the message
               throw new qcEvents_Promise_Solution (func_get_args ());
             }
-          )->finally (
+          )->finally5 (
             function () use ($Socket, $Stream, $Message) {
               // Retrive the ID of that message
               $ID = $Message->getID ();

@@ -41,7 +41,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function close () : qcEvents_Promise;
+    public function close ();
     // }}}
     
     

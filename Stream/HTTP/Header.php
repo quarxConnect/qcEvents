@@ -472,7 +472,7 @@
      * @access public
      * @return array
      **/
-    public function getAuthenticationInfo () : ?array {
+    public function getAuthenticationInfo () {
       // Check if we have the header available
       if (!$this->hasField ('WWW-Authenticate'))
         return null;

@@ -31,7 +31,7 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function write ($Data) : qcEvents_Promise;
+    public function write ($Data);
     // }}}
     
     // {{{ watchWrite

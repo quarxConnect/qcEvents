@@ -77,7 +77,7 @@
      * @access public
      * @return array
      **/
-    public function __debugInfo () : array {
+    public function __debugInfo () {
       // Append state to result
       static $stateMap = array (
         self::LOOP_STATE_IDLE   => 'Idle',
@@ -332,7 +332,7 @@
      * @access public
      * @return qcEvents_Timer Timer-Promise is fullfilled once the timeout was reached and never rejected
      **/
-    public function addTimeout ($Timeout, $Repeat = false) : qcEvents_Timer {
+    public function addTimeout ($Timeout, $Repeat = false) {
       return new qcEvents_Timer ($this, $Timeout, $Repeat);
     }
     // }}}

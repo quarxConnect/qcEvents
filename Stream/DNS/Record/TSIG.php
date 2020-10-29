@@ -58,7 +58,7 @@
      * @access public
      * @return qcEvents_Stream_DNS_Record_TSIG
      **/
-    public static function getRecordFromMessage (qcEvents_Stream_DNS_Message $dnsMessage) : ?qcEvents_Stream_DNS_Record_TSIG {
+    public static function getRecordFromMessage (qcEvents_Stream_DNS_Message $dnsMessage) {
       $tsigRecord = null;
       
       foreach ($dnsMessage->getAdditionals () as $additionalRecord)
@@ -210,7 +210,7 @@
      * @return qcEvents_Stream_DNS_Message
      * @throws InvalidArgumentException
      **/
-    public static function createErrorResponse (qcEvents_Stream_DNS_Message $dnsMessage, array $keyStore, $errorCode = null) : qcEvents_Stream_DNS_Message {
+    public static function createErrorResponse (qcEvents_Stream_DNS_Message $dnsMessage, array $keyStore, $errorCode = null) {
       // Find the original TSIG-Record to respond to
       if (!is_object ($tsigRecord = static::getRecordFromMessage ($dnsMessage)))
         throw new InvalidArgumentException ('Cannot reply to DNS-Message without TSIG-Record');
@@ -304,7 +304,7 @@
      * @access public
      * @return qcEvents_Stream_DNS_Label
      **/
-    public function getAlgorithm () : ?qcEvents_Stream_DNS_Label {
+    public function getAlgorithm () {
       return $this->algorithmName;
     }
     // }}}
