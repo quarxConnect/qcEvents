@@ -715,6 +715,10 @@
       // Unwatch writes - as we are buffered all the time, this should be okay
       $this->watchWrite (false);
       
+      // Check if we are actually connecting somewhere
+      if ($this->socketAddress === null)
+        return;
+      
       if ($this->Connected !== true) {
         // Set connection-status
         $this->Connected = true;
