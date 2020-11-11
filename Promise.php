@@ -32,6 +32,9 @@
     /* Result-data of this promise */
     private $result = null;
     
+    /* Result was forwarded to callbacks */
+    private $resultHadCallbacks = false;
+    
     /* Registered callbacks */
     private $callbacks = array (
       qcEvents_Promise::DONE_FULLFILL  => array (),
@@ -557,6 +560,24 @@
     }
     // }}}
     
+    // {{{ __destruct
+    /**
+     * Check if this promise was handled after a rejection
+     * 
+     * @access friendly
+     * @return void
+     **/
+    function __destruct () {
+      // Check if this promise was handled
+      if (($this->done != $this::DONE_REJECT) || !$this->result || $this->resultHadCallbacks)
+        return;
+      
+      // Push this rejection to log
+      if (defined ('QCEVENTS_LOG_REJECTIONS') && QCEVENTS_LOG_REJECTIONS)
+        error_log ('Unhandled rejection: ' . $this->result [0]);
+    }
+    // }}}
+    
     // {{{ __debugInfo
     /**
      * Return information about this instance to be dumped by var_dump()
@@ -693,6 +714,7 @@
       // Store the result
       $this->done = $done;
       $this->result = $result;
+      $this->resultHadCallbacks = false;
       
       // Invoke handlers
       if (count ($this->callbacks [$done]) > 0)
@@ -721,6 +743,7 @@
       // Reset our own state
       $this->done = $this::DONE_NONE;
       $this->result = null;
+      $this->resultHadCallbacks = false;
       
       // Forward to child-promises
       if ($Deep)
@@ -741,6 +764,9 @@
      * @return void
      **/
     private function invoke (callable $directCallback = null, qcEvents_Promise $childPromise = null) {
+      // Store that we were called
+      $this->resultHadCallbacks = ($directCallback || $childPromise);
+      
       // Run the callback
       if ($directCallback) {
         $resultType = $this::DONE_FULLFILL;
