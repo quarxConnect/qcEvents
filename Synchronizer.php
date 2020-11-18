@@ -98,10 +98,12 @@
         $Base = $Handler;
         $Handler = $Function;
         
-        if ((count ($Parameters) == 0) && !($Handler instanceof qcEvents_Promise))
+        if ($Handler instanceof qcEvents_Promise)
+          $Function = null;
+        elseif (count ($Parameters) == 0)
           throw new InvalidArgumentException ('Asyncronous calls on event-base not supported');
-        
-        $Function = array_shift ($Parameters);
+        else
+          $Function = array_shift ($Parameters);
       } elseif (!is_callable (array ($Handler, 'getEventBase')))
         throw new InvalidArgumentException ('Unable to find event-base anywhere');
       elseif (!is_object ($Base = $Handler->getEventBase ()))
@@ -125,8 +127,8 @@
           $Base->loopBreak ();
       };
       
-      if (!($Handler instanceof qcEvents_Promise)) {
-        // Analyze parameters of the call
+      // Analyze parameters of the call
+      if (!($isPromise = ($Handler instanceof qcEvents_Promise))) {
         $Method = new ReflectionMethod ($Handler, $Function);
         
         if (!($isPromise = ($Method->hasReturnType () && ($Method->getReturnType ()->getName () == 'qcEvents_Promise')))) {
@@ -158,10 +160,8 @@
         
         // Do the call
         $rc = $Method->invokeArgs ((is_object ($Handler) ? $Handler : null), $Parameters);
-      } else {
+      } else
         $rc = $Handler;
-        $isPromise = true;
-      }
       
       // Check for a returned promise
       $Exception = null;
