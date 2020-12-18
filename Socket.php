@@ -715,28 +715,26 @@
       // Unwatch writes - as we are buffered all the time, this should be okay
       $this->watchWrite (false);
       
-      // Check if we are actually connecting somewhere
-      if ($this->socketAddress === null)
-        return;
-      
       if ($this->Connected !== true) {
         // Set connection-status
         $this->Connected = true;
         
-        // Set runtime-information
-        if ($fd = $this->getReadFD ())
-          $Name = stream_socket_get_name ($fd, false);
-        elseif ($this->serverParent)
-          $Name = $this->serverParent->getLocalName ();
-        else
-          $Name = '';
-        
-        $this->Type = $this->socketAddress [3];
-        $this->localAddr = substr ($Name, 0, strrpos ($Name, ':'));
-        $this->localPort = (int)substr ($Name, strrpos ($Name, ':') + 1);
-        $this->remoteHost = $this->socketAddress [0];
-        $this->remoteAddr = $this->socketAddress [1];
-        $this->remotePort = $this->socketAddress [2];
+        if ($this->socketAddress !== null) {
+          // Set runtime-information
+          if ($fd = $this->getReadFD ())
+            $Name = stream_socket_get_name ($fd, false);
+          elseif ($this->serverParent)
+            $Name = $this->serverParent->getLocalName ();
+          else
+            $Name = '';
+          
+          $this->Type = $this->socketAddress [3];
+          $this->localAddr = substr ($Name, 0, strrpos ($Name, ':'));
+          $this->localPort = (int)substr ($Name, strrpos ($Name, ':') + 1);
+          $this->remoteHost = $this->socketAddress [0];
+          $this->remoteAddr = $this->socketAddress [1];
+          $this->remotePort = $this->socketAddress [2];
+        }
         
         // Free some space now
         $this->socketAddress = null;
@@ -975,7 +973,7 @@
       if ((count ($Results) == 0) && ($this->Resolving <= 0)) {
         // Mark connection as failed if there are no addresses pending and no current address
         if ((!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0)) && ($this->socketAddress === null))
-          return $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED, 'Failed to resolve destination');
+          return $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED, 'Failed to resolve destination "' . $Hostname . '"');
         
         return;
       }
