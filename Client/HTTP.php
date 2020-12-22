@@ -308,7 +308,6 @@
               (($max = $Request->getMaxRedirects ()) > 0) &&
               is_array ($URI = parse_url ($Location))) {
             // Make sure the URL is fully qualified
-            // Make sure the URL is fully qualified
             if ($rebuild = !isset ($URI ['scheme']))
               $URI ['scheme'] = ($Request->useTLS () ? 'https' : 'http');
             
@@ -320,6 +319,24 @@
                 $URI ['port'] = $Request->getPort ();
               else
                 unset ($URI ['port']);
+              
+              // Check for a relative redirect
+              if (substr ($URI ['path'], 0, 1) == '.') {
+                $pathStackIn = explode ('/', dirname ($Request->getURI ()) . '/' . $URI ['path']);
+                $pathStack = array ();
+                
+                foreach ($pathStackIn as $pathSegment) {
+                  if ((strlen ($pathSegment) == 0) || ($pathSegment == '.'))
+                    continue;
+                  
+                  if ($pathSegment == '..')
+                    array_pop ($pathStack);
+                  else
+                    $pathStack [] = $pathSegment;
+                }
+                
+                $URI ['path'] = '/' . implode ('/', $pathStack);
+              }
             }
             
             if ($rebuild)
