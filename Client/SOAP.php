@@ -156,6 +156,9 @@
     /* Instance of our http-client */
     private $httpClient = null;
     
+    /* SOAP-Options */
+    private $soapOptions = null;
+    
     // {{{ __construct
     /**
      * Create new SOAP-Client
@@ -166,10 +169,11 @@
      * @access friendly
      * @return void
      **/
-    function __construct (\qcEvents_Client_HTTP $httpClient, $wsdlFile) {
+    function __construct (\qcEvents_Client_HTTP $httpClient, $wsdlFile, array $soapOptions = null) {
       $this->httpClient = $httpClient;
+      $this->soapOptions = $soapOptions ?? array ();
       
-      parent::__construct ($wsdlFile);
+      parent::__construct ($wsdlFile, $this->soapOptions);
     }
     // }}}
     
@@ -191,6 +195,28 @@
         'SOAPAction: "' . $soapAction . '"',
       );
       
+      // Check wheter to modify the URL
+      if (isset ($this->soapOptions ['login'])) {
+        // Parse the URL
+        $soapURL = parse_url ($soapLocation);
+        
+        // Rewrite required parts
+        $soapURL ['user'] = $this->soapOptions ['login'];
+        
+        if (isset ($this->soapOptions ['password']))
+          $soapURL ['pass'] = $this->soapOptions ['password'];
+        elseif (isset ($soapURL ['pass']))
+          $soapURL ['pass'] = rawurldecode ($soapURL ['pass']);
+        
+        // Rebuild the URL
+        $soapLocation =
+          ($soapURL ['scheme'] ?? 'http') . '://' .
+          (isset ($soapURL ['user']) ? rawurlencode ($soapURL ['user']) . (isset ($soapURL ['pass']) ? ':' . rawurlencode ($soapURL ['pass']) . '@' : '') : '') .
+          $soapURL ['host'] . (isset ($soapURL ['port']) ? ':' . $soapURL ['port'] : '') .
+          ($soapURL ['path'] ?? '/') .
+          (isset ($soapURL ['query']) ? '?' . $soapURL ['query'] : '');
+      }
+      
       // Do the http-request in some synchronized style
       $responseBody = qcEvents_Synchronizer (
         $this->httpClient,
@@ -199,7 +225,7 @@
         'POST',
         array (
           'Content-Type' => 'text/xml; charset=utf-8',
-          'SOAPAction' => $soapAction,
+          'SOAPAction' => '"' . $soapAction . '"',
         ),
         $soapRequest
       );
