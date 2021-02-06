@@ -98,64 +98,68 @@
         unset ($Request ['params']);
       
       // Try to run the request
-      return new qcEvents_Promise (function ($resolve, $reject) use ($Request) {
-        $httpRequest = $this->Pool->addNewRequest (
-          $this->EndpointURL,
-          'POST',
-          array (
-            'Content-Type' => 'application/json',
-            'Connection' => 'close',
-          ),
-          json_encode ($Request),
-          function (qcEvents_Client_HTTP $Pool, qcEvents_Stream_HTTP_Request $Request, qcEvents_Stream_HTTP_Header $Header = null, $Body = null)
-          use ($resolve, $reject) {
-            // Check for a general error
-            if (!$Header || !$Body)
-              return $reject (new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_SERVER_ERROR));
+      return $this->Pool->request (
+        $this->EndpointURL,
+        'POST',
+        array (
+          'Content-Type' => 'application/json',
+          'Connection' => 'close',
+        ),
+        json_encode ($Request),
+        !$this->forceOpportunisticAuthentication
+      )->then (
+        function ($responseBody, qcEvents_Stream_HTTP_Header $responseHeader, qcEvents_Stream_HTTP_Request $lastRequest) {
+          // Check for server-error
+          static $statusCodeMap = array (
+            401 => qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_AUTH,
+            404 => qcEvents_RPC_JSON_Error::CODE_RESPONSE_METHOD_NOT_FOUND,
+          );
+          
+          if ($responseHeader->isError ())
+            throw new qcEvents_RPC_JSON_Error ($statusCodeMap [$responseHeader->getStatus ()] ?? qcEvents_RPC_JSON_Error::CODE_RESPONSE_SERVER_ERROR);
+          
+          // Make sure the response is JSON
+          if ($responseHeader->getField ('Content-Type') !== 'application/json')
+            throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_CONTENT);
+          
+          // Try to decode the response
+          $responseJSON = json_decode ($responseBody);
+          
+          if (($responseJSON === null) && ($responseBody != 'null'))
+            throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_PARSE_ERROR);
+          
+          // Sanatize the result
+          if (count ($responseAttributes = get_object_vars ($responseJSON)) != 3)
+            throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_PARAMS);
+          
+          if ($this->Version < self::VERSION_2000) {
+            // Check for missing key
+            if (!array_key_exists ('id', $responseAttributes) || !array_key_exists ('error', $responseAttributes) || !array_key_exists ('result', $responseAttributes))
+              throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_MISSING_PARAMS);
             
-            // Make sure the response is JSON
-            if ($Header->getField ('Content-Type') !== 'application/json')
-              return $reject (new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_CONTENT));
+            // Check for result and error
+            if (($responseJSON->error !== null) && ($responseJSON->result !== null))
+              throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_PARAMS);
+          } else {
+            // Check for missing key
+            if (!isset ($responseJSON->jsonrpc) || !isset ($responseJSON->id) || !(isset ($responseJSON->error) || isset ($responseJSON->result)))
+              throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_MISSING_PARAMS);
             
-            $JSON = json_decode ($Body);
-            
-            if (($JSON === null) && ($Body != 'null'))
-              return $reject (new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_PARSE_ERROR));
-            
-            // Sanatize the result
-            if (count ($Vars = get_object_vars ($JSON)) != 3)
-              return $reject (new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_PARAMS));
-            
-            if ($this->Version < self::VERSION_2000) {
-              // Check for missing key
-              if (!array_key_exists ('id', $Vars) || !array_key_exists ('error', $Vars) || !array_key_exists ('result', $Vars))
-                return $reject (new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_MISSING_PARAMS));
-              
-              // Check for result and error
-              if (($JSON->error !== null) && ($JSON->result !== null))
-                return $reject (new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_PARAMS));
-            } else {
-              // Check for missing key
-              if (!isset ($JSON->jsonrpc) || !isset ($JSON->id) || !(isset ($JSON->error) || isset ($JSON->result)))
-                return $reject (new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_MISSING_PARAMS));
-              
-              if ($JSON->jsonrpc != '2.0')
-                return $reject (new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_PARAMS));
-            }
-            
-            // Check for an error on the result
-            if (isset ($JSON->error) && ($JSON->error !== null))
-              return $reject (new qcEvents_RPC_JSON_Error ($JSON->error->code, $JSON->error->message, (isset ($JSON->error->data) ? $JSON->error->data : null)));
-            
-            // Forward the result
-            $resolve ($JSON->result);
+            if ($responseJSON->jsonrpc != '2.0')
+              throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_PARAMS);
           }
-        );
-        
-        // Check wheter to enable opportunistic 
-        if ($this->forceOpportunisticAuthentication)
-          $httpRequest->addAuthenticationMethod ('Basic', array ());
-      });
+          
+          // Check for an error on the result
+          if (isset ($responseJSON->error) && ($responseJSON->error !== null))
+            throw new qcEvents_RPC_JSON_Error ($responseJSON->error->code, $responseJSON->error->message, (isset ($responseJSON->error->data) ? $responseJSON->error->data : null));
+          
+          // Forward the result
+          return $responseJSON->result;
+        },
+        function () {
+          throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_SERVER_ERROR);
+        }
+      );
     }
     // }}}
   }
@@ -163,11 +167,15 @@
   class qcEvents_RPC_JSON_Error extends Exception {
     const CODE_PARSE_ERROR = -32700;
     
-    const CODE_RESPONSE_SERVER_ERROR = -33000;
-    const CODE_RESPONSE_INVALID_CONTENT = -33001;
-    const CODE_RESPONSE_PARSE_ERROR = -33700;
+    const CODE_RESPONSE_SERVER_ERROR = -32000;
+    const CODE_RESPONSE_INVALID_CONTENT = -32001;
+    const CODE_RESPONSE_INVALID_AUTH = -32099;
+    
+    const CODE_RESPONSE_INVALID_REQUEST = -32600;
+    const CODE_RESPONSE_METHOD_NOT_FOUND = -32601;
+    const CODE_RESPONSE_INVALID_PARAMS = -32602;
+    const CODE_RESPONSE_INTERNAL_ERROR = -32603;
     const CODE_RESPONSE_MISSING_PARAMS = -33601;
-    const CODE_RESPONSE_INVALID_PARAMS = -33602;
     
     private $data = null;
     
