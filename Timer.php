@@ -158,7 +158,7 @@
      **/
     public function cancel () {
       // Signal that we were canceled
-      if ($this->getDone () != $this::DONE_NONE)
+      if ($this->getStatus () != $this::STATUS_PENDING)
         $this->Repeat = false;
       
       // Try to remove at our parent

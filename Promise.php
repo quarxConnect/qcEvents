@@ -2,7 +2,7 @@
 
   /**
    * qcEvents - Promise
-   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -22,12 +22,12 @@
     /* Assigned event-base */
     private $eventBase = null;
     
-    /* Has this promise been done already */
-    const DONE_NONE = 0;
-    const DONE_FULLFILL = 1;
-    const DONE_REJECT = 2;
+    /* Status-Flags for this promise */
+    const STATUS_PENDING = 0;
+    const STATUS_FULLFILLED = 1;
+    const STATUS_REJECTED = 2;
     
-    private $done = qcEvents_Promise::DONE_NONE;
+    private $promiseStatus = qcEvents_Promise::STATUS_PENDING;
     
     /* Result-data of this promise */
     private $result = null;
@@ -37,8 +37,8 @@
     
     /* Registered callbacks */
     private $callbacks = array (
-      qcEvents_Promise::DONE_FULLFILL  => array (),
-      qcEvents_Promise::DONE_REJECT    => array (),
+      qcEvents_Promise::STATUS_FULLFILLED => array (),
+      qcEvents_Promise::STATUS_REJECTED   => array (),
     );
     
     /* Reset callbacks after use */
@@ -542,14 +542,14 @@
           call_user_func (
             $initCallback,
             function () {
-              $this->finish ($this::DONE_FULLFILL, func_get_args ());
+              $this->finish ($this::STATUS_FULLFILLED, func_get_args ());
             },
             function () {
-              $this->finish ($this::DONE_REJECT,   func_get_args ());
+              $this->finish ($this::STATUS_REJECTED,   func_get_args ());
             }
           );
         } catch (Throwable $errorException) {
-          $this->finish ($this::DONE_REJECT, ($errorException instanceof qcEvents_Promise_Solution ? $errorException->getArgs () : array ($errorException)));
+          $this->finish ($this::STATUS_REJECTED, ($errorException instanceof qcEvents_Promise_Solution ? $errorException->getArgs () : array ($errorException)));
         }
       };
       
@@ -569,7 +569,7 @@
      **/
     function __destruct () {
       // Check if this promise was handled
-      if (($this->done != $this::DONE_REJECT) || !$this->result || $this->resultHadCallbacks)
+      if (($this->promiseStatus != $this::STATUS_REJECTED) || !$this->result || $this->resultHadCallbacks)
         return;
       
       // Push this rejection to log
@@ -586,19 +586,19 @@
      * @return array
      **/
     public function __debugInfo () : array {
-      static $doneMap = array (
-        self::DONE_NONE     => 'pending',
-        self::DONE_FULLFILL => 'fullfilled',
-        self::DONE_REJECT   => 'rejected',
+      static $statusMap = array (
+        self::STATUS_PENDING    => 'pending',
+        self::STATUS_FULLFILLED => 'fullfilled',
+        self::STATUS_REJECTED   => 'rejected',
       );
       
       return array (
         'hasEventBase' => is_object ($this->eventBase),
-        'promiseState' => (isset ($doneMap [$this->done]) ? $doneMap [$this->done] : 'Unknown (' . $this->done . ')'),
+        'promiseState' => ($statusMap [$this->promiseStatus] ?? 'Unknown (' . $this->promiseStatus . ')'),
         'promiseResult' => $this->result,
         'registeredCallbacks' => array (
-          'fullfill' => count ($this->callbacks [self::DONE_FULLFILL]),
-          'reject'   => count ($this->callbacks [self::DONE_REJECT]),
+          'fullfill' => count ($this->callbacks [self::STATUS_FULLFILLED]),
+          'reject'   => count ($this->callbacks [self::STATUS_REJECTED]),
         ),
         'resetCallbacks' => $this->resetCallbacks,
       );
@@ -638,15 +638,15 @@
     }
     // }}}
     
-    // {{{ getDone
+    // {{{ getStatus
     /**
-     * Retrive our done-state
+     * Retrive our state
      * 
      * @access protected
      * @return enum
      **/
-    protected function getDone () {
-      return $this->done;
+    protected function getStatus () {
+      return $this->promiseStatus;
     }
     // }}}
     
@@ -660,7 +660,7 @@
      * @return void
      **/
     protected function promiseFullfill () {
-      return $this->finish ($this::DONE_FULLFILL, func_get_args ());
+      return $this->finish ($this::STATUS_FULLFILLED, func_get_args ());
     }
     // }}}
     
@@ -674,7 +674,7 @@
      * @return void
      **/
     protected function promiseReject () {
-      return $this->finish ($this::DONE_REJECT, func_get_args ());
+      return $this->finish ($this::STATUS_REJECTED, func_get_args ());
     }
     // }}}
     
@@ -682,15 +682,15 @@
     /**
      * Finish this promise
      * 
-     * @param enum $done
+     * @param enum $promiseStatus
      * @param array $result
      * 
      * @access private
      * @return void
      **/
-    private function finish ($done, array $result) {
+    private function finish ($promiseStatus, array $result) {
       // Check if we are already done
-      if ($this->done > $this::DONE_NONE)
+      if ($this->promiseStatus > $this::STATUS_PENDING)
         return;
       
       // Check if there is another promise
@@ -699,12 +699,12 @@
       foreach ($result as $p)
         if ($p instanceof qcEvents_Promise)
           return $this::all ($result)->then (
-            function ($results) { $this->finish ($this::DONE_FULLFILL, $results); },
-            function () { $this->finish ($this::DONE_REJECT, func_get_args ()); }
+            function ($results) { $this->finish ($this::STATUS_FULLFILLED, $results); },
+            function () { $this->finish ($this::STATUS_REJECTED, func_get_args ()); }
           );
       
       // Make sure first parameter is an exception or error on rejection
-      if ($done == $this::DONE_REJECT) {
+      if ($promiseStatus == $this::STATUS_REJECTED) {
         if (count ($result) == 0)
           $result [] = new exception ('Empty rejection');
         elseif (!($result [0] instanceof Throwable))
@@ -712,20 +712,20 @@
       }
       
       // Store the result
-      $this->done = $done;
+      $this->promiseStatus = $promiseStatus;
       $this->result = $result;
       $this->resultHadCallbacks = false;
       
       // Invoke handlers
-      if (count ($this->callbacks [$done]) > 0)
-        foreach ($this->callbacks [$done] as $callback)
+      if (count ($this->callbacks [$promiseStatus]) > 0)
+        foreach ($this->callbacks [$promiseStatus] as $callback)
           $this->invoke ($callback [0], $callback [1]);
       
       // Reset callbacks
       if ($this->resetCallbacks)
         $this->callbacks = array (
-          qcEvents_Promise::DONE_FULLFILL  => array (),
-          qcEvents_Promise::DONE_REJECT    => array (),
+          qcEvents_Promise::STATUS_FULLFILLED => array (),
+          qcEvents_Promise::STATUS_REJECTED   => array (),
         );
     }
     // }}}
@@ -741,7 +741,7 @@
      **/
     protected function reset ($Deep = true) {
       // Reset our own state
-      $this->done = $this::DONE_NONE;
+      $this->promiseStatus = $this::STATUS_PENDING;
       $this->result = null;
       $this->resultHadCallbacks = false;
       
@@ -769,18 +769,18 @@
       
       // Run the callback
       if ($directCallback) {
-        $resultType = $this::DONE_FULLFILL;
+        $resultType = $this::STATUS_FULLFILLED;
         
         try {
           $resultValues = call_user_func_array ($directCallback, $this->result);
         } catch (Throwable $errorException) {
-          $resultType = $this::DONE_REJECT;
+          $resultType = $this::STATUS_REJECTED;
           $resultValues = $errorException;
         }
         
         $resultValues = ($resultValues instanceof qcEvents_Promise_Solution ? $resultValues->getArgs () : array ($resultValues));
       } else {
-        $resultType = $this->done;
+        $resultType = $this->promiseStatus;
         $resultValues = $this->result;
       }
       
@@ -808,20 +808,20 @@
       $childPromise = new self (null, $this->eventBase);
       
       // Check if we are not already done
-      if (($this->done == $this::DONE_NONE) || !$this->resetCallbacks) {
-        $this->callbacks [$this::DONE_FULLFILL][] = array ($resolve, $childPromise);
-        $this->callbacks [$this::DONE_REJECT][] = array ($reject, $childPromise);
+      if (($this->promiseStatus == $this::STATUS_PENDING) || !$this->resetCallbacks) {
+        $this->callbacks [$this::STATUS_FULLFILLED][] = array ($resolve, $childPromise);
+        $this->callbacks [$this::STATUS_REJECTED][] = array ($reject, $childPromise);
         
-        if ($this->done == $this::DONE_NONE)
+        if ($this->promiseStatus == $this::STATUS_PENDING)
           return $childPromise;
       }
       
       // Check if we were fullfilled
-      if ($this->done == $this::DONE_FULLFILL)
+      if ($this->promiseStatus == $this::STATUS_FULLFILLED)
         $this->invoke ($resolve, $childPromise);
       
       // Check if we were rejected
-      elseif ($this->done == $this::DONE_REJECT)
+      elseif ($this->promiseStatus == $this::STATUS_REJECTED)
         $this->invoke ($reject, $childPromise);
       
       // Return a promise
