@@ -23,17 +23,16 @@
     private $eventBase = null;
     
     /* Status-Flags for this promise */
-    const STATUS_PENDING = 0;
-    const STATUS_FULLFILLED = 1;
-    const STATUS_REJECTED = 2;
+    const STATUS_PENDING    = 0x00;
+    const STATUS_FULLFILLED = 0x01;
+    const STATUS_REJECTED   = 0x02;
+    
+    const STATUS_FORWARDED  = 0x80;
     
     private $promiseStatus = qcEvents_Promise::STATUS_PENDING;
     
     /* Result-data of this promise */
     private $result = null;
-    
-    /* Result was forwarded to callbacks */
-    private $resultHadCallbacks = false;
     
     /* Registered callbacks */
     private $callbacks = array (
@@ -569,11 +568,14 @@
      **/
     function __destruct () {
       // Check if this promise was handled
-      if (($this->promiseStatus != $this::STATUS_REJECTED) || !$this->result || $this->resultHadCallbacks)
+      if ((($this->promiseStatus & 0x0F) != $this::STATUS_REJECTED) || !$this->result || ($this->promiseStatus & $this::STATUS_FORWARDED))
         return;
       
       // Push this rejection to log
-      if (defined ('QCEVENTS_LOG_REJECTIONS') && QCEVENTS_LOG_REJECTIONS)
+      if (defined ('QCEVENTS_THROW_UNHANDLED_REJECTIONS') && QCEVENTS_THROW_UNHANDLED_REJECTIONS)
+        throw $this->result [0];
+      
+      if (!defined ('QCEVENTS_LOG_REJECTIONS') || QCEVENTS_LOG_REJECTIONS)
         error_log ('Unhandled rejection: ' . $this->result [0]);
     }
     // }}}
@@ -594,7 +596,7 @@
       
       return array (
         'hasEventBase' => is_object ($this->eventBase),
-        'promiseState' => ($statusMap [$this->promiseStatus] ?? 'Unknown (' . $this->promiseStatus . ')'),
+        'promiseState' => ($statusMap [$this->promiseStatus & 0x0F] ?? 'Unknown (' . ($this->promiseStatus & 0x0F) . ')'),
         'promiseResult' => $this->result,
         'registeredCallbacks' => array (
           'fullfill' => count ($this->callbacks [self::STATUS_FULLFILLED]),
@@ -646,7 +648,7 @@
      * @return enum
      **/
     protected function getStatus () {
-      return $this->promiseStatus;
+      return ($this->promiseStatus & 0x0F);
     }
     // }}}
     
@@ -690,7 +692,7 @@
      **/
     private function finish ($promiseStatus, array $result) {
       // Check if we are already done
-      if ($this->promiseStatus > $this::STATUS_PENDING)
+      if (($this->promiseStatus & 0x0F) > $this::STATUS_PENDING)
         return;
       
       // Check if there is another promise
@@ -704,6 +706,8 @@
           );
       
       // Make sure first parameter is an exception or error on rejection
+      $promiseStatus = ($promiseStatus & 0x0F);
+      
       if ($promiseStatus == $this::STATUS_REJECTED) {
         if (count ($result) == 0)
           $result [] = new exception ('Empty rejection');
@@ -714,7 +718,6 @@
       // Store the result
       $this->promiseStatus = $promiseStatus;
       $this->result = $result;
-      $this->resultHadCallbacks = false;
       
       // Invoke handlers
       if (count ($this->callbacks [$promiseStatus]) > 0)
@@ -743,7 +746,6 @@
       // Reset our own state
       $this->promiseStatus = $this::STATUS_PENDING;
       $this->result = null;
-      $this->resultHadCallbacks = false;
       
       // Forward to child-promises
       if ($Deep)
@@ -765,7 +767,8 @@
      **/
     private function invoke (callable $directCallback = null, qcEvents_Promise $childPromise = null) {
       // Store that we were called
-      $this->resultHadCallbacks = ($directCallback || $childPromise);
+      if ($directCallback || $childPromise)
+        $this->promiseStatus |= $this::STATUS_FORWARDED;
       
       // Run the callback
       if ($directCallback) {
@@ -780,7 +783,7 @@
         
         $resultValues = ($resultValues instanceof qcEvents_Promise_Solution ? $resultValues->getArgs () : array ($resultValues));
       } else {
-        $resultType = $this->promiseStatus;
+        $resultType = ($this->promiseStatus & 0x0F);
         $resultValues = $this->result;
       }
       
@@ -808,20 +811,20 @@
       $childPromise = new self (null, $this->eventBase);
       
       // Check if we are not already done
-      if (($this->promiseStatus == $this::STATUS_PENDING) || !$this->resetCallbacks) {
+      if ((($this->promiseStatus & 0x0F) == $this::STATUS_PENDING) || !$this->resetCallbacks) {
         $this->callbacks [$this::STATUS_FULLFILLED][] = array ($resolve, $childPromise);
         $this->callbacks [$this::STATUS_REJECTED][] = array ($reject, $childPromise);
         
-        if ($this->promiseStatus == $this::STATUS_PENDING)
+        if (($this->promiseStatus & 0x0F) == $this::STATUS_PENDING)
           return $childPromise;
       }
       
       // Check if we were fullfilled
-      if ($this->promiseStatus == $this::STATUS_FULLFILLED)
+      if (($this->promiseStatus & 0x0F) == $this::STATUS_FULLFILLED)
         $this->invoke ($resolve, $childPromise);
       
       // Check if we were rejected
-      elseif ($this->promiseStatus == $this::STATUS_REJECTED)
+      elseif (($this->promiseStatus & 0x0F) == $this::STATUS_REJECTED)
         $this->invoke ($reject, $childPromise);
       
       // Return a promise

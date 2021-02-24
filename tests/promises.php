@@ -430,6 +430,26 @@
   unset ($Defered);
   gc_collect_cycles ();
   
+  // Unhandled execption
+  echo 'Unhandled rejection...', "\n";
+  define ('QCEVENTS_THROW_UNHANDLED_REJECTIONS', true);
+  
+  $rejectedPromise = new qcEvents_Promise (
+    function (callable $resolveFunction, callable $rejectFunction) {
+      $rejectFunction ('REJECTED');
+    }
+  );
+  
+  try {
+    unset ($rejectedPromise);
+    gc_collect_cycles ();
+    
+    echo 'Nothing happened (INVALID)', "\n\n";
+    exit (1);
+  } catch (Throwable $e) {
+    echo 'Unhandled exception caught (GOOD)', "\n\n";
+  }
+  
   # TODO: Check with event-base
   
   echo 'All good.', "\n";
