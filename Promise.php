@@ -255,7 +255,7 @@
                   return;
                 
                 // Forward the result
-                call_user_func_array ($reject, func_get_args ());
+                call_user_func_array ($resolve, func_get_args ());
                 
                 throw new qcEvents_Promise_Solution (func_get_args ());
               }
