@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Client for JSON-RPC
-   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Client for JSON-RPC
+   * Copyright (C) 2018-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,15 +18,17 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Hookable.php');
-  require_once ('qcEvents/Promise.php');
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events\Client;
+  use quarxConnect\Events;
   
-  class qcEvents_RPC_JSON extends qcEvents_Hookable {
+  class JSONRPC extends Events\Hookable {
     /* Version of this RPC-Client */
-    const VERSION_1000 = 1000;
-    const VERSION_2000 = 2000;
+    public const VERSION_1000 = 1000;
+    public const VERSION_2000 = 2000;
     
-    private $Version = qcEvents_RPC_JSON::VERSION_2000;
+    private $Version = JSON::VERSION_2000;
     
     /* Assigned HTTP-Pool */
     private $Pool = null;
@@ -41,14 +43,14 @@
     /**
      * Create a new JSON-RPC-Client
      * 
-     * @param qcEvents_Client_HTTP $Pool
+     * @param HTTP $Pool
      * @param string $EndpointURL
      * @param int $Version (optional)
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Client_HTTP $Pool, $EndpointURL, $Version = qcEvents_RPC_JSON::VERSION_2000) {
+    function __construct (HTTP $Pool, $EndpointURL, $Version = JSONRPC::VERSION_2000) {
       $this->Version = $Version;
       $this->Pool = $Pool;
       $this->EndpointURL = $EndpointURL;
@@ -77,9 +79,9 @@
      * @param ...
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function request ($Method) : qcEvents_Promise {
+    public function request ($Method) : Events\Promise {
       // Process arguements
       $Args = func_get_args ();
       $Method = array_shift ($Args);
@@ -108,82 +110,58 @@
         json_encode ($Request),
         !$this->forceOpportunisticAuthentication
       )->then (
-        function ($responseBody, qcEvents_Stream_HTTP_Header $responseHeader, qcEvents_Stream_HTTP_Request $lastRequest) {
+        function ($responseBody, Events\Stream\HTTP\Header $responseHeader, Events\Stream\HTTP\Request $lastRequest) {
           // Check for server-error
           static $statusCodeMap = array (
-            401 => qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_AUTH,
-            404 => qcEvents_RPC_JSON_Error::CODE_RESPONSE_METHOD_NOT_FOUND,
+            401 => JSONRPC\Error::CODE_RESPONSE_INVALID_AUTH,
+            404 => JSONRPC\Error::CODE_RESPONSE_METHOD_NOT_FOUND,
           );
           
           if ($responseHeader->isError ())
-            throw new qcEvents_RPC_JSON_Error ($statusCodeMap [$responseHeader->getStatus ()] ?? qcEvents_RPC_JSON_Error::CODE_RESPONSE_SERVER_ERROR);
+            throw new JSONRPC\Error ($statusCodeMap [$responseHeader->getStatus ()] ?? JSONRPC\Error::CODE_RESPONSE_SERVER_ERROR);
           
           // Make sure the response is JSON
           if ($responseHeader->getField ('Content-Type') !== 'application/json')
-            throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_CONTENT);
+            throw new JSONRPC\Error (JSONRPC\Error::CODE_RESPONSE_INVALID_CONTENT);
           
           // Try to decode the response
           $responseJSON = json_decode ($responseBody);
           
           if (($responseJSON === null) && ($responseBody != 'null'))
-            throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_PARSE_ERROR);
+            throw new JSONRPC\Error (JSONRPC\Error::CODE_PARSE_ERROR);
           
           // Sanatize the result
           if (count ($responseAttributes = get_object_vars ($responseJSON)) != 3)
-            throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_PARAMS);
+            throw new JSONRPC\Error (JSONRPC\Error::CODE_RESPONSE_INVALID_PARAMS);
           
           if ($this->Version < self::VERSION_2000) {
             // Check for missing key
             if (!array_key_exists ('id', $responseAttributes) || !array_key_exists ('error', $responseAttributes) || !array_key_exists ('result', $responseAttributes))
-              throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_MISSING_PARAMS);
+              throw new JSONRPC\Error (JSONRPC\Error::CODE_RESPONSE_MISSING_PARAMS);
             
             // Check for result and error
             if (($responseJSON->error !== null) && ($responseJSON->result !== null))
-              throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_PARAMS);
+              throw new JSONRPC\Error (JSONRPC\Error::CODE_RESPONSE_INVALID_PARAMS);
           } else {
             // Check for missing key
             if (!isset ($responseJSON->jsonrpc) || !isset ($responseJSON->id) || !(isset ($responseJSON->error) || isset ($responseJSON->result)))
-              throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_MISSING_PARAMS);
+              throw new JSONRPC\Error (JSONRPC\Error::CODE_RESPONSE_MISSING_PARAMS);
             
             if ($responseJSON->jsonrpc != '2.0')
-              throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_INVALID_PARAMS);
+              throw new JSONRPC\Error (JSONRPC_Error::CODE_RESPONSE_INVALID_PARAMS);
           }
           
           // Check for an error on the result
           if (isset ($responseJSON->error) && ($responseJSON->error !== null))
-            throw new qcEvents_RPC_JSON_Error ($responseJSON->error->code, $responseJSON->error->message, (isset ($responseJSON->error->data) ? $responseJSON->error->data : null));
+            throw new JSONRPC\Error ($responseJSON->error->code, $responseJSON->error->message, (isset ($responseJSON->error->data) ? $responseJSON->error->data : null));
           
           // Forward the result
           return $responseJSON->result;
         },
         function () {
-          throw new qcEvents_RPC_JSON_Error (qcEvents_RPC_JSON_Error::CODE_RESPONSE_SERVER_ERROR);
+          throw new JSONRPC\Error (JSONRPC\Error::CODE_RESPONSE_SERVER_ERROR);
         }
       );
     }
     // }}}
   }
-  
-  class qcEvents_RPC_JSON_Error extends Exception {
-    const CODE_PARSE_ERROR = -32700;
-    
-    const CODE_RESPONSE_SERVER_ERROR = -32000;
-    const CODE_RESPONSE_INVALID_CONTENT = -32001;
-    const CODE_RESPONSE_INVALID_AUTH = -32099;
-    
-    const CODE_RESPONSE_INVALID_REQUEST = -32600;
-    const CODE_RESPONSE_METHOD_NOT_FOUND = -32601;
-    const CODE_RESPONSE_INVALID_PARAMS = -32602;
-    const CODE_RESPONSE_INTERNAL_ERROR = -32603;
-    const CODE_RESPONSE_MISSING_PARAMS = -33601;
-    
-    private $data = null;
-    
-    function __construct ($code, $message = null, $data = null) {
-      $this->data = $data;
-      
-      return parent::__construct ($message, $code);
-    }
-  }
-
-?>
