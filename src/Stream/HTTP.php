@@ -208,6 +208,8 @@
            
         // Check if there is a content-length givenk
         } elseif (($Length = $this->Header->getField ('content-length')) !== null) {
+          $Length = (int)$Length;
+          
           // Check if the buffer is big enough
           if (strlen ($this->bufferRead) < $Length)
             return;
