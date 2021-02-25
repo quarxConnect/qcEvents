@@ -554,7 +554,7 @@
      **/
     function __destruct () {
       // Check if this promise was handled
-      if ((($this->promiseStatus & 0x0F) != $this::STATUS_REJECTED) || !$this->result || ($this->promiseStatus & $this::STATUS_FORWARDED))
+      if ((($this->promiseStatus & 0x0F) != $this::STATUS_REJECTED) || !$this->result || ($this->promiseStatus & self::STATUS_FORWARDED))
         return;
       
       // Push this rejection to log
@@ -754,7 +754,7 @@
     private function invoke (callable $directCallback = null, Promise $childPromise = null) {
       // Store that we were called
       if ($directCallback || $childPromise)
-        $this->promiseStatus |= $this::STATUS_FORWARDED;
+        $this->promiseStatus |= self::STATUS_FORWARDED;
       
       // Run the callback
       if ($directCallback) {
