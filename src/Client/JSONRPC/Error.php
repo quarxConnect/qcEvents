@@ -37,7 +37,7 @@
     
     private $data = null;
     
-    function __construct ($code, $message = null, $data = null) {
+    function __construct ($code, $message = '', $data = null) {
       $this->data = $data;
       
       return parent::__construct ($message, $code);
