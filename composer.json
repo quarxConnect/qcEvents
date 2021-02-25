@@ -1,5 +1,5 @@
 {
-    "name" : "quarxConnect/Events",
+    "name" : "quarxconnect/events",
     "description" : "Asynchronous events for PHP",
     "type" : "library",
     "keywords" : [ "events", "asynchronous" ],
@@ -15,6 +15,9 @@
     "require" : {
         "php" : ">=7.3.0",
         "psr/event-dispatcher" : "^1.0"
+    },
+    "require-dev" : {
+        "phpunit/phpunit" : "^9"
     },
     "autoload" : {
         "psr-4" : {
