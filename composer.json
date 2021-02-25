@@ -1,0 +1,24 @@
+{
+    "name" : "quarxConnect/Events",
+    "description" : "Asynchronous events for PHP",
+    "type" : "library",
+    "keywords" : [ "events", "asynchronous" ],
+    "license" : "GPL-3.0-only",
+    "authors" : [
+        {
+            "name" : "Bernd Holzmüller",
+            "email" : "bernd@quarxconnect.de",
+            "homepage" : "https://quarxconnect.de/",
+            "role" : "Developer"
+        }
+    ],
+    "require" : {
+        "php" : ">=7.3.0",
+        "psr/event-dispatcher" : "^1.0"
+    },
+    "autoload" : {
+        "psr-4" : {
+            "quarxConnect\\Events\\" : "src/"
+        }
+    }
+}
