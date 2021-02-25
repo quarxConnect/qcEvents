@@ -145,9 +145,9 @@
      * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
      * 
      * @access public
-     * @return Promise
+     * @return Events\Promise
      **/
-    public function request () : Promise {
+    public function request () : Events\Promise {
       // Process function-arguements
       $argv = func_get_args ();
       $argc = count ($argv);
