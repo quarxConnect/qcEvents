@@ -28,7 +28,7 @@
     public const VERSION_1000 = 1000;
     public const VERSION_2000 = 2000;
     
-    private $Version = JSON::VERSION_2000;
+    private $Version = JSONRPC::VERSION_2000;
     
     /* Assigned HTTP-Pool */
     private $Pool = null;
