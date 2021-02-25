@@ -447,9 +447,9 @@
       // Make sure we have an iterator
       if (is_array ($walkArray))
         $arrayIterator = new \ArrayIterator ($walkArray);
-      elseif ($walkArray instanceof IteratorAggregate)
+      elseif ($walkArray instanceof \IteratorAggregate)
         $arrayIterator = $walkArray->getIterator ();
-      elseif ($walkArray instanceof Iterator)
+      elseif ($walkArray instanceof \Iterator)
         $arrayIterator = $walkArray;
       # elseif (is_iterable ($walkArray))
       #   TODO
@@ -697,7 +697,7 @@
       if ($promiseStatus == $this::STATUS_REJECTED) {
         if (count ($result) == 0)
           $result [] = new \exception ('Empty rejection');
-        elseif (!($result [0] instanceof Throwable))
+        elseif (!($result [0] instanceof \Throwable))
           $result [0] = new \exception ($result [0]);
       }
       
