@@ -516,7 +516,7 @@
           $secs = floor ($usecs / 1000000);
           $usecs -= $secs * 1000000;
           
-          $Count = stream_select ($readFDs, $writeFDs, $errorFDs, $secs, $usecs);
+          $Count = stream_select ($readFDs, $writeFDs, $errorFDs, (int)$secs, (int)$usecs);
         }
         
         // Check for pending signals
