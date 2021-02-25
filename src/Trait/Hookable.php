@@ -21,6 +21,7 @@
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Trait;
+  use quarxConnect\Events;
   
   trait Hookable {
     /* Debug Hook-Calls */
