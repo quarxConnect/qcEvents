@@ -105,13 +105,13 @@
     /**
      * Create a promise that settles when a whole set of promises have settled
      * 
-     * @param \Iterable $promiseValues
+     * @param Iterable $promiseValues
      * @param Base $eventBase (optional) Defer execution of callbacks using this eventbase
      * 
      * @access public
      * @return Promise
      **/
-    public static function all (\Iterable $promiseValues, Base $eventBase = null) : Promise {
+    public static function all (Iterable $promiseValues, Base $eventBase = null) : Promise {
       // Pre-Filter the promises
       $realPromises = [ ];
       $resultValues = [ ];
@@ -193,13 +193,13 @@
     /**
      * Create a promise that settles if all given promises have settled as well
      * 
-     * @param \Iterable $promiseValues
+     * @param Iterable $promiseValues
      * @param Base $eventBase (optional) Defer execution of callbacks using this eventbase
      * 
      * @access public
      * @return Promise
      **/
-    public static function allSettled (\Iterable $promiseValues, Base $eventBase = null) : Promise {
+    public static function allSettled (Iterable $promiseValues, Base $eventBase = null) : Promise {
       // Pre-Filter the promises
       $realPromises = [ ];
       $resultValues = [ ];
@@ -280,14 +280,14 @@
     /**
      * Create a promise that settles whenever another promise of a given set settles as well and only reject if all promises were rejected
      * 
-     * @param \Iterable $watchPromises
+     * @param Iterable $watchPromises
      * @param Base $eventBase (optional)
      * @param bool $forceSpec (optional) Enforce behaviour along specification, don't fullfill the promise if there are no promises given
      * 
      * @access public
      * @return Promise
      **/
-    public static function any (\Iterable $watchPromises, Base $eventBase = null, $forceSpec = false) : Promise {
+    public static function any (Iterable $watchPromises, Base $eventBase = null, $forceSpec = false) : Promise {
       // Check for non-promises first
       $promiseCountdown = 0;
       
@@ -355,7 +355,7 @@
     /**
      * Create a promise that settles whenever another promise of a given set settles as well
      * 
-     * @param \Iterable $watchPromises
+     * @param Iterable $watchPromises
      * @param Base $eventBase (optional)
      * @param bool $ignoreRejections (optional) NON-STANDARD DEPRECATED Ignore rejections as long as one promise fullfills
      * @param bool $forceSpec (optional) Enforce behaviour along specification, don't fullfill the promise if there are no promises given
@@ -363,7 +363,7 @@
      * @access public
      * @return Promise
      **/
-    public static function race (\Iterable $watchPromises, Base $eventBase = null, $ignoreRejections = false, $forceSpec = false) : Promise {
+    public static function race (Iterable $watchPromises, Base $eventBase = null, $ignoreRejections = false, $forceSpec = false) : Promise {
       // Check for non-promises first
       $promiseCount = 0;
       
@@ -584,10 +584,10 @@
         'hasEventBase' => is_object ($this->eventBase),
         'promiseState' => ($statusMap [$this->promiseStatus & 0x0F] ?? 'Unknown (' . ($this->promiseStatus & 0x0F) . ')'),
         'promiseResult' => $this->result,
-        'registeredCallbacks' => array (
+        'registeredCallbacks' => [
           'fullfill' => count ($this->callbacks [self::STATUS_FULLFILLED]),
           'reject'   => count ($this->callbacks [self::STATUS_REJECTED]),
-        ),
+        ],
         'resetCallbacks' => $this->resetCallbacks,
       ];
     }

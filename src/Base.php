@@ -88,7 +88,7 @@
       ];
       
       $Result = [
-        'loopState' => ($stateMap [$this->loopState]) ?? : 'Unknown (' . $this->loopState . ')'),
+        'loopState' => ($stateMap [$this->loopState] ?? 'Unknown (' . $this->loopState . ')'),
         'watchedReads' => count ($this->readFDs),
         'watchedWrites' => count ($this->writeFDs),
         'watchedErrors' => count ($this->errorFDs),
