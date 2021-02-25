@@ -205,7 +205,7 @@
       $resultValues = [ ];
       
       foreach ($promiseValues as $promiseIndex=>$promiseValue) {
-        $resultValues [$promiseIndex] = new stdClass;
+        $resultValues [$promiseIndex] = new \stdClass;
         
         if ($promiseValue instanceof Promise) {
           $realPromises [$promiseIndex] = $promiseValue;
@@ -446,7 +446,7 @@
     public static function walk ($walkArray, callable $itemCallback, $justSettle = false, Base $eventBase = null) : Promise {
       // Make sure we have an iterator
       if (is_array ($walkArray))
-        $arrayIterator = new ArrayIterator ($walkArray);
+        $arrayIterator = new \ArrayIterator ($walkArray);
       elseif ($walkArray instanceof IteratorAggregate)
         $arrayIterator = $walkArray->getIterator ();
       elseif ($walkArray instanceof Iterator)
@@ -696,9 +696,9 @@
       
       if ($promiseStatus == $this::STATUS_REJECTED) {
         if (count ($result) == 0)
-          $result [] = new exception ('Empty rejection');
+          $result [] = new \exception ('Empty rejection');
         elseif (!($result [0] instanceof Throwable))
-          $result [0] = new exception ($result [0]);
+          $result [0] = new \exception ($result [0]);
       }
       
       // Store the result

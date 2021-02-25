@@ -21,6 +21,7 @@
   declare (strict_types=1);
   
   namespace quarxConnect\Events\Client;
+  use quarxConnect\Events\Stream;
   use quarxConnect\Events;
   
   class HTTP extends Events\Hookable {
@@ -194,9 +195,9 @@
      * @param bool $authenticationPreflight
      * 
      * @access private
-     * @return Promise
+     * @return Events\Promise
      **/
-    private function requestInternal (Events\Socket\Pool\Session $socketSession, Stream\HTTP\Request $Request, $authenticationPreflight) : Promise {
+    private function requestInternal (Events\Socket\Pool\Session $socketSession, Stream\HTTP\Request $Request, $authenticationPreflight) : Events\Promise {
       // Push to our request-queue
       $this->httpRequests [] = $Request;
       
@@ -549,7 +550,7 @@
     private function getSessionCookiesForRequest (Stream\HTTP\Request $Request) : array {
       // Check if we use/have session-cookies
       if ($this->sessionCookies === null)
-        return null;
+        return [ ];
       
       // Prepare search-attributes
       $Time = time ();
