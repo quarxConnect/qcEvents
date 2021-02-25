@@ -626,7 +626,7 @@
       if (!is_resource ($Socket = @stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, \STREAM_CLIENT_ASYNC_CONNECT, $ctx)))
         return $this->socketHandleConnectFailed (-$errno, 'connect() failed: ' . $err);
       
-      stream_set_blocking ($Socket, 0);
+      stream_set_blocking ($Socket, false);
       
       // Set our new status
       if (!$this->setStreamFD ($Socket))
@@ -676,7 +676,7 @@
         $this->bufferSize = self::READ_TCP_BUFFER;
         
         // Switch connection into non-blocking mode
-        stream_set_blocking ($Connection, 0);
+        stream_set_blocking ($Connection, false);
         
         // Store the connection
         $this->setStreamFD ($Connection);
