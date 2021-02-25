@@ -1,9 +1,9 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Call asynchronous functions in a syncronous manner
+   * quarxConnect Events - Call asynchronous functions in a syncronous manner
    * 
-   * Copyright (C) 2015-2020 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2015-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -19,12 +19,16 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  class qcEvents_Synchronizer {
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events;
+  
+  class Synchronizer {
     /* Result-modes */
-    const RESULT_AS_ARRAY = 0;
-    const RESULT_FIRST = 1;
+    public const RESULT_AS_ARRAY = 0;
+    public const RESULT_FIRST = 1;
     
-    private $resultMode = qcEvents_Synchronizer::RESULT_AS_ARRAY;
+    private $resultMode = Synchronizer::RESULT_AS_ARRAY;
     
     /* Store entire results on this class */
     private $storeResult = true;
@@ -94,20 +98,20 @@
       $Parameters = array_slice (func_get_args (), 2);
       
       // Try to find an eventbase
-      if ($Handler instanceof qcEvents_Base) {
+      if ($Handler instanceof Base) {
         $Base = $Handler;
         $Handler = $Function;
         
-        if ($Handler instanceof qcEvents_Promise)
+        if ($Handler instanceof Promise)
           $Function = null;
         elseif (count ($Parameters) == 0)
-          throw new InvalidArgumentException ('Asyncronous calls on event-base not supported');
+          throw new \InvalidArgumentException ('Asyncronous calls on event-base not supported');
         else
           $Function = array_shift ($Parameters);
       } elseif (!is_callable (array ($Handler, 'getEventBase')))
-        throw new InvalidArgumentException ('Unable to find event-base anywhere');
+        throw new \InvalidArgumentException ('Unable to find event-base anywhere');
       elseif (!is_object ($Base = $Handler->getEventBase ()))
-        throw new InvalidArgumentException ('Did not get an event-base from object');
+        throw new \InvalidArgumentException ('Did not get an event-base from object');
       
       // Prepare Callback
       $Ready = $Loop = $isPromise = false;
@@ -128,10 +132,10 @@
       };
       
       // Analyze parameters of the call
-      if (!($isPromise = ($Handler instanceof qcEvents_Promise))) {
-        $Method = new ReflectionMethod ($Handler, $Function);
+      if (!($isPromise = ($Handler instanceof Promise))) {
+        $Method = new \ReflectionMethod ($Handler, $Function);
         
-        if (!($isPromise = ($Method->hasReturnType () && ($Method->getReturnType ()->getName () == 'qcEvents_Promise')))) {
+        if (!($isPromise = ($Method->hasReturnType () && ($Method->getReturnType ()->getName () == __NAMESPACE__ . '\\Promise')))) {
           $CallbackIndex = null;
           
           foreach ($Method->getParameters () as $Index=>$Parameter) 
@@ -166,7 +170,7 @@
       // Check for a returned promise
       $Exception = null;
       
-      if ($rc instanceof qcEvents_Promise) {
+      if ($rc instanceof Promise) {
         // Check if this was expected
         if (!$isPromise) {
           trigger_error ('Got an unexpected Promise in return');
@@ -185,7 +189,7 @@
             if ($Loop)
               $Base->loopBreak ();
             
-            if ($Error instanceof Throwable)
+            if ($Error instanceof \Throwable)
               $Exception = $Error;
           }
         );
@@ -246,7 +250,7 @@
    * @access public
    * @return mixed
    **/
-  function qcEvents_Synchronizer () {
+  function synchronize () {
     static $Syncronizer = null;
     
     if ($Syncronizer === null)
@@ -255,5 +259,3 @@
     return call_user_func_array ($Syncronizer, func_get_args ());
   }
   // }}}
-
-?>
