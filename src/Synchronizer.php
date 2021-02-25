@@ -39,6 +39,27 @@
     /* The last result received */
     private $lastResult = null;
     
+    // {{{ do
+    /**
+     * Just a static alias for qcEvents_Synchronizer::__invoke()
+     * 
+     * @param ...
+     * 
+     * @see qcEvents_Synchronizer::__invoke()
+     * @access public
+     * @return mixed
+     **/
+    public static function do () {
+      static $Syncronizer = null;
+      
+      if ($Syncronizer === null)
+        $Syncronizer = new static (static::RESULT_FIRST);
+      
+      return call_user_func_array ($Syncronizer, func_get_args ());
+    }
+    // }}}
+    
+    
     // {{{ __construct
     /**
      * Create a new Synchronizer
@@ -239,23 +260,3 @@
     }
     // }}}
   }
-  
-  // {{{ qcEvents_Synchronizer
-  /**
-   * Just an alias for qcEvents_Synchronizer::__invoke()
-   * 
-   * @param ...
-   * 
-   * @see qcEvents_Synchronizer::__invoke()
-   * @access public
-   * @return mixed
-   **/
-  function synchronize () {
-    static $Syncronizer = null;
-    
-    if ($Syncronizer === null)
-      $Syncronizer = new qcEvents_Synchronizer (qcEvents_Synchronizer::RESULT_FIRST);
-    
-    return call_user_func_array ($Syncronizer, func_get_args ());
-  }
-  // }}}
