@@ -24,7 +24,7 @@
   use quarxConnect\Events;
   
   class DNS implements Events\Interface\Consumer, Events\Interface\Stream\Consumer {
-    use Events\Trait\Based;
+    use Events\Trait\Hookable;
     
     /* Internal DNS-Buffer for TCP-Mode */
     private $dnsBuffer = '';
