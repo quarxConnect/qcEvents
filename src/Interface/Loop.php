@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Interface for Event-Handlers that are run by the event-loop
-   * Copyright (C) 2020 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Interface for Event-Handlers that are run by the event-loop
+   * Copyright (C) 2020-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,9 +18,11 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Interface/Based.php');
+  declare (strict_types=1);
   
-  interface qcEvents_Interface_Loop extends qcEvents_Interface_Based {
+  namespace quarxConnect\Events\Interface;
+  
+  interface Loop extends Based {
     // {{{ getReadFD
     /**
      * Retrive the stream-resource to watch for reads
@@ -85,5 +87,3 @@
     public function raiseError ($fd);
     // }}}
   }
-
-?>

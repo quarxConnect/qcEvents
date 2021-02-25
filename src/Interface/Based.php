@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Interface Based
-   * Copyright (C) 2020 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Interface Based
+   * Copyright (C) 2020-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,27 +18,31 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  interface qcEvents_Interface_Based {
+  declare (strict_types=1);
+  
+  namespace quarxConnect\Events\Interface;
+  
+  interface Based {
     // {{{ getEventBase
     /**
      * Retrive the handle of the current event-loop-handler
      * 
      * @access public
-     * @return qcEvents_Base
+     * @return \quarxConnect\Events\Base
      **/
-    public function getEventBase () : ?qcEvents_Base;
+    public function getEventBase () : ?\quarxConnect\Events\Base;
     // }}}
     
     // {{{ setEventBase
     /**
      * Set the Event-Base of this source
      * 
-     * @param qcEvents_Base $eventBase
+     * @param \quarxConnect\Events\Base $eventBase
      * 
      * @access public
      * @return void
      **/
-    public function setEventBase (qcEvents_Base $eventBase);
+    public function setEventBase (\quarxConnect\Events\Base $eventBase);
     // }}}
     
     // {{{ unsetEventBase
@@ -51,5 +55,3 @@
     public function unsetEventBase ();
     // }}}
   }
-
-?>

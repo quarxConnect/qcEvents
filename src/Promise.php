@@ -1,7 +1,7 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Promise
+   * quarxConnect Events - Promise
    * Copyright (C) 2018-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
@@ -18,27 +18,31 @@
    * along with this program. If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  class qcEvents_Promise {
+  declare (strict_types=1);
+  
+  namespace quarxConnect\Events;
+  
+  class Promise {
     /* Assigned event-base */
     private $eventBase = null;
     
     /* Status-Flags for this promise */
-    const STATUS_PENDING    = 0x00;
-    const STATUS_FULLFILLED = 0x01;
-    const STATUS_REJECTED   = 0x02;
+    protected const STATUS_PENDING    = 0x00;
+    protected const STATUS_FULLFILLED = 0x01;
+    protected const STATUS_REJECTED   = 0x02;
     
-    const STATUS_FORWARDED  = 0x80;
+    private const STATUS_FORWARDED  = 0x80;
     
-    private $promiseStatus = qcEvents_Promise::STATUS_PENDING;
+    private $promiseStatus = Promise::STATUS_PENDING;
     
     /* Result-data of this promise */
     private $result = null;
     
     /* Registered callbacks */
-    private $callbacks = array (
-      qcEvents_Promise::STATUS_FULLFILLED => array (),
-      qcEvents_Promise::STATUS_REJECTED   => array (),
-    );
+    private $callbacks = [
+      Promise::STATUS_FULLFILLED => [ ],
+      Promise::STATUS_REJECTED   => [ ],
+    ];
     
     /* Reset callbacks after use */
     protected $resetCallbacks = true;
@@ -48,18 +52,25 @@
      * Create a resolved promise
      * 
      * @param ...
-     * @param qcEvents_Base $Base (optional)
+     * @param Base $Base (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Promise
      **/
-    public static function resolve () {
-      $args = func_get_args ();
-      $base = ((count ($args) > 0) && ($args [count ($args) - 1] instanceof qcEvents_Base) ? array_pop ($args) : null);
+    public static function resolve () : Promise {
+      $resolveParameters = func_get_args ();
       
-      return new static (function ($resolve) use ($args) {
-        call_user_func_array ($resolve, $args);
-      }, $base);
+      if ((count ($resolveParameters) > 0) && ($resolveParameters [count ($resolveParameters) - 1] instanceof Base))
+        $eventBase = array_pop ($resolveParameters);
+      else
+        $eventBase = null;
+      
+      return new static (
+        function (callable $resolveFunction) use ($resolveParameters) {
+          call_user_func_array ($resolveFunction, $resolveParameters);
+        },
+        $eventBase
+      );
     }
     // }}}
     
@@ -68,18 +79,25 @@
      * Create a rejected promise
      * 
      * @param ...
-     * @param qcEvents_Base $Base (optional)
+     * @param Base $Base (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Promise
      **/
-    public static function reject () {
-      $args = func_get_args ();
-      $base = ((count ($args) > 0) && ($args [count ($args) - 1] instanceof qcEvents_Base) ? array_pop ($args) : null);
+    public static function reject () : Promise {
+      $rejectParameter = func_get_args ();
       
-      return new static (function ($resolve, $reject) use ($args) {
-        call_user_func_array ($reject, $args);
-      }, $base);
+      if ((count ($rejectParameter) > 0) && ($rejectParameter [count ($rejectParameter) - 1] instanceof Base))
+        $eventBase = array_pop ($rejectParameter);
+      else
+        $eventBase = null;
+      
+      return new static (
+        function (callable $resolveFunction, callable $rejectFunction) use ($rejectParameter) {
+          call_user_func_array ($rejectFunction, $rejectParameter);
+        },
+        $eventBase
+      );
     }
     // }}}
     
@@ -87,26 +105,26 @@
     /**
      * Create a promise that settles when a whole set of promises have settled
      * 
-     * @param Iterable $promiseValues
-     * @param qcEvents_Base $eventBase (optional) Defer execution of callbacks using this eventbase
+     * @param \Iterable $promiseValues
+     * @param Base $eventBase (optional) Defer execution of callbacks using this eventbase
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Promise
      **/
-    public static function all (Iterable $promiseValues, qcEvents_Base $eventBase = null) {
+    public static function all (\Iterable $promiseValues, Base $eventBase = null) : Promise {
       // Pre-Filter the promises
-      $realPromises = array ();
-      $resultValues = array ();
+      $realPromises = [ ];
+      $resultValues = [ ];
       
       foreach ($promiseValues as $promiseIndex=>$promiseValue)
-        if ($promiseValue instanceof qcEvents_Promise) {
+        if ($promiseValue instanceof Promise) {
           $realPromises [$promiseIndex] = $promiseValue;
           $resultValues [$promiseIndex] = null;
           
           if (!$eventBase)
             $eventBase = $promiseValue->eventBase;
         } else
-          $resultValues [$promiseIndex] = array ($promiseValue);
+          $resultValues [$promiseIndex] = [ $promiseValue ];
       
       // Check if there is any promise to wait for
       if (count ($realPromises) == 0) {
@@ -117,7 +135,7 @@
       }
       
       return new static (
-        function (callable $resolve, callable $reject)
+        function (callable $resolveFunction, callable $rejectFunction)
         use ($resultValues, $realPromises) {
           // Track if the promise is settled
           $promiseDone = false;
@@ -126,7 +144,7 @@
           // Register handlers
           foreach ($realPromises as $promiseIndex=>$realPromise)
             $realPromise->then (
-              function () use (&$promiseDone, &$resultValues, &$promisePending, $promiseIndex, $resolve) {
+              function () use (&$promiseDone, &$resultValues, &$promisePending, $promiseIndex, $resolveFunction) {
                 // Check if the promise is already settled
                 if ($promiseDone)
                   return;
@@ -142,7 +160,7 @@
                 $promiseDone = true;
                 
                 // Forward the result
-                $promiseResult = array ();
+                $promiseResult = [ ];
                 
                 foreach ($resultValues as $resultIndex=>$currentResults)
                   if ((count ($currentResults) == 1) && !isset ($promiseResult [$resultIndex]))
@@ -151,11 +169,9 @@
                     foreach ($currentResults as $currentResult)
                       $promiseResult [] = $currentResult;
                 
-                call_user_func ($resolve, $promiseResult);
-                
-                return new qcEvents_Promise_Solution (func_get_args ());
+                call_user_func ($resolveFunction, $promiseResult);
               },
-              function () use (&$promiseDone, $reject) {
+              function () use (&$promiseDone, $rejectFunction) {
                 // Check if the promise is settled
                 if ($promiseDone)
                   return;
@@ -164,9 +180,7 @@
                 $promiseDone = true;
                 
                 // Forward the result
-                call_user_func_array ($reject, func_get_args ());
-                
-                throw new qcEvents_Promise_Solution (func_get_args ());
+                call_user_func_array ($rejectFunction, func_get_args ());
               }
             );
         },
@@ -179,34 +193,34 @@
     /**
      * Create a promise that settles if all given promises have settled as well
      * 
-     * @param Iterable $promiseValues
-     * @param qcEvents_Base $eventBase (optional) Defer execution of callbacks using this eventbase
+     * @param \Iterable $promiseValues
+     * @param Base $eventBase (optional) Defer execution of callbacks using this eventbase
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Promise
      **/
-    public static function allSettled (Iterable $promiseValues, qcEvents_Base $eventBase = null) : qcEvents_Promise {
+    public static function allSettled (\Iterable $promiseValues, Base $eventBase = null) : Promise {
       // Pre-Filter the promises
-      $realPromises = array ();
-      $resultValues = array ();
+      $realPromises = [ ];
+      $resultValues = [ ];
       
       foreach ($promiseValues as $promiseIndex=>$promiseValue) {
         $resultValues [$promiseIndex] = new stdClass;
         
-        if ($promiseValue instanceof qcEvents_Promise) {
+        if ($promiseValue instanceof Promise) {
           $realPromises [$promiseIndex] = $promiseValue;
           $resultValues [$promiseIndex]->status = 'pending';
           
           if (!$eventBase)
             $eventBase = $promiseValue->eventBase;
-        } elseif ($promiseValue instanceof Throwable) {
+        } elseif ($promiseValue instanceof \Throwable) {
           $resultValues [$promiseIndex]->status = 'rejected';
           $resultValues [$promiseIndex]->reason = $promiseValue;
-          $resultValues [$promiseIndex]->args = array ($promiseValue);
+          $resultValues [$promiseIndex]->args = [ $promiseValue ];
         } else {
           $resultValues [$promiseIndex]->status = 'fulfilled';
           $resultValues [$promiseIndex]->value = $promiseValue;
-          $resultValues [$promiseIndex]->args = array ($promiseValue);
+          $resultValues [$promiseIndex]->args = [ $promiseValue ];
         }
       }
       
@@ -219,7 +233,7 @@
       }
       
       return new static (
-        function (callable $resolve, callable $reject)
+        function (callable $resolveFunction)
         use ($realPromises, $resultValues) {
           // Track if the promise is settled
           $promisePending = count ($realPromises);
@@ -228,7 +242,7 @@
           foreach ($realPromises as $promiseIndex=>$realPromise)
             $realPromise->then (
               function ($resultValue)
-              use (&$resultValues, &$promisePending, $promiseIndex, $resolve) {
+              use (&$resultValues, &$promisePending, $promiseIndex, $resolveFunction) {
                 // Push to results
                 $resultValues [$promiseIndex]->status = 'fulfilled';
                 $resultValues [$promiseIndex]->value = $resultValue;
@@ -239,12 +253,10 @@
                   return;
                 
                 // Forward the result
-                call_user_func ($resolve, $resultValues);
-       
-                return new qcEvents_Promise_Solution (func_get_args ());
+                call_user_func ($resolveFunction, $resultValues);
               },
               function (Throwable $errorReason)
-              use (&$resultValues, &$promisePending, $promiseIndex, $resolve) {
+              use (&$resultValues, &$promisePending, $promiseIndex, $resolveFunction) {
                 // Push to results
                 $resultValues [$promiseIndex]->status = 'rejected';
                 $resultValues [$promiseIndex]->reason = $errorReason;
@@ -255,9 +267,7 @@
                   return;
                 
                 // Forward the result
-                call_user_func_array ($resolve, func_get_args ());
-                
-                throw new qcEvents_Promise_Solution (func_get_args ());
+                call_user_func_array ($resolveFunction, func_get_args ());
               }
             );
         },
@@ -270,19 +280,19 @@
     /**
      * Create a promise that settles whenever another promise of a given set settles as well and only reject if all promises were rejected
      * 
-     * @param Iterable $watchPromises
-     * @param qcEvents_Base $eventBase (optional)
+     * @param \Iterable $watchPromises
+     * @param Base $eventBase (optional)
      * @param bool $forceSpec (optional) Enforce behaviour along specification, don't fullfill the promise if there are no promises given
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Promise
      **/
-    public static function any (Iterable $watchPromises, qcEvents_Base $eventBase = null, $forceSpec = false) : qcEvents_Promise {
+    public static function any (\Iterable $watchPromises, Base $eventBase = null, $forceSpec = false) : Promise {
       // Check for non-promises first
       $promiseCountdown = 0;
       
       foreach ($watchPromises as $watchPromise)
-        if (!($watchPromise instanceof qcEvents_Promise)) {
+        if (!($watchPromise instanceof Promise)) {
           if ($eventBase)
             return static::resolve ($watchPromise, $eventBase);
           
@@ -300,7 +310,7 @@
       }
       
       return new static (
-        function ($resolve, $reject)
+        function (callable $resolveFunction, callable $rejectFunction)
         use ($watchPromises, $promiseCountdown) {
           // Track if the promise is settled
           $promiseDone = false;
@@ -308,7 +318,7 @@
           // Register handlers
           foreach ($watchPromises as $watchPromise)
             $watchPromise->then (
-              function () use (&$promiseDone, $resolve) {
+              function () use (&$promiseDone, $resolveFunction) {
                 // Check if the promise is already settled
                 if ($promiseDone)
                   return;
@@ -317,11 +327,9 @@
                 $promiseDone = true;
                 
                 // Forward the result
-                call_user_func_array ($resolve, func_get_args ());
-           
-                return new qcEvents_Promise_Solution (func_get_args ());
+                call_user_func_array ($resolveFunction, func_get_args ());
               },
-              function () use (&$promiseDone, &$promiseCountdown, $reject) {
+              function () use (&$promiseDone, &$promiseCountdown, $rejectFunction) {
                 // Check if the promise is settled
                 if ($promiseDone)
                   return;
@@ -334,9 +342,7 @@
                 $promiseDone = true;
                 
                 // Forward the result
-                call_user_func_array ($reject, func_get_args ());
-                
-                throw new qcEvents_Promise_Solution (func_get_args ());
+                call_user_func_array ($rejectFunction, func_get_args ());
               }
             );
         },
@@ -349,22 +355,22 @@
     /**
      * Create a promise that settles whenever another promise of a given set settles as well
      * 
-     * @param Iterable $watchPromises
-     * @param qcEvents_Base $Base (optional)
+     * @param \Iterable $watchPromises
+     * @param Base $eventBase (optional)
      * @param bool $ignoreRejections (optional) NON-STANDARD DEPRECATED Ignore rejections as long as one promise fullfills
      * @param bool $forceSpec (optional) Enforce behaviour along specification, don't fullfill the promise if there are no promises given
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Promise
      **/
-    public static function race (Iterable $watchPromises, qcEvents_Base $Base = null, $ignoreRejections = false, $forceSpec = false) {
+    public static function race (\Iterable $watchPromises, Base $eventBase = null, $ignoreRejections = false, $forceSpec = false) : Promise {
       // Check for non-promises first
       $promiseCount = 0;
       
       foreach ($watchPromises as $Promise)
-        if (!($Promise instanceof qcEvents_Promise)) {
-          if ($Base)
-            return static::resolve ($Promise, $Base);
+        if (!($Promise instanceof Promise)) {
+          if ($eventBase)
+            return static::resolve ($Promise, $eventBase);
           
           return static::resolve ($Promise);
         } else
@@ -373,25 +379,26 @@
       // Check if there is any promise to wait for
       # TODO: This is a violation of the Spec, but a promise that is forever pending is not suitable for long-running applications
       if (!$forceSpec && ($promiseCount == 0)) {
-        if ($Base)
-          return static::reject ($Base);
+        if ($eventBase)
+          return static::reject ($eventBase);
         
         return static::reject ();
       }
       
       // Prepare to deprecate this flag
       if ($ignoreRejections)
-        trigger_error ('Please use qcEvents_Promise::any() instead of qcEvents_Promise::race() if you want to ingnore rejections', E_USER_DEPRECATED);
+        trigger_error ('Please use Promise::any() instead of Promise::race() if you want to ingnore rejections', E_USER_DEPRECATED);
       
       return new static (
-        function ($resolve, $reject) use ($watchPromises, $ignoreRejections, $promiseCount) {
+        function (callable $resolveFunction, callable $rejectFunction)
+        use ($watchPromises, $ignoreRejections, $promiseCount) {
           // Track if the promise is settled
           $Done = false;
           
           // Register handlers
           foreach ($watchPromises as $Promise)
             $Promise->then (
-              function () use (&$Done, $resolve) {
+              function () use (&$Done, $resolveFunction) {
                 // Check if the promise is already settled
                 if ($Done)
                   return;
@@ -400,11 +407,9 @@
                 $Done = true;
                 
                 // Forward the result
-                call_user_func_array ($resolve, func_get_args ());
-           
-                return new qcEvents_Promise_Solution (func_get_args ());
+                call_user_func_array ($resolveFunction, func_get_args ());
               },
-              function () use (&$Done, &$promiseCount, $reject, $ignoreRejections) {
+              function () use (&$Done, &$promiseCount, $rejectFunction, $ignoreRejections) {
                 // Check if the promise is settled
                 if ($Done)
                   return;
@@ -417,17 +422,14 @@
                 $Done = true;
                 
                 // Forward the result
-                call_user_func_array ($reject, func_get_args ());
-                
-                throw new qcEvents_Promise_Solution (func_get_args ());
+                call_user_func_array ($rejectFunction, func_get_args ());
               }
             );
         },
-        $Base
+        $eventBase
       );
     }
     // }}}
-    
     
     // {{{ walk
     /**
@@ -436,12 +438,12 @@
      * @param mixed $walkArray
      * @param callable $itemCallback
      * @param bool $justSettle (optional) Don't stop on rejections, but enqueue them as result
-     * @param qcEvents_Base $eventBase (optional)
+     * @param Base $eventBase (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Promise
      **/
-    public static function walk ($walkArray, callable $itemCallback, $justSettle = false, qcEvents_Base $eventBase = null) : qcEvents_Promise {
+    public static function walk ($walkArray, callable $itemCallback, $justSettle = false, Base $eventBase = null) : Promise {
       // Make sure we have an iterator
       if (is_array ($walkArray))
         $arrayIterator = new ArrayIterator ($walkArray);
@@ -452,20 +454,20 @@
       # elseif (is_iterable ($walkArray))
       #   TODO
       else
-        return qcEvents_Promise::reject ('First parameter must be an iterable');
+        return static::reject ('First parameter must be an iterable');
       
       // Move to start
       $arrayIterator->rewind ();
       
-      return new qcEvents_Promise (
-        function (callable $resolve, callable $reject)
+      return new static (
+        function (callable $resolveFunction, callable $rejectFunction)
         use ($arrayIterator, $itemCallback, $justSettle, $eventBase) {
-          $walkResults = array ();
+          $walkResults = [ ];
           $walkItem = null;
-          $walkItem = function () use (&$walkResults, &$walkItem, $arrayIterator, $itemCallback, $justSettle, $eventBase, $resolve, $reject) {
+          $walkItem = function () use (&$walkResults, &$walkItem, $arrayIterator, $itemCallback, $justSettle, $eventBase, $resolveFunction, $rejectFunction) {
             // Check wheter to stop
             if (!$arrayIterator->valid ())
-              return $resolve ($walkResults);
+              return $resolveFunction ($walkResults);
             
             // Invoke the callback
             $itemKey = $arrayIterator->key ();
@@ -475,17 +477,17 @@
             $arrayIterator->next ();
             
             // Process the result
-            if (!($itemResult instanceof qcEvents_Promise))
-              $itemResult = ($eventBase ? qcEvents_Promise::resolve ($itemResult, $eventBase) : qcEvents_Promise::resolve ($itemResult));
+            if (!($itemResult instanceof Promise))
+              $itemResult = ($eventBase ? Promise::resolve ($itemResult, $eventBase) : Promise::resolve ($itemResult));
             
             $itemResult->then (
               function () use ($itemKey, &$walkResults, &$walkItem) {
                 $walkResults [$itemKey] = (func_num_args () == 1 ? func_get_arg (0) : func_get_args ());
                 $walkItem ();
               },
-              function () use ($justSettle, $itemKey, $reject, &$walkResults, &$walkItem) {
+              function () use ($justSettle, $itemKey, $rejectFunction, &$walkResults, &$walkItem) {
                 if (!$justSettle)
-                  return call_user_func_array ($reject, func_get_args ());
+                  return call_user_func_array ($rejectFunction, func_get_args ());
                 
                 $walkResults [$itemKey] = (func_num_args () == 1 ? func_get_arg (0) : func_get_args ());
                 $walkItem ();
@@ -500,34 +502,18 @@
     }
     // }}}
     
-    // {{{ ensure
-    /**
-     * NON-STANDARD: Make sure the input is a promise or return a rejected one
-     * 
-     * @param mixed $Input
-     * 
-     * @access public
-     * @return qcEvents_Promise
-     **/
-    public static function ensure ($Input) {
-      if ($Input instanceof qcEvents_Promise)
-        return $Input;
-      
-      return static::reject ($Input);
-    }
-    // }}}
     
     // {{{ __construct
     /**
      * Create a new promise
      * 
      * @param callable $initCallback (optional)
-     * @param qcEvents_Base $eventBase (optional)
+     * @param Base $eventBase (optional)
      + 
      * @access friendly
      * @return void
      **/
-    function __construct (callable $initCallback = null, qcEvents_Base $eventBase = null) {
+    function __construct (callable $initCallback = null, Base $eventBase = null) {
       // Store the assigned base
       $this->eventBase = $eventBase;
       
@@ -547,8 +533,8 @@
               $this->finish ($this::STATUS_REJECTED,   func_get_args ());
             }
           );
-        } catch (Throwable $errorException) {
-          $this->finish ($this::STATUS_REJECTED, ($errorException instanceof qcEvents_Promise_Solution ? $errorException->getArgs () : array ($errorException)));
+        } catch (\Throwable $errorException) {
+          $this->finish ($this::STATUS_REJECTED, ($errorException instanceof Promise\Solution ? $errorException->getParameters () : [ $errorException ]));
         }
       };
       
@@ -588,13 +574,13 @@
      * @return array
      **/
     public function __debugInfo () : array {
-      static $statusMap = array (
+      static $statusMap = [
         self::STATUS_PENDING    => 'pending',
         self::STATUS_FULLFILLED => 'fullfilled',
         self::STATUS_REJECTED   => 'rejected',
-      );
+      ];
       
-      return array (
+      return [
         'hasEventBase' => is_object ($this->eventBase),
         'promiseState' => ($statusMap [$this->promiseStatus & 0x0F] ?? 'Unknown (' . ($this->promiseStatus & 0x0F) . ')'),
         'promiseResult' => $this->result,
@@ -603,7 +589,7 @@
           'reject'   => count ($this->callbacks [self::STATUS_REJECTED]),
         ),
         'resetCallbacks' => $this->resetCallbacks,
-      );
+      ];
     }
     // }}}
     
@@ -612,9 +598,9 @@
      * Retrive the event-base assigned to this promise
      * 
      * @access public
-     * @return qcEvents_Base
+     * @return Base
      **/
-    public function getEventBase () : ?qcEvents_Base {
+    public function getEventBase () : ?Base {
       return $this->eventBase;
     }
     // }}}
@@ -623,13 +609,13 @@
     /**
      * Assign a new event-base
      * 
-     * @param qcEvents_Base $eventBase (optional)
+     * @param Base $eventBase (optional)
      * @param bool $forwardToChildren (optional)
      * 
      * @access public
      * @return void
      **/
-    public function setEventBase (qcEvents_Base $eventBase = null, $forwardToChildren = true) {
+    public function setEventBase (Base $eventBase = null, $forwardToChildren = true) {
       $this->eventBase = $eventBase;
       
       // Forward to child-promises
@@ -699,7 +685,7 @@
       $result = array_values ($result);
       
       foreach ($result as $p)
-        if ($p instanceof qcEvents_Promise)
+        if ($p instanceof Promise)
           return $this::all ($result)->then (
             function ($results) { $this->finish ($this::STATUS_FULLFILLED, $results); },
             function () { $this->finish ($this::STATUS_REJECTED, func_get_args ()); }
@@ -726,10 +712,10 @@
       
       // Reset callbacks
       if ($this->resetCallbacks)
-        $this->callbacks = array (
-          qcEvents_Promise::STATUS_FULLFILLED => array (),
-          qcEvents_Promise::STATUS_REJECTED   => array (),
-        );
+        $this->callbacks = [
+          Promise::STATUS_FULLFILLED => [ ],
+          Promise::STATUS_REJECTED   => [ ],
+        ];
     }
     // }}}
     
@@ -760,12 +746,12 @@
      * Invoke a callback for this promise
      * 
      * @param callable $directCallback (optional)
-     * @param qcEvents_Promise $childPromise (optional)
+     * @param Promise $childPromise (optional)
      * 
      * @access private
      * @return void
      **/
-    private function invoke (callable $directCallback = null, qcEvents_Promise $childPromise = null) {
+    private function invoke (callable $directCallback = null, Promise $childPromise = null) {
       // Store that we were called
       if ($directCallback || $childPromise)
         $this->promiseStatus |= $this::STATUS_FORWARDED;
@@ -776,12 +762,12 @@
         
         try {
           $resultValues = call_user_func_array ($directCallback, $this->result);
-        } catch (Throwable $errorException) {
+        } catch (\Throwable $errorException) {
           $resultType = $this::STATUS_REJECTED;
           $resultValues = $errorException;
         }
         
-        $resultValues = ($resultValues instanceof qcEvents_Promise_Solution ? $resultValues->getArgs () : array ($resultValues));
+        $resultValues = ($resultValues instanceof Promise\Solution ? $resultValues->getParameters () : [ $resultValues ]);
       } else {
         $resultType = ($this->promiseStatus & 0x0F);
         $resultValues = $this->result;
@@ -800,20 +786,20 @@
     /**
      * Register callbacks for promise-fullfillment
      * 
-     * @param callable $resolve (optional)
-     * @param callable $reject (optional)
+     * @param callable $fullfillCallback (optional)
+     * @param callable $rejectionCallback (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Promise
      **/
-    public function then (callable $resolve = null, callable $reject = null) {
+    public function then (callable $fullfillCallback = null, callable $rejectionCallback = null) : Promise {
       // Create an empty promise
       $childPromise = new self (null, $this->eventBase);
       
       // Check if we are not already done
       if ((($this->promiseStatus & 0x0F) == $this::STATUS_PENDING) || !$this->resetCallbacks) {
-        $this->callbacks [$this::STATUS_FULLFILLED][] = array ($resolve, $childPromise);
-        $this->callbacks [$this::STATUS_REJECTED][] = array ($reject, $childPromise);
+        $this->callbacks [$this::STATUS_FULLFILLED][] = [ $fullfillCallback, $childPromise ];
+        $this->callbacks [$this::STATUS_REJECTED][] = [ $rejectionCallback, $childPromise ];
         
         if (($this->promiseStatus & 0x0F) == $this::STATUS_PENDING)
           return $childPromise;
@@ -821,11 +807,11 @@
       
       // Check if we were fullfilled
       if (($this->promiseStatus & 0x0F) == $this::STATUS_FULLFILLED)
-        $this->invoke ($resolve, $childPromise);
+        $this->invoke ($fullfillCallback, $childPromise);
       
       // Check if we were rejected
       elseif (($this->promiseStatus & 0x0F) == $this::STATUS_REJECTED)
-        $this->invoke ($reject, $childPromise);
+        $this->invoke ($rejectionCallback, $childPromise);
       
       // Return a promise
       return $childPromise;
@@ -836,13 +822,13 @@
     /**
      * Register a callback for exception-handling
      * 
-     * @param callable $callback
+     * @param callable $rejectionCallback
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Promise
      **/
-    public function catch (callable $callback) {
-      return $this->then (null, $callback);
+    public function catch (callable $rejectionCallback) : Promise {
+      return $this->then (null, $rejectionCallback);
     }
     // }}}
     
@@ -850,42 +836,28 @@
     /**
      * Register a callback that is always fired when the promise has settled
      * 
-     * @param callable $callback
+     * @param callable $finalCallback
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Promise
      **/
-    public function finally (callable $callback) {
+    public function finally (callable $finalCallback) : Promise {
       return $this->then (
-        function () use ($callback) {
+        function () use ($finalCallback) {
           // Invoke the callback
-          call_user_func ($callback);
+          call_user_func ($finalCallback);
           
           // Forward all parameters
-          return new qcEvents_Promise_Solution (func_get_args ());
+          return new Promise\Solution (func_get_args ());
         },
-        function () use ($callback) {
+        function () use ($finalCallback) {
           // Invoke the callback
-          call_user_func ($callback);
+          call_user_func ($finalCallback);
           
           // Forward all parameters
-          throw new qcEvents_Promise_Solution (func_get_args ());
+          throw new Promise\Solution (func_get_args ());
         }
       );
     }
     // }}}
   }
-  
-  class qcEvents_Promise_Solution extends Exception {
-    private $args = array ();
-    
-    function __construct (array $Args) {
-      $this->args = $Args;
-    }
-    
-    public function getArgs () {
-      return $this->args;
-    }
-  }
-
-?>

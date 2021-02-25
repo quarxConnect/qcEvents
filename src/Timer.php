@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Timer Promise
-   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Timer Promise
+   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,18 +18,20 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Promise.php');
+  declare (strict_types=1);
+  
+  namespace quarxConnect\Events;
   
   /**
    * Timer Event
    * -----------
    * Event-Object for timed tasks
    * 
-   * @class qcEvents_Timer
-   * @package qcEvents
+   * @class Timer
+   * @package quarxConnect\Events
    * @revision 02
    **/
-  class qcEvents_Timer extends qcEvents_Promise {
+  class Timer extends Promise {
     /* Interval for this timer */
     private $Interval = 1.00;
     
@@ -40,14 +42,14 @@
     /**
      * Create a new timer
      * 
-     * @param qcEvents_Base $eventBase
+     * @param Base $eventBase
      * @param float $Interval
      * @param bool $Repeat
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Base $eventBase, $Interval, $Repeat = false) {
+    function __construct (Base $eventBase, $Interval, $Repeat = false) {
       // Store our settings
       $this->Interval = (float)$Interval;
       $this->Repeat = !!$Repeat;
@@ -115,7 +117,7 @@
     // {{{ run
     /**
      * Run the timer
-     * This function is intended to be executed exclusively by qcEvents_Base.
+     * This function is intended to be executed exclusively by Base.
      * 
      * @access public
      * @return void
@@ -173,5 +175,3 @@
     }
     // }}}
   }
-
-?>

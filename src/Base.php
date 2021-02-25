@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Event-Loop
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Event-Loop
+   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,54 +18,55 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Promise.php');
-  require_once ('qcEvents/Timer.php');
+  declare (strict_types=1);
   
-  class qcEvents_Base {
+  namespace quarxConnect\Events;
+  
+  class Base {
     /* Event-Types */
-    const EVENT_READ = 0;
-    const EVENT_WRITE = 1;
-    const EVENT_ERROR = 2;
-    const EVENT_TIMER = 3;
+    public const EVENT_READ = 0;
+    public const EVENT_WRITE = 1;
+    public const EVENT_ERROR = 2;
+    public const EVENT_TIMER = 3;
     
     /* All events of this base */
-    private $Events = array ();
+    private $Events = [ ];
     
     /* Stored FDs for event-loop */
-    private $readFDs = array ();
-    private $writeFDs = array ();
-    private $errorFDs = array ();
-    private $fdOwner = array ();
+    private $readFDs = [ ];
+    private $writeFDs = [ ];
+    private $errorFDs = [ ];
+    private $fdOwner = [ ];
     
     /* Pending forced events */
-    private $forcedEvents = array ();
+    private $forcedEvents = [ ];
     
     /* Timer-Events */
-    private $Timers = array ();
+    private $Timers = [ ];
     private $TimerNext = null;
     
     /* Loop-State */
-    const LOOP_STATE_IDLE = -1;
-    const LOOP_STATE_ACTIVE = 0;
-    const LOOP_STATE_ONCE = 1;
-    const LOOP_STATE_BREAK = 2;
+    private const LOOP_STATE_IDLE = -1;
+    private const LOOP_STATE_ACTIVE = 0;
+    private const LOOP_STATE_ONCE = 1;
+    private const LOOP_STATE_BREAK = 2;
     
-    private $loopState = qcEvents_Base::LOOP_STATE_IDLE;
+    private $loopState = Base::LOOP_STATE_IDLE;
     
     // {{{ singleton
     /**
      * Create a single instance of this class
      * 
      * @access public
-     * @return qcEvents_Base
+     * @return Base
      **/
-    public static function singleton () {
-      static $Singleton = null;
+    public static function singleton () : Base {
+      static $primaryInstance = null;
       
-      if (!$Singleton)
-        $Singleton = new static ();
+      if (!$primaryInstance)
+        $primaryInstance = new static ();
       
-      return $Singleton;
+      return $primaryInstance;
     }
     // }}}
     
@@ -79,23 +80,23 @@
      **/
     public function __debugInfo () : array {
       // Append state to result
-      static $stateMap = array (
+      static $stateMap = [
         self::LOOP_STATE_IDLE   => 'Idle',
         self::LOOP_STATE_ACTIVE => 'Active',
         self::LOOP_STATE_ONCE   => 'Once',
         self::LOOP_STATE_BREAK  => 'Break in Active/Once',
-      );
+      ];
       
-      $Result = array (
-        'loopState' => (isset ($stateMap [$this->loopState]) ? $stateMap [$this->loopState] : 'Unknown (' . $this->loopState . ')'),
+      $Result = [
+        'loopState' => ($stateMap [$this->loopState]) ?? : 'Unknown (' . $this->loopState . ')'),
         'watchedReads' => count ($this->readFDs),
         'watchedWrites' => count ($this->writeFDs),
         'watchedErrors' => count ($this->errorFDs),
-      );
+      ];
       
       // Append events to result
       if (count ($this->Events) > 0) {
-        $registeredEvents = array ();
+        $registeredEvents = [ ];
         
         foreach ($this->Events as $registeredEvent)
           if (method_exists ($registeredEvent, '__debugInfo'))
@@ -110,23 +111,23 @@
       
       // Append timers to result
       if (count ($this->Timers) > 0) {
-        $registeredTimers = array ();
+        $registeredTimers = [ ];
         
         foreach ($this->Timers as $secTimers)
           foreach ($secTimers as $usecTimers)
             $registeredTimers = array_merge ($registeredTimers, array_values ($usecTimers));
         
         $Result ['registeredTimers'] = $registeredTimers;
-        $Result ['nextTimerScheduledAt'] = array ('sec' => $this->TimerNext [0], 'usec' => $this->TimerNext [1]);
+        $Result ['nextTimerScheduledAt'] = [ 'sec' => $this->TimerNext [0], 'usec' => $this->TimerNext [1] ];
       }
       
       // Append forced events to result
       if (count ($this->forcedEvents) > 0) {
-        $forcedEvents = array ();
+        $forcedEvents = [ ];
         
         foreach ($this->forcedEvents as $forcedEvent)
           if (is_array ($forcedEvent) && (count ($forcedEvent) == 2))
-            $forcedEvents [] = array ((is_object ($forcedEvent [0]) ? get_class ($forcedEvent [0]) : $forcedEvent [0]), $forcedEvent [1]);
+            $forcedEvents [] = [ (is_object ($forcedEvent [0]) ? get_class ($forcedEvent [0]) : $forcedEvent [0]), $forcedEvent [1] ];
           elseif ($forcedEvent instanceof Closure)
             $forcedEvents [] = (function_exists ('spl_object_id') ? 'Closure#' . spl_object_id ($forcedEvent) : 'Closure@' . spl_object_hash ($forcedEvent));
           else
@@ -143,14 +144,14 @@
     /**
      * Add an event to our event-loop
      * 
-     * @param qcEvents_Interface_Loop $Event
+     * @param Interface\Loop $Event
      * 
      * @access public
      * @return bool
      **/
-    public function addEvent (qcEvents_Interface_Loop $Event) {
+    public function addEvent (Interface\Loop $Event) {
       // Check if the event is already assigned to an event-loop
-      if (is_object ($Base = $Event->getEventBase ()) && ($Base instanceof qcEvents_Base)) {
+      if (is_object ($Base = $Event->getEventBase ()) && ($Base instanceof Base)) {
         if ($Base !== $this)
           $Base->removeEvent ($Event);
         
@@ -173,12 +174,12 @@
     /**
      * Update the FDs of an event
      * 
-     * @param qcEvents_Interface_Loop $Event
+     * @param Interface\Loop $Event
      * 
      * @access public
      * @return bool
      **/
-    public function updateEvent (qcEvents_Interface_Loop $Event) {
+    public function updateEvent (Interface\Loop $Event) {
       // Check if this event is on our collection
       if (($Index = array_search ($Event, $this->Events, true)) === false)
         return false;
@@ -213,10 +214,12 @@
     /**
      * Remove an event from this event-loop
      * 
+     * @param Interface\Loop $Event
+     * 
      * @access public
      * @return void
      **/
-    public function removeEvent (qcEvents_Interface_Loop $Event) {
+    public function removeEvent (Interface\Loop $Event) {
       // Check if this event is on our collection
       if (($Index = array_search ($Event, $this->Events, true)) === false)
         return false;
@@ -234,12 +237,12 @@
     /**
      * Check if we have a given event registered
      * 
-     * @param qcEvents_Interface_Loop $Event
+     * @param Interface\Loop $Event
      * 
      * @access public
      * @return bool
      **/
-    public function haveEvent (qcEvents_Interface_Loop $Event) {
+    public function haveEvent (Interface\Loop $Event) {
       return in_array ($Event, $this->Events, true);
     }
     // }}}
@@ -288,19 +291,19 @@
     /**
      * Force the raise of a given event on next iteration of event-loop
      * 
-     * @param qcEvents_Interface_Loop $Event
+     * @param Interface\Loop $Event
      * @param enum $evType
      * 
      * @access public
      * @return bool
      **/
-    public function forceEventRaise (qcEvents_Interface_Loop $Event, $evType) {
+    public function forceEventRaise (Interface\Loop $Event, $evType) {
       if ($evType == self::EVENT_READ)
-        $this->forcedEvents [] = array ($Event, 'raiseRead');
+        $this->forcedEvents [] = [ $Event, 'raiseRead' ];
       elseif ($evType == self::EVENT_WRITE)
-        $this->forcedEvents [] = array ($Event, 'raiseWrite');
+        $this->forcedEvents [] = [ $Event, 'raiseWrite' ];
       elseif ($evType == self::EVENT_ERROR)
-        $this->forcedEvents [] = array ($Event, 'raiseError');
+        $this->forcedEvents [] = [ $Event, 'raiseError' ];
       else
         return false;
       
@@ -330,10 +333,10 @@
      * @param bool $Repeat (optional)
      * 
      * @access public
-     * @return qcEvents_Timer Timer-Promise is fullfilled once the timeout was reached and never rejected
+     * @return Timer Timer-Promise is fullfilled once the timeout was reached and never rejected
      **/
-    public function addTimeout ($Timeout, $Repeat = false) : qcEvents_Timer {
-      return new qcEvents_Timer ($this, $Timeout, $Repeat);
+    public function addTimeout ($Timeout, $Repeat = false) : Timer {
+      return new Timer ($this, $Timeout, $Repeat);
     }
     // }}}
     
@@ -341,12 +344,12 @@
     /**
      * Setup a new timer
      * 
-     * @param qcEvents_Timer $Timer
+     * @param Timer $Timer
      * 
      * @access public
      * @return bool TRUE if the timer was added, FALSE if Timer is already on queue
      **/
-    public function addTimer (qcEvents_Timer $Timer) {
+    public function addTimer (Timer $Timer) {
       // Check if the timer is already enqueue
       foreach ($this->Timers as $sTime=>$Timers)
         foreach ($Timers as $uTime=>$Instances)
@@ -372,11 +375,11 @@
       
       // Enqueue the event
       if (!isset ($this->Timers [$Then [0]])) {
-        $this->Timers [$Then [0]] = array ($Then [1] => array ($Timer));
+        $this->Timers [$Then [0]] = [ $Then [1] => [ $Timer ] ];
         
         ksort ($this->Timers, SORT_NUMERIC);
       } elseif (!isset ($this->Timers [$Then [0]][$Then [1]])) {
-        $this->Timers [$Then [0]][$Then [1]] = array ($Timer);
+        $this->Timers [$Then [0]][$Then [1]] = [ $Timer ];
         
         ksort ($this->Timers [$Then [0]], SORT_NUMERIC);
       } else
@@ -396,12 +399,12 @@
     /**
      * Remove a pending timer
      * 
-     * @param qcEvents_Timer $Timer
+     * @param Timer $Timer
      * 
      * @access public
      * @return bool True if the timer was really removed
      **/
-    public function clearTimer (qcEvents_Timer $Timer) {
+    public function clearTimer (Timer $Timer) {
       $Found = false;
       
       foreach ($this->Timers as $Second=>$Timers) {
@@ -462,7 +465,7 @@
       do {
         // Run forced events first
         $evForced = $this->forcedEvents;
-        $this->forcedEvents = array ();
+        $this->forcedEvents = [ ];
         
         foreach ($evForced as $ev) {
           $this->invoke ($ev);
@@ -526,7 +529,7 @@
         
         foreach ($readFDs as $readFD) {
           if (isset ($this->fdOwner [(int)$readFD]))
-            $this->invoke (array ($this->fdOwner [(int)$readFD], 'raiseRead'));
+            $this->invoke ([ $this->fdOwner [(int)$readFD], 'raiseRead' ]);
           
           if ($this->loopState == self::LOOP_STATE_BREAK)
             break (2);
@@ -534,7 +537,7 @@
         
         foreach ($writeFDs as $writeFD) {
           if (isset ($this->fdOwner [(int)$writeFD]))
-            $this->invoke (array ($this->fdOwner [(int)$writeFD], 'raiseWrite'));
+            $this->invoke ([ $this->fdOwner [(int)$writeFD], 'raiseWrite' ]);
           
           if ($this->loopState == self::LOOP_STATE_BREAK)
             break (2);
@@ -542,7 +545,7 @@
         
         foreach ($errorFDs as $errorFD) {
           if (isset ($this->fdOwner [(int)$errorFD]))
-            $this->invoke (array ($this->fdOwner [(int)$errorFD], 'raiseError'), $errorFD);
+            $this->invoke ([ $this->fdOwner [(int)$errorFD], 'raiseError' ], $errorFD);
           
           if ($this->loopState == self::LOOP_STATE_BREAK)
             break (2);
@@ -593,7 +596,7 @@
     private function getTimer () {
       $Now = gettimeofday ();
       
-      return array ($Now ['sec'], $Now ['usec']);
+      return [ $Now ['sec'], $Now ['usec'] ];
     }
     // }}}
     
@@ -627,7 +630,7 @@
               (($this->TimerNext [0] == $Current [0]) || ($this->TimerNext [0] > $Second))) {
             reset ($this->Timers);
             
-            $this->TimerNext = array (key ($this->Timers), key ($Timers));
+            $this->TimerNext = [ key ($this->Timers), key ($Timers) ];
           }
           
           break;
@@ -667,10 +670,10 @@
               ($this->TimerNext [1] == $Current [1])) {
         reset ($this->Timers);
         
-        $this->TimerNext = array (
+        $this->TimerNext = [
           key ($this->Timers),
           key (current ($this->Timers))
-        );
+        ];
       }
     }
     // }}}
@@ -693,7 +696,7 @@
       // Try to run
       try {
         $Result = call_user_func_array ($Callback, $Parameters);
-      } catch (Throwable $errorException) {
+      } catch (\Throwable $errorException) {
         error_log ('Uncought' . $errorException);
         
         $Result = $errorException;
@@ -704,5 +707,3 @@
     }
     // }}}
   }
-
-?>
