@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Abstract/Dummy Source
-   * Copyright (C) 2015 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Abstract/Dummy Source
+   * Copyright (C) 2015-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,13 +18,13 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Abstract/Pipe.php');
-  require_once ('qcEvents/Interface/Source.php');
-  require_once ('qcEvents/Trait/Parented.php');
-  require_once ('qcEvents/Promise.php');
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events\Abstract;
+  use quarxConnect\Events;
   
-  class qcEvents_Abstract_Source extends qcEvents_Abstract_Pipe implements qcEvents_Interface_Source {
-    use qcEvents_Trait_Parented;
+  class Source extends Pipe implements Events\Interface\Source {
+    use Events\Trait\Based;
     
     /* Local buffer of abstract source */
     private $Buffer = '';
@@ -42,12 +42,12 @@
     /**
      * Create a new abstract source
      * 
-     * @param qcEvents_Base $eventBase (optional)
+     * @param Events\Base $eventBase (optional)
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Base $eventBase = null) {
+    function __construct (Events\Base $eventBase = null) {
       if ($eventBase)
         $this->setEventBase ($eventBase);
     }
@@ -183,16 +183,16 @@
      * Close this event-interface
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function close () : qcEvents_Promise {
+    public function close () : Events\Promise {
       if (!$this->closed) {
         $this->closed = true;
         $this->___callback ('eventClosed');
         $this->Buffer = '';
       }
       
-      return qcEvents_Promise::resolve ();
+      return Events\Promise::resolve ();
     }
     // }}}
     
@@ -234,5 +234,3 @@
     protected function eventClosed () { }
     // }}}
   }
-
-?>
