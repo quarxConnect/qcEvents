@@ -558,10 +558,10 @@
         return;
       
       // Push this rejection to log
-      if (defined ('QCEVENTS_THROW_UNHANDLED_REJECTIONS') && QCEVENTS_THROW_UNHANDLED_REJECTIONS)
+      if (defined ('\\QCEVENTS_THROW_UNHANDLED_REJECTIONS') && \QCEVENTS_THROW_UNHANDLED_REJECTIONS)
         throw $this->result [0];
       
-      if (!defined ('QCEVENTS_LOG_REJECTIONS') || QCEVENTS_LOG_REJECTIONS)
+      if (!defined ('\\QCEVENTS_LOG_REJECTIONS') || \QCEVENTS_LOG_REJECTIONS)
         error_log ('Unhandled rejection: ' . $this->result [0]);
     }
     // }}}
@@ -698,7 +698,7 @@
         if (count ($result) == 0)
           $result [] = new \exception ('Empty rejection');
         elseif (!($result [0] instanceof \Throwable))
-          $result [0] = new \exception ($result [0]);
+          $result [0] = new \exception ((string)$result [0]);
       }
       
       // Store the result

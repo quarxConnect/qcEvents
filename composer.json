@@ -12,6 +12,11 @@
             "role" : "Developer"
         }
     ],
+    "scripts" : {
+        "test" : [
+            "phpunit tests"
+        ]
+    },
     "require" : {
         "php" : ">=7.3.0",
         "psr/event-dispatcher" : "^1.0"

@@ -47,13 +47,33 @@
      * 
      * @see qcEvents_Synchronizer::__invoke()
      * @access public
-     * @return mixed
+     * @return mixed The first parameter returned
      **/
     public static function do () {
       static $Syncronizer = null;
       
       if ($Syncronizer === null)
         $Syncronizer = new static (static::RESULT_FIRST);
+      
+      return call_user_func_array ($Syncronizer, func_get_args ());
+    }
+    // }}}
+    
+    // {{{ doAsArray
+    /**
+     * Just a static alias for qcEvents_Synchronizer::__invoke()
+     * 
+     * @param ...
+     * 
+     * @see qcEvents_Synchronizer::__invoke()
+     * @access public
+     * @return array
+     **/
+    public static function doAsArray () {
+      static $Syncronizer = null;
+      
+      if ($Syncronizer === null)
+        $Syncronizer = new static (static::RESULT_AS_ARRAY);
       
       return call_user_func_array ($Syncronizer, func_get_args ());
     }

@@ -329,14 +329,17 @@
     /**
      * Enqueue a timeout
      * 
-     * @param mixed $Timeout The timeout to wait (may be in seconds or array (seconds, microseconds))
-     * @param bool $Repeat (optional)
+     * @param mixed $timerDuration The timeout to wait (may be in seconds or array (seconds, microseconds))
+     * @param bool $timerRepeat (optional)
      * 
      * @access public
      * @return Timer Timer-Promise is fullfilled once the timeout was reached and never rejected
      **/
-    public function addTimeout ($Timeout, $Repeat = false) : Timer {
-      return new Timer ($this, $Timeout, $Repeat);
+    public function addTimeout ($timerDuration, $timerRepeat = false) : Timer {
+      if (is_array ($timerDuration))
+        $timerDuration = $timerDuration [0] + $timerDuration [1] / 1000000;
+      
+      return new Timer ($this, $timerDuration, $timerRepeat);
     }
     // }}}
     
