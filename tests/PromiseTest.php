@@ -5,8 +5,6 @@
   use PHPUnit\Framework\TestCase;
   use quarxConnect\Events;
   
-  define ('QCEVENTS_THROW_UNHANDLED_REJECTIONS', true);
-
   final class PromiseTest extends TestCase {
     public function testSimpleFullfillment () : void {
       $eventBase = Events\Base::singleton ();
