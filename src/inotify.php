@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - inotify-Event-Handler
-   * Copyright (C) 2012 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - inotify-Event-Handler
+   * Copyright (C) 2012-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,59 +18,59 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events;
+  
   // Make sure the inotify-extension was loaded
   if (!extension_loaded ('inotify') && (!function_exists ('dl') || !@dl ('inotify.so'))) {
-    trigger_error ('inotify-extension not loaded', E_USER_WARNING);
+    trigger_error ('inotify-extension not loaded', \E_USER_WARNING);
     
     return;
   }
-  
-  require_once ('qcEvents/Interface/Loop.php');
-  require_once ('qcEvents/Trait/Parented.php');
-  require_once ('qcEvents/Hookable.php');
   
   /**
    * inotify
    * -------
    * Event-Handler to monitor inode-changes
    * 
-   * @class qcEvents_inotify
-   * @package qcEvents
+   * @class inotify
+   * @package quarxConnect\Events
    * @revision 02
    **/
-  class qcEvents_inotify extends qcEvents_Hookable implements qcEvents_Interface_Loop {
-    use qcEvents_Trait_Parented {
+  class inotify extends Hookable implements Interface\Loop {
+    use Trait\Parented {
       setEventBase as private traitSetEventBase;
       unsetEventBase as private traitUnsetEventBase;
     }
     
     /* File-Operations */
-    const MASK_ACCESS = 1; // File was accessed (read)
-    const MASK_MODIFY = 2; // File was modified
-    const MASK_ATTRIB = 4; // Metadata of file was changed
-    const MASK_CLOSE_WRITE = 8; // Write-Handle was closed
-    const MASK_CLOSE_READ = 16; // Read-Handle was closed
-    const MASK_OPEN = 32; // File was openend
-    const MASK_DELETE = 1024; // Watched file or directory was removed
-    const MASK_MOVE = 2048; // Watched file or directory was moved
+    public const MASK_ACCESS = 1; // File was accessed (read)
+    public const MASK_MODIFY = 2; // File was modified
+    public const MASK_ATTRIB = 4; // Metadata of file was changed
+    public const MASK_CLOSE_WRITE = 8; // Write-Handle was closed
+    public const MASK_CLOSE_READ = 16; // Read-Handle was closed
+    public const MASK_OPEN = 32; // File was openend
+    public const MASK_DELETE = 1024; // Watched file or directory was removed
+    public const MASK_MOVE = 2048; // Watched file or directory was moved
     
     /* File-Meta-Operations */
-    const MASK_CLOSE = 24; // qcEvents_inotify::MASK_CLOSE_WRITE | qcEvents_inotify::MASK_CLOSE_READ;
+    public const MASK_CLOSE = 24; // qcEvents_inotify::MASK_CLOSE_WRITE | qcEvents_inotify::MASK_CLOSE_READ;
     
     /* Directory-Operations */
-    const MASK_MOVE_FROM = 64; // File was moved out of watched directory
-    const MASK_MOVE_TO = 128; // File was moved into watched directory
-    const MASK_CREATE = 256; // File was created in watched directory
-    const MASK_REMOVE = 512; // File was removed from watched directory
+    public const MASK_MOVE_FROM = 64; // File was moved out of watched directory
+    public const MASK_MOVE_TO = 128; // File was moved into watched directory
+    public const MASK_CREATE = 256; // File was created in watched directory
+    public const MASK_REMOVE = 512; // File was removed from watched directory
     
     /* Directory-Meta-Operations */
-    const MASK_MOVE_ANY = 192; // qcEvents_inotify::MASK_MOVE_FROM | qcEvents_inotify::MASK_MOVE_TO;
+    public const MASK_MOVE_ANY = 192; // qcEvents_inotify::MASK_MOVE_FROM | qcEvents_inotify::MASK_MOVE_TO;
     
     /* Meta-Operations */
-    const MASK_ALL = 4095; // Watch all events
+    public const MASK_ALL = 4095; // Watch all events
     
     private static $inotifyGenerations = 0;
-    private static $inotifyEvents = array ();
+    private static $inotifyEvents = [ ];
     
     // Internal inotify-handle
     private $inotify = null;
@@ -89,14 +89,14 @@
     /**
      * Create a new inotify-Handler for a given path
      * 
-     * @param qcEvents_Base $Base
+     * @param Base $Base
      * @param string $Path
      * @param int $Mask (optional) Type of events to watch
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Base $Base, $Path, $Mask = self::MASK_ALL) {
+    function __construct (Base $Base, $Path, $Mask = self::MASK_ALL) {
       // Store the mask
       $this->inotifyMask = $Mask;
       
@@ -202,7 +202,7 @@
       
       // Scan existing events for inotify
       foreach ($eventBase->getEvents () as $Event)
-        if (($Event instanceof qcEvents_inotify) && is_resource ($Event->inotify)) {
+        if (($Event instanceof inotify) && is_resource ($Event->inotify)) {
           $this->inotify = $Event->inotify;
           $this->inotifyGeneration = $Event->inotifyGeneration;
           
@@ -260,7 +260,7 @@
      * @access public
      * @return void  
      **/
-    public function setEventBase (qcEvents_Base $eventBase) {
+    public function setEventBase (Base $eventBase) {
       // Check if anything changed
       if ($this->getEventBase () === $eventBase)
         return;
@@ -522,5 +522,3 @@
     protected function fileMove ($Name, $Cookie) { }
     // }}}
   }
-
-?>
