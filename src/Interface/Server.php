@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Interface for Servers
-   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Interface for Servers
+   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,9 +18,12 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Interface/Hookable.php');
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events\Interface;
+  use quarxConnect\Events;
   
-  interface qcEvents_Interface_Server extends qcEvents_Interface_Hookable {
+  interface Server extends Hookable {
     // {{{ setChildClass
     /**
      * Set class to use for incoming connections
@@ -88,9 +91,9 @@
      * Close this event-interface
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function close () : qcEvents_Promise;
+    public function close () : Events\Promise;
     // }}}
     
     
@@ -131,13 +134,13 @@
     /**
      * Callback: A new client was created
      * 
-     * @param qcEvents_Socket $Client
+     * @param Events\Socket $Client
      * @param mixed $Consumer
      * 
      * @access protected
      * @return void
      **/
-    # protected function serverClientNew (qcEvents_Socket $Socket, $Consumer = null);
+    # protected function serverClientNew (Events\Socket $Socket, $Consumer = null);
     // }}}
     
     // {{{ serverClientClosed
@@ -145,13 +148,11 @@
      * Callback: Client-Connection was/will be closed
      * 
      * @param string $Remote
-     * @param qcEvents_Socket $Client
+     * @param Events\Socket $Client
      * 
      * @access protected
      * @return void
      **/
-    # protected function serverClientClosed ($Remote, qcEvents_Socket $Socket);
+    # protected function serverClientClosed ($Remote, Events\Socket $Socket);
     // }}}
   }
-
-?>
