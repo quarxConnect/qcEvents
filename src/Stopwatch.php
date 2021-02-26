@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Stopwatch
-   * Copyright (C) 2014-2020 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Stopwatch
+   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,7 +18,11 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  class qcEvents_Stopwatch {
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events;
+  
+  class Stopwatch {
     /* Overall generations */
     private static $generations = 0;
     
@@ -122,5 +126,3 @@
     }
     // }}}
   }
-
-?>
