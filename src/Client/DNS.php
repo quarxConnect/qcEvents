@@ -422,11 +422,11 @@
       // Add data depending on type
       switch ($Type) {
         case Stream\DNS\Message::TYPE_A:
-          $Result ['ip'] = $Record->getAddress ();
+          $Result ['ip'] = ($Record instanceof Stream\DNS\Record\A ? $Record->getAddress () : null);
           
           break;
         case Stream\DNS\Message::TYPE_AAAA:
-          $Result ['ipv6'] = substr ($Record->getAddress (), 1, -1);
+          $Result ['ipv6'] = ($Record instanceof Stream\DNS\Record\AAAA ? substr ($Record->getAddress (), 1, -1) : null);
           
           break;
         case Stream\DNS\Message::TYPE_NS:

@@ -25,6 +25,15 @@
         0,
         count ($dnsRecordset)
       );
+      
+      static $typeClasses = [
+        DNS\Message::TYPE_A    => DNS\Record\A::class,
+        DNS\Message::TYPE_AAAA => DNS\Record\AAAA::class,
+      ];
+      
+      foreach ($dnsRecordset as $dnsRecord)
+        if (isset ($typeClasses [$dnsType]))
+          $this->assertInstanceOf ($typeClasses [$dnsType], $dnsRecord);
     }
     
     /**

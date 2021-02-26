@@ -162,6 +162,7 @@
     public static function getTypeName ($typeNumber) {
       static $typeNames = [
         self::TYPE_A => 'A',
+        self::TYPE_AAAA => 'AAAA',
         self::TYPE_NS => 'NS',
         self::TYPE_MD => 'MD',
         self::TYPE_MF => 'MF',
