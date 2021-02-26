@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Asyncronous Process/Application I/O
-   * Copyright (C) 2012-2020 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Asyncronous Process/Application I/O
+   * Copyright (C) 2012-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,29 +18,30 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/IOStream.php');
-  require_once ('qcEvents/Defered.php');
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events;
   
   /**
    * Process
    * -------
    * Spawns a command (uni- or bi-directional) and waits for input
    * 
-   * @class qcEvents_Process
-   * @extends qcEvents_IOStream
-   * @package qcEvents
+   * @class Process
+   * @extends IOStream
+   * @package quarxConnect/Events
    * @revision 02
    **/
-  class qcEvents_Process extends qcEvents_IOStream {
+  class Process extends IOStream {
     /* Default size of read-buffer */
-    const READ_BUFFER = 40960;
+    protected const READ_BUFFER = 40960;
     
     /* Internal method to spawn a command */
-    const MODE_PROCOPEN = 1;
-    const MODE_POPEN = 2;
-    const MODE_FORKED = 3;
+    private const MODE_PROCOPEN = 1;
+    private const MODE_POPEN = 2;
+    private const MODE_FORKED = 3;
     
-    private $processMode = qcEvents_Process::MODE_PROCOPEN;
+    private $processMode = Process::MODE_PROCOPEN;
     
     /* Internal process-handle */
     private $Process = null;
@@ -60,14 +61,14 @@
     /**
      * Create an Event-Handler and spawn a process
      * 
-     * @param qcEvents_Base $eventBase
+     * @param Base $eventBase
      * @param string $commandName (optional)
      * @param array $commandParams (optional)
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Base $eventBase, $commandName = null, array $commandParams = null) {
+    function __construct (Base $eventBase, $commandName = null, array $commandParams = null) {
       // Set our handler
       $this->setEventBase ($eventBase);
       
@@ -108,10 +109,10 @@
      * @param array $commandParams (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Promise
      * @throws Error
      **/
-    public function spawnCommand ($commandName, array $commandParams = null) : qcEvents_Promise {
+    public function spawnCommand ($commandName, array $commandParams = null) : Promise {
       // Spawn using proc_open
       if (function_exists ('proc_open')) {
         // Try to spawn the command
@@ -122,27 +123,27 @@
         );
         
         if (!is_resource ($this->Process = proc_open ($this::toCommandline ($commandName, $commandParams), $Descriptors, $Pipes)))
-          throw new Error ('Could not spawn command (proc_open)');
+          return Promise::reject ('Could not spawn command (proc_open)');
         
         $this->processMode = self::MODE_PROCOPEN;
         $this->exitCode = null;
         
         // Register FDs
         if (!$this->setStreamFDs ($Pipes [1], $Pipes [0]))
-          throw new Error ('Failed to set stream-fds');
+          return Promise::reject ('Failed to set stream-fds');
       
       // Spawn using popen
       } elseif (function_exists ('popen')) {
         // Start the command
         if (!is_resource ($fd = popen ($this::toCommandline ($commandName, $commandParams), 'r')))
-          throw new Error ('Could not spawn command (popen)');
+          return Promise::reject ('Could not spawn command (popen)');
         
         $this->processMode = self::MODE_POPEN;
         $this->exitCode = null;
         
         // Register FDs
         if (!$this->setStreamFD ($fd))
-          throw new Error ('Failed to set stream-fd');
+          return Promise::reject ('Failed to set stream-fd');
       
       // Try to spawn forked
       } elseif (function_exists ('pcntl_fork')) {
@@ -163,7 +164,7 @@
           @unlink ($fifo_in);
           @unlink ($fifo_out);
           
-          throw new Error ('Failed to setup fifo');
+          return Promise::reject ('Failed to setup fifo');
         }
         
         // try to fork
@@ -174,7 +175,7 @@
           @unlink ($fifo_in);
           @unlink ($fifo_out);
           
-          throw new Error ('Failed to fork()');
+          return Promise::reject ('Failed to fork()');
         }
         
         // We are the child
@@ -225,13 +226,13 @@
           @unlink ($fifo_in);
           @unlink ($fifo_out);
           
-          throw new Error ('Failed to set stream-fds');
+          return Promise::reject ('Failed to set stream-fds');
         }
       } else
-        return qcEvents_Promise::reject ('Missing pcntl_fork()');
+        return Promise::reject ('Missing pcntl_fork()');
       
       // Create a new defered promise
-      $this->processPromise = new qcEvents_Defered ();
+      $this->processPromise = new Promise\Defered ();
       
       return $this->processPromise->getPromise ();
     }
@@ -245,9 +246,14 @@
      * @return void
      **/
     public function finishConsume () {
-      $this->addHook ('eventDrained', function () {
-        $this->closeWriter ();
-      }, null, true);
+      $this->addHook (
+        'eventDrained',
+        function () {
+          $this->closeWriter ();
+        },
+        null,
+        true
+      );
     }
     // }}}
     
@@ -462,5 +468,3 @@
     }
     // }}}
   }
-
-?>
