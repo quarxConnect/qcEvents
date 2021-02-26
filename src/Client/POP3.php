@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Asyncronous POP3 Client
-   * Copyright (C) 2015-2020 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Asyncronous POP3 Client
+   * Copyright (C) 2015-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,24 +18,24 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Hookable.php');
-  require_once ('qcEvents/Trait/Parented.php');
-  require_once ('qcEvents/Socket.php');
-  require_once ('qcEvents/Stream/POP3/Client.php');
-  require_once ('qcEvents/Promise.php');
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events\Client;
+  use quarxConnect\Events\Stream;
+  use quarxConnect\Events;
   
   /**
    * POP3 Client
    * -----------
    * Asynchronous POP3-Client
    * 
-   * @class qcEvents_Client_POP3
-   * @extends qcEvents_Hookable
-   * @package qcEvents
+   * @class POP3
+   * @extends Events\Hookable
+   * @package quarxConnect/Events
    * @revision 02
    **/
-  class qcEvents_Client_POP3 extends qcEvents_Hookable {
-    use qcEvents_Trait_Parented;
+  class POP3 extends Events\Hookable {
+    use Events\Trait\Based;
     
     /* Our underlying POP3-Stream */
     private $Stream = null;
@@ -44,12 +44,12 @@
     /**
      * Create a new POP3-Client
      * 
-     * @param qcEvents_Base $eventBase
+     * @param Events\Base $eventBase
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Base $eventBase) {
+    function __construct (Events\Base $eventBase) {
       $this->setEventBase ($eventBase);
     }
     // }}}
@@ -62,16 +62,17 @@
      * @param int $Port (optional)
      * @param string $Username (optional)
      * @param string $Password (optional)
+     * @param bool $requireTLS (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function connect ($Hostname, $Port = null, $Username = null, $Password = null) : qcEvents_Promise {
+    public function connect ($Hostname, $Port = null, $Username = null, $Password = null, $requireTLS = true) : Events\Promise {
       // Check wheter to close an active stream first
       if ($this->Stream)
         $waitPromise = $this->Stream->close ()->catch (function () { });
       else
-        $waitPromise = qcEvents_Promise::resolve ();
+        $waitPromise = Events\Promise::resolve ();
       
       // Determine which port to use
       if ($Port === null)
@@ -80,19 +81,23 @@
       return $waitPromise->then (
         function () use ($Hostname, $Port) {
           // Create a socket for the stream
-          $Socket = new qcEvents_Socket ($this->getEventBase ());
+          $Socket = new Events\Socket ($this->getEventBase ());
           
           // Try to connect to server
-          return $Socket->connect ($Hostname, $Port, qcEvents_Socket::TYPE_TCP)->then (
+          return $Socket->connect (
+            $Hostname,
+            $Port,
+            $Socket::TYPE_TCP
+          )->then (
             function () use ($Socket) {
               return $Socket;
             }
           );
         }
       )->then (
-        function (qcEvents_Socket $Socket) {
+        function (Events\Socket $Socket) {
           // Create a new POP3-Stream
-          $Stream = new qcEvents_Stream_POP3_Client;
+          $Stream = new Stream\POP3\Client ();
           
           // Connect both streams
           return $Socket->pipeStream ($Stream)->then (
@@ -102,15 +107,31 @@
           );
         }
       )->then (
-        function (qcEvents_Stream_POP3_Client $Stream) use ($Hostname, $Port, $Username, $Password, $Callback, $Private) {
+        function (Stream\POP3\Client $Stream) use ($requireTLS) {
+          if ($requireTLS === false)
+            return $Stream;
+          
+          return $Stream->startTLS ()->then (
+            function () use ($Stream) {
+              return $Stream;
+            },
+            function () use ($Stream, $requireTLS) {
+              if (!$requireTLS && !$Stream->haveCapability ('STLS'))
+                return $Stream;
+              
+              throw new Events\Promise\Solution (func_get_args ());
+            }
+          );
+        }
+      )->then (
+        function (Stream\POP3\Client $Stream) use ($Username, $Password) {
           // Check wheter to start authentication
           if (($Username === null) || ($Password === null)) {
             $this->setStream ($Stream);
             
-            return $this->___raiseCallback ($Callback, $Hostname, $Port, null, true, $Private);
+            return $Stream;
           }
           
-          # TODO: Negotiate TLS whenever possible (or requested)
           # TODO: Add support for APOP/SASL-Authentication
           
           return $Stream->login ($Username, $Password)->then (
@@ -120,7 +141,7 @@
           );
         }
       )->then (
-        function (qcEvents_Stream_POP3_Client $Stream) {
+        function (Stream\POP3\Client $Stream) {
           $this->setStream ($Stream);
         },
         function () {
@@ -134,7 +155,7 @@
           $this->___callback ('popConnectionFailed');
           
           // Forward the error
-          throw new qcEvents_Promise_Solution (func_get_args ());
+          throw new Events\Promise\Solution (func_get_args ());
         }
       );
     }
@@ -145,13 +166,13 @@
      * Retrive instance of our connected stream
      * 
      * @access private
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    private function getStream () : qcEvents_Promise {
+    private function getStream () : Events\Promise {
       if ($this->Stream)
-        return qcEvents_Promise::resolve ($this->Stream);
+        return Events\Promise::resolve ($this->Stream);
       
-      return qcEvents_Promise::reject ('Not connected to a stream');
+      return Events\Promise::reject ('Not connected to a stream');
     }
     // }}}
     
@@ -159,19 +180,19 @@
     /**
      * Setup a stream-handle for this client
      * 
-     * @param qcEvents_Stream_POP3_Client $Stream
+     * @param Stream\POP3\Client $Stream
      * 
      * @access private
      * @return void
      **/
-    private function setStream (qcEvents_Stream_POP3_Client $Stream) {
+    private function setStream (Stream\POP3\Client $Stream) {
       // Set the stream
       $this->Stream = $Stream;
       
       // Register hooks
       $Stream->addHook (
         'popStateChanged',
-        function (qcEvents_Stream_POP3_Client $Stream, $oldState, $newState) {
+        function (Stream\POP3\Client $Stream, $oldState, $newState) {
           if ($this->Stream === $Stream)
             $this->___callback ('popStateChanged', $oldState, $newState);
         }
@@ -179,7 +200,7 @@
       
       $Stream->addHook (
         'popDisconnected',
-        function (qcEvents_Stream_POP3_Client $Stream) {
+        function (Stream\POP3\Client $Stream) {
           if ($this->Stream !== $Stream)
             return;
           
@@ -189,7 +210,7 @@
       
       $Stream->addHook (
         'popCapabilities',
-        function (qcEvents_Stream_POP3_Client $Stream, $Capabilities) {
+        function (Stream\POP3\Client $Stream, $Capabilities) {
           if ($this->Stream === $Stream)
             $this->___callback ('popCapabilities', $Capabilities);
         }
@@ -197,7 +218,7 @@
       
       $Stream->addHook (
         'popAuthenticated',
-        function (qcEvents_Stream_POP3_Client $Stream, $Username) {
+        function (Stream\POP3\Client $Stream, $Username) {
           if ($this->Stream === $Stream)
             $this->___callback ('popAuthenticated', $Username);
         }
@@ -226,14 +247,10 @@
      * Retrive the capabilities from server
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function getCapabilities () : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) use ($Callback, $Private) {
-          return $popStream->getCapabilities ();
-        }
-      );
+    public function getCapabilities () : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -259,14 +276,10 @@
      * Try to enable encryption on this connection
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function startTLS () : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) {
-          return $popStream->startTLS ();
-        }
-      );
+    public function startTLS () : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -280,12 +293,8 @@
      * @access public
      * @return qcEvents_Promise
      **/
-    public function login ($Username, $Password) : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popClient) use ($Username, $Password) {
-          return $popClient->login ($Username, $Password);
-        }
-      );
+    public function login ($Username, $Password) : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -297,14 +306,10 @@
      * @param string $Password
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function apop ($Username, $Password) : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) use ($Username, $Password) {
-          return $popStream->apop ($Username, $Password);
-        }
-      );
+    public function apop ($Username, $Password) : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -316,14 +321,10 @@
      * @param string $Password
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function authenticate ($Username, $Password) : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) use ($Username, $Password) {
-          return $popStream->authenticate ($Username, $Password);
-        }
-      );
+    public function authenticate ($Username, $Password) : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -332,14 +333,10 @@
      * Retrive statistical data about this mailbox
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function stat () : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) {
-          return $popStream->stat ();
-        }
-      );
+    public function stat () : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -350,14 +347,10 @@
      * @param int $Index
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function messageSize ($Index) : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) use ($Index) {
-          return $popStream->messageSize ($Index);
-        }
-      );
+    public function messageSize ($Index) : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -366,14 +359,10 @@
      * Retrive the sizes of all messages
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function messageSizes () : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) {
-          return $popStream->messageSizes ();
-        }
-      );
+    public function messageSizes () : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -384,14 +373,10 @@
      * @param int $Index
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function getUID ($Index) : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) use ($Index) {
-          return $popStream->getUID ($Index);
-        }
-      );
+    public function getUID ($Index) : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -400,14 +385,10 @@
      * Retrive the UIDs of all messages
      *  
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function getUIDs () : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) {
-          return $popStream->getUIDs ();
-        }
-      );
+    public function getUIDs () : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -418,14 +399,10 @@
      * @param int $Index
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function getMessage ($Index) : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) use ($Index) {
-          return $popStream->getMessage ($Index);
-        }
-      );
+    public function getMessage ($Index) : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -437,14 +414,10 @@
      * @param int $Lines
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function getMessageLines ($Index, $Lines) : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) use ($Index, $Lines) {
-          return $popStream->getMessageLines ($Index, $Lines);
-        }
-      );
+    public function getMessageLines ($Index, $Lines) : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -455,14 +428,10 @@
      * @param int $Index
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function deleteMessage ($Index) : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) use ($Index) {
-          return $popStream->deleteMessage ($Index);
-        }
-      );
+    public function deleteMessage ($Index) : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -471,14 +440,10 @@
      * Merely keep the connection alive
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function noOp () : qcEvents_Promise {
-      return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) {
-          return $popStream->noOp ();
-        }
-      );
+    public function noOp () : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
     
@@ -487,12 +452,31 @@
      * Reset Message-Flags
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function reset () : qcEvents_Promise {
+    public function reset () : Events\Promise {
+      return $this->wrapClientCall (__FUNCTION__, func_get_args ());
+    }
+    // }}}
+    
+    // {{{ wrapClientCall
+    /**
+     * Forward a call to this client to our stream
+     * 
+     * @param string $functionName
+     * @param array $functionParameters
+     * 
+     * @access private
+     * @return Events\Promise
+     **/
+    private function wrapClientCall ($functionName, array $functionParameters) : Events\Promise {
       return $this->getStream ()->then (
-        function (qcEvents_Stream_POP3_Client $popStream) {
-          return $popStream->reset ();
+        function (Stream\POP3\Client $popStream)
+        use ($functionName, $functionParameters) {
+          return call_user_func_array (
+            [ $popStream, $functionName],
+            $functionParameters
+          );
         }
       );
     }
@@ -503,11 +487,11 @@
      * Close the POP3-Connection
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function close () : qcEvents_Promise {
+    public function close () : Events\Promise {
       if (!$this->Stream)
-        return qcEvents_Promise::resolve ();
+        return Events\Promise::resolve ();
       
       $Stream = $this->Stream;
       $this->Stream = null;
@@ -594,5 +578,3 @@
     protected function popAuthenticated ($Username) { }
     // }}}
   }
-
-?>
