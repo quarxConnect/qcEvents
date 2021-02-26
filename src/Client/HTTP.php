@@ -363,7 +363,7 @@
           // Fire the callbacks
           $this->___callback ('httpRequestResult', $Request, $Header, $Body);
           
-          return new Promise\Solution ([ $Body, $Header, $Request ]);
+          return new Events\Promise\Solution ([ $Body, $Header, $Request ]);
         }
       );
     }

@@ -330,7 +330,7 @@
       # TODO: Add support for full URIs
       
       // Store the URI
-      $this->URI = $URL ['path'] . (isset ($URL ['query']) && ($URL ['query'] !== null) ? '?' . $URL ['query'] : '');
+      $this->URI = ($URL ['path'] ?? '/') . (isset ($URL ['query']) && ($URL ['query'] !== null) ? '?' . $URL ['query'] : '');
       
       // Setup host-entry
       if (!isset ($URL ['host']) || ($URL ['host'] === null)) {

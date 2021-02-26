@@ -386,7 +386,7 @@
      * @return bool
      **/
     public function hasBody () {
-      return ((strlen ($this->Body) > 0) || parent::hasBody ());
+      return ((strlen ($this->Body ?? '') > 0) || parent::hasBody ());
     }
     // }}}
     
