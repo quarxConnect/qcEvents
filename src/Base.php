@@ -500,7 +500,7 @@
           $Now = $this->getTimer ();
           
           // Return the wait-time
-          $usecs = max (1, (($this->TimerNext [0] - $Now [0]) * 1000000) + ($this->TimerNext [1] - $Now [1]));
+          $usecs = (int)max (1, (($this->TimerNext [0] - $Now [0]) * 1000000) + ($this->TimerNext [1] - $Now [1]));
         } else
           $usecs = 5000000;
         
@@ -516,10 +516,10 @@
           if ($this->loopState == self::LOOP_STATE_ACTIVE)
             usleep ($usecs);
         } else {
-          $secs = floor ($usecs / 1000000);
+          $secs = (int)floor ($usecs / 1000000);
           $usecs -= $secs * 1000000;
           
-          $Count = stream_select ($readFDs, $writeFDs, $errorFDs, (int)$secs, (int)$usecs);
+          $Count = stream_select ($readFDs, $writeFDs, $errorFDs, $secs, $usecs);
         }
         
         // Check for pending signals
