@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Websocket Message
-   * Copyright (C) 2017 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Websocket Message
+   * Copyright (C) 2017-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,9 +18,16 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Abstract/Source.php');
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events\Stream\Websocket;
+  use \quarxConnect\Events\Stream;
+  use \quarxConnect\Events;
   
-  class qcEvents_Stream_Websocket_Message extends qcEvents_Abstract_Source {
+  class Message extends Events\Abstract\Source {
+    /* Default opcode for messages */
+    protected const MESSAGE_OPCODE = 0x00;
+    
     /* Websocket-Stream assigned to this message */
     private $Stream = null;
     
@@ -34,19 +41,19 @@
     /**
      * Create a new Websocket-Message with a handler-class suitable for $Opcode
      * 
-     * @param qcEvents_Stream_Websocket $Stream
+     * @param Stream\Websocket $Stream
      * @param int $Opcode
      * 
      * @access public
-     * @return qcEvents_Stream_Websocket_Message
+     * @return Message
      **/
-    public static function factory (qcEvents_Stream_Websocket $Stream, $Opcode) {
-      if ($Opcode == qcEvents_Stream_Websocket_Close::MESSAGE_OPCODE)
-        $Class = 'qcEvents_Stream_Websocket_Close';
-      elseif ($Opcode == qcEvents_Stream_Websocket_Ping::MESSAGE_OPCODE)
-        $Class = 'qcEvents_Stream_Websocket_Ping';
-      elseif ($Opcode == qcEvents_Stream_Websocket_Pong::MESSAGE_OPCODE)
-        $Class = 'qcEvents_Stream_Websocket_Pong';
+    public static function factory (Stream\Websocket $Stream, int $Opcode) : Message {
+      if ($Opcode == Close::MESSAGE_OPCODE)
+        $Class = Close::class;
+      elseif ($Opcode == Ping::MESSAGE_OPCODE)
+        $Class = Ping::class;
+      elseif ($Opcode == Pong::MESSAGE_OPCODE)
+        $Class = Pong::class;
       else
         $Class = get_called_class ();
       
@@ -58,16 +65,16 @@
     /**
      * Create a new Websocket-Message
      * 
-     * @param qcEvents_Stream_Websocket $Stream
-     * @param int $Opcode
+     * @param Stream\Websocket $Stream
+     * @param int $Opcode (optional)
      * @param string $Payload (optional)
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Stream_Websocket $Stream, $Opcode, $Payload = null) {
+    function __construct (Stream\Websocket $Stream, int $Opcode = null, string $Payload = null) {
       # $this->Stream = $Stream;
-      $this->Opcode = $Opcode;
+      $this->Opcode = $Opcode ?? self::MESSAGE_OPCODE;
       
       // Collect all pending data on close
       $this->once ('eventClosed')->then (
@@ -92,11 +99,11 @@
      * @return array
      **/
     function __debugInfo () {
-      return array (
+      return [
         'Opcode' => $this->Opcode,
         'Closed' => $this->isClosed (),
         'Buffer' => $this->Buffer,
-      );
+      ];
     }
     // }}}
     
@@ -107,8 +114,8 @@
      * @access public
      * @return bool
      **/
-    public function isControlMessage () {
-      return (($this->Opcode & qcEvents_Stream_Websocket::OPCODE_CONTROL_MASK) == qcEvents_Stream_Websocket::OPCODE_CONTROL_MASK);
+    public function isControlMessage () : bool {
+      return (($this->Opcode & Stream\Websocket::OPCODE_CONTROL_MASK) == Stream\Websocket::OPCODE_CONTROL_MASK);
     }
     // }}}
     
@@ -119,7 +126,7 @@
      * @access public
      * @return int
      **/
-    public function getOpcode () {
+    public function getOpcode () : int {
       return $this->Opcode;
     }
     // }}}
@@ -131,7 +138,7 @@
      * @access public
      * @return string
      **/
-    public function getData () {
+    public function getData () : string {
       if ($this->isClosed () && ($this->Buffer !== null))
         return $this->Buffer;
       
@@ -139,10 +146,3 @@
     }
     // }}}
   }
-  
-  // Load well-known message-classes
-  require_once ('qcEvents/Stream/Websocket/Close.php');
-  require_once ('qcEvents/Stream/Websocket/Ping.php');
-  require_once ('qcEvents/Stream/Websocket/Pong.php');
-
-?>

@@ -286,30 +286,30 @@
      * 
      * @param Stream\HTTP\Header $Request
      * @param Stream\HTTP\Header $Response
-     * @param string $Body (optional)
+     * @param string $responseBody (optional)
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function httpdSetResponse (Stream\HTTP\Header $Request, Stream\HTTP\Header $Response, string $Body = null) : Events\Promise {
+    public function httpdSetResponse (Stream\HTTP\Header $Request, Stream\HTTP\Header $Response, string $responseBody = null) : Events\Promise {
       // Check if the given request matches the current one
       if ($Request !== $this->Request)
         return Events\Promise::reject ('Request is not active');
       
       // Set length of content
-      $Response->setField ('Content-Length', strlen ($Body));
+      $Response->setField ('Content-Length', strlen ($responseBody ?? ''));
       
       // Write out the response
       return $this->httpHeaderWrite ($Response)->then (
-        function () use ($Body) {
+        function () use ($responseBody) {
           // Make sure we may write to our source (should never fail)
           if (!is_object ($Source = $this->getPipeSource ()) ||
               !($Source instanceof Events\Interface\Sink))
             throw new \exception ('Source is not writeable');
           
           // Write out the body
-          if ($Body !== null)
-            return $Source->write ($Body);
+          if ($responseBody !== null)
+            return $Source->write ($responseBody);
           
           return true;
         }
@@ -363,12 +363,12 @@
      * Write futher data for a given request
      * 
      * @param Stream\HTTP\Header $Request
-     * @param string $Body
+     * @param string $responseBody
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function httpdWriteResponse (Stream\HTTP\Header $Request, string $Body) : Events\Promise {
+    public function httpdWriteResponse (Stream\HTTP\Header $Request, string $responseBody) : Events\Promise {
       // Check if the given request matches the current one
       if ($Request !== $this->Request)
         return Events\Promise::reject ('Request is not active');
@@ -381,9 +381,9 @@
         return Events\Promise::reject ('Source is not writable');
       
       if ($this->Response->getVersion () < 1.1)
-        return $Source->write ($Body);
+        return $Source->write ($responseBody);
       else
-        return $Source->mwrite (dechex (strlen ($Body)), "\r\n", $Body, "\r\n");
+        return $Source->write (sprintf ("%x\r\n%s\r\n", strlen ($responseBody), $responseBody));
     }
     // }}}
     
@@ -542,18 +542,18 @@
      * Internal Callback: HTTP-Request was received
      * 
      * @param Stream\HTTP\Header $Header
-     * @param string $Body (optional)
+     * @param string $requestBody (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected final function httpdRequestReady (Stream\HTTP\Header $Header, string $Body = null) : void {
+    protected final function httpdRequestReady (Stream\HTTP\Header $Header, string $requestBody = null) : void {
       // Discard the header if it is not a request
       if (!$Header->isRequest ())
         return;
       
       // Enqueue the request
-      $this->Requests [] = [ $Header, $Body ];
+      $this->Requests [] = [ $Header, $requestBody ];
       
       // Dispatch the queue
       $this->httpdDispatchQueue ();
@@ -724,11 +724,11 @@
      * @remark This is only called once, if another request wasn't finished yet new requests are queued
      * 
      * @param Stream\HTTP\Header $Header
-     * @param string $Body
+     * @param string $requestBody
      * 
      * @access protected
      * @return void
      **/
-    protected function httpdRequestReceived (Stream\HTTP\Header $Header, string $Body = null) : void { }
+    protected function httpdRequestReceived (Stream\HTTP\Header $Header, string $requestBody = null) : void { }
     // }}}
   }

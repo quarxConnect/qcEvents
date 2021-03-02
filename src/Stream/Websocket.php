@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Websocket-Stream
-   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Websocket-Stream
+   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,26 +18,25 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Hookable.php');
-  require_once ('qcEvents/Stream/HTTP/Request.php');
-  require_once ('qcEvents/Stream/Websocket/Message.php');
-  require_once ('qcEvents/Interface/Stream/Consumer.php');
-  require_once ('qcEvents/Promise.php');
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events\Stream;
+  use \quarxConnect\Events;
   
-  class qcEvents_Stream_Websocket extends qcEvents_Hookable implements qcEvents_Interface_Stream_Consumer {
+  class Websocket extends Events\Hookable implements Events\Interface\Stream\Consumer {
     /* Known frame-opcodes */
-    const OPCODE_CONTINUE = 0x00;
-    const OPCODE_TEXT = 0x01;
-    const OPCODE_BINARY = 0x02;
-    const OPCODE_CLOSE = 0x08;
-    const OPCODE_PING = 0x09;
-    const OPCODE_PONG = 0x0A;
+    public const OPCODE_CONTINUE = 0x00;
+    public const OPCODE_TEXT = 0x01;
+    public const OPCODE_BINARY = 0x02;
+    public const OPCODE_CLOSE = 0x08;
+    public const OPCODE_PING = 0x09;
+    public const OPCODE_PONG = 0x0A;
     
-    const OPCODE_CONTROL_MASK = 0x08;
+    public const OPCODE_CONTROL_MASK = 0x08;
     
     /* Type of websocket-endpoint */
-    const TYPE_CLIENT = 0;
-    const TYPE_SERVER = 1;
+    public const TYPE_CLIENT = 0;
+    public const TYPE_SERVER = 1;
     
     /* Nonce for connection-setup */
     private static $Nonce = 0x00000000;
@@ -49,7 +48,7 @@
     private $Start = null;
     
     /* Type of this endpoint */
-    private $Type = qcEvents_Stream_Websocket::TYPE_CLIENT;
+    private $Type = Websocket::TYPE_CLIENT;
     
     /* URI for this endpoint (in client-mode) */
     private $URI = null;
@@ -73,7 +72,7 @@
     private $writeMessage = null;
     
     /* Queue for messages being written */
-    private $writeMessages = array ();
+    private $writeMessages = [ ];
     
     // {{{ __construct
     /**
@@ -87,7 +86,7 @@
      * @access friendly
      * @return void
      **/
-    function __construct ($Type = self::TYPE_CLIENT, array $Protocols = null, $URI = null, $Origin = null) {
+    function __construct (int $Type = self::TYPE_CLIENT, array $Protocols = null, string $URI = null, string $Origin = null) {
       $this->Type = $Type;
       $this->Protocols = $Protocols;
       $this->URI = $URI;
@@ -102,7 +101,7 @@
      * @access public
      * @return string
      **/
-    public function getURI () {
+    public function getURI () : ?string {
       return $this->URI;
     }
     // }}}
@@ -114,14 +113,12 @@
      * @param string $URI
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function setURI ($URI) {
+    public function setURI ($URI) : void {
       # TODO: Make sure we are not connected yet
       
       $this->URI = $URI;
-      
-      return true;
     }
     // }}}
     
@@ -130,12 +127,12 @@
      * Consume a set of data
      * 
      * @param mixed $Data
-     * @param qcEvents_Interface_Source $Source
+     * @param Events\Interface\Source $Source
      * 
      * @access public
      * @return void
      **/
-    public function consume ($Data, qcEvents_Interface_Source $Source) {
+    public function consume ($Data, Events\Interface\Source $Source) : void {
       // Validate the source
       if ($Source !== $this->Stream)
         return;
@@ -267,7 +264,7 @@
      * @access private
      * @return bool
      **/
-    private function receiveFrame ($Opcode, $Finished, $Payload, $Length) {
+    private function receiveFrame (int $Opcode, bool $Finished, string $Payload, int $Length) : bool {
       // Sanity-Check Control-Frames
       if (($Opcode & $this::OPCODE_CONTROL_MASK) == $this::OPCODE_CONTROL_MASK) {
         // Control-frames MUST NOT be fragmented
@@ -295,12 +292,12 @@
         }
         
         // Create a new message
-        $Message = $this->readMessage = qcEvents_Stream_Websocket_Message::factory ($this, $Opcode);
+        $Message = $this->readMessage = Websocket\Message::factory ($this, $Opcode);
         $this->___callback ('websocketMessageStart', $Message);
       
       // Create an unfragmented message
       } elseif (!$this->readMessage && $Finished) {
-        $Message = qcEvents_Stream_Websocket_Message::factory ($this, $Opcode);
+        $Message = Websocket\Message::factory ($this, $Opcode);
         $this->___callback ('websocketMessageStart', $Message);
       
       // Update framgented message
@@ -322,7 +319,7 @@
       
       // Check if an message has finished
       if (!$Finished)
-        return;
+        return true;
       
       // Tell the message that it won't receive further data
       $Message->close ();
@@ -331,16 +328,18 @@
       $this->___callback ('websocketMessage', $Message);
       
       // Process special messages
-      if ($Message instanceof qcEvents_Stream_Websocket_Ping) {
-        $Response = new qcEvents_Stream_Websocket_Pong ($this, $Message->getData ());
+      if ($Message instanceof Websocket\Ping) {
+        $Response = new Websocket\Pong ($this, $Message->getData ());
         
         $this->sendMessage ($Response);
-      } elseif ($Message instanceof qcEvents_Stream_Websocket_Close)
-        $this->sendMessage (new qcEvents_Stream_Websocket_Close ($this))->then (
+      } elseif ($Message instanceof Websocket\Close)
+        $this->sendMessage (new Websocket\Close ($this))->then (
           function () {
             $this->close ();
           }
         );
+      
+      return true;
     }
     // }}}
     
@@ -348,12 +347,12 @@
     /**
      * Write out a message to the remote peer
      * 
-     * @param qcEvents_Stream_Websocket_Message $Message
+     * @param Websocket\Message $Message
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function sendMessage (qcEvents_Stream_Websocket_Message $Message) : qcEvents_Promise {
+    public function sendMessage (Websocket\Message $Message) : Events\Promise {
       // Make sure we may write out messages
       if (($this->Start === null) && $this->Stream) {
         // Check if the message contains complete buffered data
@@ -373,10 +372,10 @@
       }
       
       // Create a new promise
-      return new qcEvents_Promise (
+      return new Events\Promise (
         function (callable $resolve, callable $reject) use ($Message) {
           // Push message to queue
-          $this->writeMessages [] = array ($Message, $resolve, $reject);
+          $this->writeMessages [] = [ $Message, $resolve, $reject ];
           
           // Check wheter to send pending messages
           $this->sendPendingMessage ();
@@ -392,7 +391,7 @@
      * @access private
      * @return void
      **/
-    private function sendPendingMessage () {
+    private function sendPendingMessage () : void {
       // Check if we may send a pending message
       if ($this->writeMessage)
         return;
@@ -416,49 +415,67 @@
         $this->writeMessage = null;
         
         // Try again
-        return $this->sendPendingMessage ();
+        $this->sendPendingMessage ();
+        
+        return;
       }
       
       // Register hooks on message
       $Written = $Closed = false;
       
-      $this->writeMessage [0]->addHook ('eventReadable', function (qcEvents_Stream_Websocket_Message $Message) use (&$Written, &$Closed) {
-        // Check if we are already closed (should never become true)
-        if ($Closed) {
-          trigger_error ('Attempt to forward on closed message');
+      $this->writeMessage [0]->addHook (
+        'eventReadable',
+        function (Websocket\Message $Message) use (&$Written, &$Closed) {
+          // Check if we are already closed (should never become true)
+          if ($Closed) {
+            trigger_error ('Attempt to forward on closed message');
+            
+            return;
+          }
           
-          return;
+          // Forward to the wire
+          if ($Closed = $Message->isClosed ())
+            $this->sendFrame (
+              ($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()),
+              $Message->read (),
+              true
+            )->then (
+              $this->writeMessage [1],
+              $this->writeMessage [2]
+            );
+          else
+            $this->sendFrame (($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()), $Message->read (), false);
+          
+          // Mark as written
+          $Written = true;
         }
-        
-        // Forward to the wire
-        if ($Closed = $Message->isClosed ())
-          $this->sendFrame (($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()), $Message->read (), true)->then (
-            $this->writeMessage [1],
-            $this->writeMessage [2]
-          );
-        else
-          $this->sendFrame (($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()), $Message->read (), false);
-        
-        // Mark as written
-        $Written = true;
-      });
+      );
       
-      $this->writeMessage [0]->addHook ('eventClosed', function (qcEvents_Stream_Websocket_Message $Message) use (&$Written, &$Closed) {
-        // Forward to the wire
-        if (!$Closed)
-          $this->sendFrame (($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()), $Message->getData (), true)->then (
-            $this->writeMessage [1],
-            $this->writeMessage [2]
-          );
-        
-        $Closed = true;
-        
-        // Release current message
-        $this->writeMessage = null;
-        
-        // Check if there are pending messages
-        $this->sendPendingMessage ();
-      }, null, true);
+      $this->writeMessage [0]->addHook (
+        'eventClosed',
+        function (Websocket\Message $Message) use (&$Written, &$Closed) {
+          // Forward to the wire
+          if (!$Closed)
+            $this->sendFrame (
+              ($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()),
+              $Message->getData (),
+              true
+            )->then (
+              $this->writeMessage [1],
+              $this->writeMessage [2]
+            );
+          
+          $Closed = true;
+          
+          // Release current message
+          $this->writeMessage = null;
+          
+          // Check if there are pending messages
+          $this->sendPendingMessage ();
+        },
+        null,
+        true
+      );
       
       // Make sure read-events are raised
       $this->writeMessage [0]->watchRead (true);
@@ -474,12 +491,12 @@
      * @param bool $Finish
      * 
      * @access private
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    private function sendFrame ($Opcode, $Payload, $Finish) : qcEvents_Promise {
+    private function sendFrame (int $Opcode, string $Payload, bool $Finish) : Events\Promise {
       // Make sure we have a stream assigned
       if (!$this->Stream)
-        return qcEvents_Promise::reject ('Not connected to a stream');
+        return Events\Promise::reject ('Not connected to a stream');
       
       // Retrive the length of payload
       $Length = strlen ($Payload);
@@ -498,7 +515,7 @@
       
       // Append Mask-Key
       if ($this->Type == $this::TYPE_CLIENT) {
-        $Frame .= $maskKey = substr (md5 (rand (), true), 0, 4);
+        $Frame .= $maskKey = substr (md5 ((string)rand (), true), 0, 4);
         
         for ($i = 0; $i < $Length; $i++)
           $Payload [$i] = $Payload [$i] ^ $maskKey [$i % 4];
@@ -519,13 +536,13 @@
      * Close this event-interface
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function close () : qcEvents_Promise {
+    public function close () : Events\Promise {
       $this->___callback ('eventClosed');
       
       # TODO
-      return qcEvents_Promise::resolve ();
+      return Events\Promise::resolve ();
     }
     // }}}
     
@@ -533,13 +550,15 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param qcEvents_Interface_Source $Source
+     * @param Events\Interface\Source $Source
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
-      if ($this->Type == $this::TYPE_SERVER) {
+    public function initStreamConsumer (Events\Interface\Stream $Source) : Events\Promise {
+      // Check if we are server or a handshake isn't needed
+      if (($this->Type == $this::TYPE_SERVER) ||
+          ($this->URI === null)) {
         // Register the source
         $this->Stream = $Source;
         $this->Start = null;
@@ -548,26 +567,13 @@
         $this->___callback ('websocketConnected');
         $this->___callback ('eventPipedStream', $Source);
         
-        return qcEvents_Promise::resolve ();
-      }
-      
-      // Check if we should generate a handshake
-      if ($this->URI === null) {
-        // Register the source
-        $this->Stream = $Source;
-        $this->Start = null;
-        
-        // Raise events
-        $this->___callback ('websocketConnected');
-        $this->___callback ('eventPipedStream', $Source);
-        
-        return qcEvents_Promise::resolve ();
+        return Events\Promise::resolve ();
       }
       
       // Create a new HTTP-Request for the Upgrade
       $Nonce = base64_encode (pack ('JJ', time (), self::$Nonce++));
       
-      $Request = new qcEvents_Stream_HTTP_Request (array (
+      $Request = new HTTP\Request ([
         'GET ' . $this->URI . ' HTTP/1.1',
         'Host: ' . $Source->getRemoteHost (),
         'Connection: Upgrade',
@@ -575,7 +581,7 @@
         'Sec-WebSocket-Version: 13',
         'Sec-WebSocket-Key: ' . $Nonce,
         # 'Sec-WebSocket-Extensions: permessage-deflate',
-      ));
+      ]);
       
       if ($this->Origin !== null)
         $Request->setField ('Origin', $this->Origin);
@@ -598,10 +604,10 @@
           $this->___callback ('websocketFailed');
           
           // Forward the error
-          throw new qcEvents_Promise_Solution (func_get_args ());
+          throw new Events\Promise\Solution (func_get_args ());
         }
       )->then (
-        function (qcEvents_Stream_HTTP_Header $Header)
+        function (HTTP\Header $Header)
         use ($Source, $Request, $Nonce) {
           // Unpipe request from source
           return $Source->unpipe ($Request)->then (
@@ -624,7 +630,7 @@
               if (!$Success) {
                 $this->___callback ('websocketFailed');
 
-                throw new exception ('Failed to negotiate websocket-connection');
+                throw new \Exception ('Failed to negotiate websocket-connection');
               }
 
               // Store the header as start
@@ -647,12 +653,12 @@
     /**
      * Callback: A source was removed from this consumer
      * 
-     * @param qcEvents_Interface_Source $Source
+     * @param Events\Interface\Source $Source
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
+    public function deinitConsumer (Events\Interface\Source $Source) : Events\Promise {
       // Check if the source is our stream
       if ($this->Stream === $Source) {
         // Remove reference to stream
@@ -663,7 +669,7 @@
       }
       
       // Return a resolved promise
-      return qcEvents_Promise::resolve ();
+      return Events\Promise::resolve ();
     }
     // }}}
     
@@ -672,24 +678,24 @@
     /**
      * Callback: A stream was attached to this consumer
      * 
-     * @param qcEvents_Interface_Stream $Source
+     * @param Events\Interface\Stream $Source
      * 
      * @access protected
      * @return void
      **/
-    protected function eventPipedStream (qcEvents_Interface_Stream $Source) { }
+    protected function eventPipedStream (Events\Interface\Stream $Source) : void { }
     // }}}
     
     // {{{ eventUnpiped
     /**
      * Callback: A source was removed from this consumer
      * 
-     * @param qcEvents_Interface_Source $Source
+     * @param Events\Interface\Source $Source
      * 
      * @access protected
      * @return void
      **/
-    protected function eventUnpiped (qcEvents_Interface_Source $Source) { }
+    protected function eventUnpiped (Events\Interface\Source $Source) : void { }
     // }}}
     
     // {{{ eventReadable
@@ -699,23 +705,60 @@
      * @access protected
      * @return void
      **/
-    protected function eventReadable () { }
+    protected function eventReadable () : void { }
     // }}}
     
     // {{{ eventClosed
     /**
      * Callback: The interface was closed
      * 
-     * @access public
+     * @access protected
      * @return void
      **/
-    protected function eventClosed () { }
+    protected function eventClosed () : void { }
     // }}}
     
-    protected function websocketConnected () { }
-    protected function websocketFailed () { }
-    protected function websocketMessageStart (qcEvents_Stream_Websocket_Message $Message) { }
-    protected function websocketMessage (qcEvents_Stream_Websocket_Message $Message) { }
+    // {{{ websocketConnected
+    /**
+     * Callback: Websocket-Connection was negotiated
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function websocketConnected () : void { }
+    // }}}
+    
+    // {{{ websocketFailed
+    /**
+     * Callback: Failed to negotiate Websocket-Connection
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function websocketFailed () : void { }
+    // }}}
+    
+    // {{{ websocketMessageStart
+    /**
+     * Callback: A new Websocket-message has been started receiving
+     * 
+     * @param Websocket\Message $websocketMessage
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function websocketMessageStart (Websocket\Message $websocketMessage) : void { }
+    // }}}
+    
+    // {{{ websocketMessage
+    /**
+     * Callback: A Websocket-Message was completely received
+     * 
+     * @param Websocket\Message $websocketMessage
+     * 
+     * @access protected
+     * @return void
+     **/
+    protected function websocketMessage (Websocket\Message $websocketMessage) : void { }
+    // }}}
   }
-
-?>

@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Websocket PONG-Message
-   * Copyright (C) 2017 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Websocket PONG-Message
+   * Copyright (C) 2017-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,27 +18,13 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Stream/Websocket/Message.php');
-  
-  class qcEvents_Stream_Websocket_Pong extends qcEvents_Stream_Websocket_Message {
-    /* Opcode for this message-class */
-    const MESSAGE_OPCODE = 0x0A;
-    
-    // {{{ __construct
-    /**
-     * Create a new PONG-Message
-     * 
-     * @param qcEvents_Stream_Websocket $Stream
-     * @param string $Payload (optional)
-     * 
-     * @access friendly
-     * @return void
-     **/
-    function __construct (qcEvents_Stream_Websocket $Stream, $Payload = null) {
-      // Initialize at out parent
-      parent::__construct ($Stream, $this::MESSAGE_OPCODE, $Payload);
-    }
-    // }}}
-  }
+  declare (strict_types=1);
 
-?>
+  namespace quarxConnect\Events\Stream\Websocket;
+  use \quarxConnect\Events\Stream;
+  use \quarxConnect\Events;
+  
+  class Pong extends Message {
+    /* Opcode for this message-class */
+    protected const MESSAGE_OPCODE = 0x0A;
+  }
