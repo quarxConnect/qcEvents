@@ -87,12 +87,12 @@
       $Method = array_shift ($Args);
       
       // Prepare the request
-      $Request = array (
+      $Request = [
         'jsonrpc' => ($this->Version == self::VERSION_2000 ? '2.0' : '1.0'),
         'id' => strval (microtime (true)),
         'method' => $Method,
         'params' => $Args,
-      );
+      ];
       
       if ($this->Version < self::VERSION_2000)
         unset ($Request ['jsonrpc']);
@@ -103,19 +103,19 @@
       return $this->Pool->request (
         $this->EndpointURL,
         'POST',
-        array (
+        [
           'Content-Type' => 'application/json',
           'Connection' => 'close',
-        ),
+        ],
         json_encode ($Request),
         !$this->forceOpportunisticAuthentication
       )->then (
         function ($responseBody, Events\Stream\HTTP\Header $responseHeader, Events\Stream\HTTP\Request $lastRequest) {
           // Check for server-error
-          static $statusCodeMap = array (
+          static $statusCodeMap = [
             401 => JSONRPC\Error::CODE_RESPONSE_INVALID_AUTH,
             404 => JSONRPC\Error::CODE_RESPONSE_METHOD_NOT_FOUND,
-          );
+          ];
           
           if ($responseHeader->isError ())
             throw new JSONRPC\Error ($statusCodeMap [$responseHeader->getStatus ()] ?? JSONRPC\Error::CODE_RESPONSE_SERVER_ERROR);

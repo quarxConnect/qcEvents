@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - HTTP-Server Implementation
-   * Copyright (C) 2014 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - HTTP-Server Implementation
+   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,22 +18,23 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Promise.php');
-  require_once ('qcEvents/File.php');
-  require_once ('qcEvents/Stream/HTTP.php');
-  require_once ('qcEvents/Stream/HTTP/Request.php');
-  require_once ('qcEvents/Stream/Websocket.php');
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events\Server;
+  use \quarxConnect\Events;
+  use \quarxConnect\Events\Stream;
   
   /**
    * HTTP-Server
    * -----------
    * HTTP-Request Handler (server)
    * 
-   * @class qcEvents_Socket_Server_HTTP
-   * @package qcEvents
+   * @class HTTP
+   * @extends Events\Stream\HTTP
+   * @package \quarxConnect\Events
    * @revision 03
    **/
-  class qcEvents_Server_HTTP extends qcEvents_Stream_HTTP {
+  class HTTP extends Stream\HTTP {
     /* Maximum numbers of requests for this connection */
     private $maxRequestCount = 50;
     
@@ -47,7 +48,7 @@
     private $RequestBody = null;
     
     /* Queued requests */
-    private $Requests = array ();
+    private $Requests = [ ];
     
     /* Our Response-Headers */
     private $Response = null;
@@ -70,7 +71,7 @@
      **/
     function __construct () {
       // Set the header-class
-      $this->setHeaderClass ('qcEvents_Stream_HTTP_Request');
+      $this->setHeaderClass (Stream\HTTP\Request::class);
     }
     // }}}
     
@@ -78,18 +79,18 @@
     /**
      * Answer this request using a file from filesystem
      * 
-     * @param qcEvents_Stream_HTTP_Request $Request Request to serve
+     * @param Stream\HTTP\Request $Request Request to serve
      * @param string $Directory Document-Root-Directory to serve the file from
      * @param bool $allowSymlinks (optional) Allow symlinks to files outside the document-root
-     * @param qcEvents_Stream_HTTP_Header $Response (optional)
+     * @param Stream\HTTP\Header $Response (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function serveFromFilesystem (qcEvents_Stream_HTTP_Request $Request, $Directory, $allowSymlinks = false, qcEvents_Stream_HTTP_Header $Response = null) : qcEvents_Promise {
+    public function serveFromFilesystem (Stream\HTTP\Request $Request, string $Directory, bool $allowSymlinks = false, Stream\HTTP\Header $Response = null) : Events\Promise {
       // Make sure we have a response-header
       if (!$Response)
-        $Response = new qcEvents_Stream_HTTP_Header (array ('HTTP/1.1 500 Internal server error'));
+        $Response = new Stream\HTTP\Header ([ 'HTTP/1.1 500 Internal server error' ]);
       
       $Response->setVersion ($Request->getVersion (true));
       
@@ -114,7 +115,7 @@
         $URI = substr ($URI, 1);
       
       // Remove pseudo-elements from URL
-      $Path = array ();
+      $Path = [ ];
       
       foreach (explode ('/', $URI) as $Segment)
         if ($Segment == '.')
@@ -163,10 +164,10 @@
       
       if (!method_exists ($Source, 'getEventBase') ||
           !is_object ($Base = $Source->getEventBase ()))
-        $Base = qcEvents_Base::singleton ();
+        $Base = Events\Base::singleton ();
       
       // Try to read the file
-      return qcEvents_File::readFileContents ($Base, $Path)->then (
+      return Events\File::readFileContents ($Base, $Path)->then (
         function ($Content) use ($Path, $Request, $Response) {
           // Set a proper status
           $Response->setStatus (200);
@@ -224,32 +225,32 @@
     /**
      * Upgrade a pending request to a websocket-connection
      * 
-     * @param qcEvents_Stream_HTTP_Request $Request
+     * @param Stream\HTTP\Request $Request
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function upgradeToWebsocket (qcEvents_Stream_HTTP_Request $Request) : qcEvents_Promise {
+    public function upgradeToWebsocket (Stream\HTTP\Request $Request) : Events\Promise {
       // Make sure the request is valid for a Websocket-Upgrade
       if ($Request->getField ('Upgrade') != 'websocket')
-        return qcEvents_Promise::reject ('Missing or invalid Upgrade-Header');
+        return Events\Promise::reject ('Missing or invalid Upgrade-Header');
       
       if (!in_array ('Upgrade', explode (',', str_replace (' ', '', $Request->getField ('Connection')))))
-        return qcEvents_Promise::reject ('Missing Upgrade-Token on Connection-Header');
+        return Events\Promise::reject ('Missing Upgrade-Token on Connection-Header');
       
       if (!($Nonce = $Request->getField ('Sec-WebSocket-Key')))
-        return qcEvents_Promise::reject ('Missing Sec-WebSocket-Key-Header');
+        return Events\Promise::reject ('Missing Sec-WebSocket-Key-Header');
       
       if ($Request->getField ('Sec-WebSocket-Version') != 13)
-        return qcEvents_Promise::reject ('Invalud WebSocket-Version');
+        return Events\Promise::reject ('Invalud WebSocket-Version');
       
       // Preapre response-header
-      $Response = new qcEvents_Stream_HTTP_Header (array (
+      $Response = new Stream\HTTP\Header ([
         'HTTP/' . $Request->getVersion (true) . ' 101 Switch protocols',
         'Upgrade: websocket',
         'Connection: Upgrade',
         'Sec-WebSocket-Accept: ' . base64_encode (sha1 ($Nonce . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true)),
-      ));
+      ]);
       
       // Send out the response
       return $this->httpdSetResponse (
@@ -264,7 +265,7 @@
           return $Stream->unpipe ($this)->catch (function () { })->then (
             function () use ($Stream) {
               // Create a new websocket
-              $Websocket = new qcEvents_Stream_Websocket (qcEvents_Stream_Websocket::TYPE_SERVER);
+              $Websocket = new Stream\Websocket (Stream\Websocket::TYPE_SERVER);
               
               // Pipe the stream to the new socket
               return $Stream->pipeStream ($Websocket)->then (
@@ -283,17 +284,17 @@
     /**
      * Finish a request within a single transmission
      * 
-     * @param qcEvents_Stream_HTTP_Header $Request
-     * @param qcEvents_Stream_HTTP_Header $Response
+     * @param Stream\HTTP\Header $Request
+     * @param Stream\HTTP\Header $Response
      * @param string $Body (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function httpdSetResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response, $Body = null) : qcEvents_Promise {
+    public function httpdSetResponse (Stream\HTTP\Header $Request, Stream\HTTP\Header $Response, string $Body = null) : Events\Promise {
       // Check if the given request matches the current one
       if ($Request !== $this->Request)
-        return qcEvents_Promise::reject ('Request is not active');
+        return Events\Promise::reject ('Request is not active');
       
       // Set length of content
       $Response->setField ('Content-Length', strlen ($Body));
@@ -303,8 +304,8 @@
         function () use ($Body) {
           // Make sure we may write to our source (should never fail)
           if (!is_object ($Source = $this->getPipeSource ()) ||
-              !($Source instanceof qcEvents_Interface_Sink))
-            throw new exception ('Source is not writeable');
+              !($Source instanceof Events\Interface\Sink))
+            throw new \exception ('Source is not writeable');
           
           // Write out the body
           if ($Body !== null)
@@ -328,20 +329,20 @@
     /**
      * Start a response for a given request
      * 
-     * @param qcEvents_Stream_HTTP_Header $Request
-     * @param qcEvents_Stream_HTTP_Header $Response
+     * @param Stream\HTTP\Header $Request
+     * @param Stream\HTTP\Header $Response
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function httpdStartResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Response) : qcEvents_Promise {
+    public function httpdStartResponse (Stream\HTTP\Header $Request, Stream\HTTP\Header $Response) : Events\Promise {
       // Check if the given request matches the current one
       if ($Request !== $this->Request)
-        return qcEvents_Promise::reject ('Request is not active');
+        return Events\Promise::reject ('Request is not active');
       
       // Check if headers are already sent
       if ($this->Response)
-        return qcEvents_Promise::reject ('Response-Headers already been sent');
+        return Events\Promise::reject ('Response-Headers already been sent');
       
       // Make sure the response-header is correct for this response
       if ($Response->getVersion () < 1.1) {
@@ -361,23 +362,23 @@
     /**
      * Write futher data for a given request
      * 
-     * @param qcEvents_Stream_HTTP_Header $Request
+     * @param Stream\HTTP\Header $Request
      * @param string $Body
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function httpdWriteResponse (qcEvents_Stream_HTTP_Header $Request, $Body) : qcEvents_Promise {
+    public function httpdWriteResponse (Stream\HTTP\Header $Request, string $Body) : Events\Promise {
       // Check if the given request matches the current one
       if ($Request !== $this->Request)
-        return qcEvents_Promise::reject ('Request is not active');
+        return Events\Promise::reject ('Request is not active');
       
       if (!$this->Response)
-        return qcEvents_Promise::reject ('Request-Headers have not been sent yet');
+        return Events\Promise::reject ('Request-Headers have not been sent yet');
       
       // Write out the chunk
-      if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Sink))
-        return qcEvents_Promise::reject ('Source is not writable');
+      if (!(($Source = $this->getPipeSource ()) instanceof Events\Interface\Sink))
+        return Events\Promise::reject ('Source is not writable');
       
       if ($this->Response->getVersion () < 1.1)
         return $Source->write ($Body);
@@ -390,22 +391,22 @@
     /**
      * Finish a given response
      * 
-     * @param qcEvents_Stream_HTTP_Header $Request
-     * @param qcEvents_Stream_HTTP_Header $Trailer (optional)
+     * @param Stream\HTTP\Header $Request
+     * @param Stream\HTTP\Header $Trailer (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function httpdFinishResponse (qcEvents_Stream_HTTP_Header $Request, qcEvents_Stream_HTTP_Header $Trailer = null) : qcEvents_Promise {
+    public function httpdFinishResponse (Stream\HTTP\Header $Request, Stream\HTTP\Header $Trailer = null) : Events\Promise {
       // Check if the given request matches the current one
       if ($Request !== $this->Request)
-        return qcEvents_Promise::reject ('Request is not active');
+        return Events\Promise::reject ('Request is not active');
       
       if (!$this->Response)
-        return qcEvents_Promise::reject ('Request-Headers have not been sent yet');
+        return Events\Promise::reject ('Request-Headers have not been sent yet');
       
-      if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Sink))
-        return qcEvents_Promise::reject ('Source is not writable');
+      if (!(($Source = $this->getPipeSource ()) instanceof Events\Interface\Sink))
+        return Events\Promise::reject ('Source is not writable');
       
       // Check for tailing header
       if (is_object ($Trailer)) {
@@ -438,7 +439,7 @@
      * @access private
      * @return void
      **/
-    private function httpdFinish () {
+    private function httpdFinish () : void {
       // Handle response-headers
       if ($this->Response &&
           $this->Response->hasField ('Connection') &&
@@ -461,7 +462,7 @@
      * @access protected
      * @return void
      **/
-    protected function reset () {
+    protected function reset () : void {
       // Reset ourself
       $this->Request = null;
       $this->RequestBody = null;
@@ -480,15 +481,15 @@
     /**
      * Write out a HTTP-Header
      * 
-     * @param qcEvents_Stream_HTTP_Header $Header
+     * @param Stream\HTTP\Header $Header
      * 
      * @access protected
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    protected function httpHeaderWrite (qcEvents_Stream_HTTP_Header $Header) : qcEvents_Promise {
+    protected function httpHeaderWrite (Stream\HTTP\Header $Header) : Events\Promise {
       // Check if headers have been written already
       if ($this->Response)
-        return qcEvents_Promise::reject ('Response-Header was already sent');
+        return Events\Promise::reject ('Response-Header was already sent');
       
       // Check for some hard-coded headers
       if (!$Header->hasField ('Server'))
@@ -516,17 +517,17 @@
     /**
      * Internal Callback: HTTP-Header was received (body may follow)
      * 
-     * @param qcEvents_Stream_HTTP_Header $Header
+     * @param Stream\HTTP\Header $Header
      * 
      * @access protected
      * @return void
      **/
-    protected final function httpdHeaderReady (qcEvents_Stream_HTTP_Header $Header) {
+    protected final function httpdHeaderReady (Stream\HTTP\Header $Header) : void {
       // Check if the client is expecting an early response
       if (!($Expect = $Header->getField ('Expect')) ||
           !(strcasecmp ($Expect, '100-continue') == 0) || # TODO: Add support for extensions
           !($Source = $this->getPipeSource ()) ||
-          !($Source instanceof qcEvents_Interface_Sink))
+          !($Source instanceof Events\Interface\Sink))
         return;
       
       # TODO: Check here if the expection was met
@@ -540,19 +541,19 @@
     /**
      * Internal Callback: HTTP-Request was received
      * 
-     * @param qcEvents_Stream_HTTP_Header $Header
-     * @param string $Body
+     * @param Stream\HTTP\Header $Header
+     * @param string $Body (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected final function httpdRequestReady (qcEvents_Stream_HTTP_Header $Header, $Body) {
+    protected final function httpdRequestReady (Stream\HTTP\Header $Header, string $Body = null) : void {
       // Discard the header if it is not a request
       if (!$Header->isRequest ())
         return;
       
       // Enqueue the request
-      $this->Requests [] = array ($Header, $Body);
+      $this->Requests [] = [ $Header, $Body ];
       
       // Dispatch the queue
       $this->httpdDispatchQueue ();
@@ -566,7 +567,7 @@
      * @access private
      * @return void
      **/
-    private function httpdDispatchQueue () {
+    private function httpdDispatchQueue () : void {
       // Check if there are pending requests
       if (count ($this->Requests) == 0)
         return;
@@ -596,20 +597,25 @@
     /**
      * Setup timer to check the liveness of our connection
      * 
+     * @param bool $Force (optional)
+     * 
      * @access private
      * @return void
      **/
-    private function httpdSetKeepAlive ($Force = false) {
+    private function httpdSetKeepAlive (bool $Force = false) : void {
       // Just restart the timer if we already have one
       if ($this->keepAliveTimer) {
-        if (!$Force)
-          return $this->keepAliveTimer->restart ();
+        if (!$Force) {
+          $this->keepAliveTimer->restart ();
+          
+          return;
+        }
         
         $this->keepAliveTimer->cancel ();
       }
       
       // Make sure we have a source with getEventBase() and close()
-      if (!(($Source = $this->getPipeSource ()) instanceof qcEvents_Interface_Common))
+      if (!(($Source = $this->getPipeSource ()) instanceof Events\Interface\Common))
         return;
       
       // Make sure we have an event-base
@@ -630,12 +636,12 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param qcEvents_Interface_Source $Source
+     * @param Events\Interface\Source $Source
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+    public function initStreamConsumer (Events\Interface\Stream $Source) : Events\Promise {
       // Setup our parent first
       return parent::initStreamConsumer ($Source)->then (
         function () use ($Source) {
@@ -646,10 +652,10 @@
           $this->lastEvent = time ();
       
           // Register our hooks
-          $this->addHook ('httpFinished', array ($this, 'httpdRequestReady'));
-          $this->addHook ('httpHeaderReady', array ($this, 'httpdHeaderReady'));
+          $this->addHook ('httpFinished', [ $this, 'httpdRequestReady' ]);
+          $this->addHook ('httpHeaderReady', [ $this, 'httpdHeaderReady' ]);
           
-          return new qcEvents_Promise_Solution (func_get_args ());
+          return new Events\Promise\Solution (func_get_args ());
         }
       );
     }
@@ -659,28 +665,28 @@
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param qcEvents_Interface_Source $Source
+     * @param Events\Interface\Source $Source
      * @param callable $Callback (optional) Callback to raise once the pipe is ready
      * @param mixed $Private (optional) Any private data to pass to the callback
      * 
      * The callback will be raised in the form of
      * 
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
+     *   function (Events\Interface\Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
      **/
-    public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function initConsumer (Events\Interface\Source $Source, callable $Callback = null, $Private = null) {
       // Make sure the source is a socket and close the connection if it misses to send the first request
-      if (($rc = parent::initConsumer ($Source, $Callback, $Private)) && ($Source instanceof qcEvents_Socket))
+      if (($rc = parent::initConsumer ($Source, $Callback, $Private)) && ($Source instanceof Events\Socket))
         $this->httpdSetKeepAlive (true);
       
       $this->lastEvent = time ();
       
       // Register our hooks
       if ($rc) {
-        $this->addHook ('httpFinished', array ($this, 'httpdRequestReady'));
-        $this->addHook ('httpHeaderReady', array ($this, 'httpdHeaderReady'));
+        $this->addHook ('httpFinished', [ $this, 'httpdRequestReady' ]);
+        $this->addHook ('httpHeaderReady', [ $this, 'httpdHeaderReady' ]);
       }
       
       return $rc;
@@ -691,15 +697,15 @@
     /**
      * Callback: A source was removed from this consumer
      * 
-     * @param qcEvents_Interface_Source $Source
+     * @param Events\Interface\Source $Source
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/  
-    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
+    public function deinitConsumer (Events\Interface\Source $Source) : Events\Promise {
       // Remove our hooks again
-      $this->removeHook ('httpFinished', array ($this, 'httpdRequestReady'));
-      $this->removeHook ('httpHeaderReady', array ($this, 'httpdHeaderReady'));
+      $this->removeHook ('httpFinished', [ $this, 'httpdRequestReady' ]);
+      $this->removeHook ('httpHeaderReady', [ $this, 'httpdHeaderReady' ]);
       
       // Stop our timer
       if ($this->keepAliveTimer)
@@ -717,14 +723,12 @@
      * 
      * @remark This is only called once, if another request wasn't finished yet new requests are queued
      * 
-     * @param qcEvents_Stream_HTTP_Header $Header
+     * @param Stream\HTTP\Header $Header
      * @param string $Body
      * 
      * @access protected
      * @return void
      **/
-    protected function httpdRequestReceived (qcEvents_Stream_HTTP_Header $Header, $Body = null) { }
+    protected function httpdRequestReceived (Stream\HTTP\Header $Header, string $Body = null) : void { }
     // }}}
   }
-
-?>

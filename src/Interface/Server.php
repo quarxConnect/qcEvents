@@ -34,7 +34,7 @@
      * @access public
      * @return bool
      **/
-    public function setChildClass ($Classname, $Piped = false);
+    public function setChildClass (string $Classname, bool $Piped = false) : bool;
     // }}}
     
     // {{{ addChildHook
@@ -42,13 +42,13 @@
      * Register a hook for new children
      * 
      * @param string $Hook
-     * @param callback $Callback
+     * @param callable $Callback
      * @param mixed $Private (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function addChildHook ($Name, $Callback, $Private = null);
+    public function addChildHook (string $Name, callable $Callback, $Private = null) : void;
     // }}}
     
     // {{{ getLocalName
@@ -58,7 +58,7 @@
      * @access public
      * @return string
      **/
-    public function getLocalName ();
+    public function getLocalName () : string;
     // }}}
     
     // {{{ getLocalPort
@@ -68,7 +68,7 @@
      * @access public
      * @return int
      **/
-    public function getLocalPort ();
+    public function getLocalPort () : int;
     // }}}
     
     // {{{ listen
@@ -83,7 +83,7 @@
      * @access public
      * @return bool
      **/
-    public function listen ($Type, $Port = null, $Host = null, $Backlog = null);
+    public function listen (int $Type, int $Port = null, string $Host = null, int $Backlog = null) : bool;
     // }}}
     
     // {{{ close
@@ -104,7 +104,7 @@
      * @access protected
      * @return void
      **/
-    # protected function serverOnline ();
+    # protected function serverOnline () : void;
     // }}}
     
     // {{{ serverOffline
@@ -114,7 +114,7 @@
      * @access protected
      * @return void
      **/
-    # protected function serverOffline ();
+    # protected function serverOffline () : void;
     // }}}
     
     // {{{ serverClientAccept
@@ -127,7 +127,7 @@
      * @access protected
      * @return bool If FALSE the connection is discared
      **/
-    # protected function serverClientAccept ($Remote, $Socket = null);
+    # protected function serverClientAccept (string $Remote, $Socket = null) : ?bool;
     // }}}
     
     // {{{ serverClientNew
@@ -140,7 +140,7 @@
      * @access protected
      * @return void
      **/
-    # protected function serverClientNew (Events\Socket $Socket, $Consumer = null);
+    # protected function serverClientNew (Events\Socket $Socket, $Consumer = null) : void;
     // }}}
     
     // {{{ serverClientClosed
@@ -153,6 +153,6 @@
      * @access protected
      * @return void
      **/
-    # protected function serverClientClosed ($Remote, Events\Socket $Socket);
+    # protected function serverClientClosed (string $Remote, Events\Socket $Socket) : void;
     // }}}
   }

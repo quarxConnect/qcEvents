@@ -390,7 +390,7 @@
       $messageHeader->parse ($dnsData, $dataOffset, $dataLength);
       
       // Parse the questions
-      $questionRecords = array ();
+      $questionRecords = [ ];
       $questionCount = $messageHeader->Questions;
       
       while ($questionCount-- > 0) {
@@ -472,7 +472,7 @@
       $Data = $this->messageHeader->toString ();
       
       // Append Question-Section
-      $Labels = array ();
+      $Labels = [ ];
       
       foreach ($this->questionRecords as $questionRecord)
         $Data .= $questionRecord->toString (strlen ($Data), $Labels);
@@ -943,7 +943,7 @@
       
       // Try to remove all questions first (if we are the answer)
       } elseif (!$isQuestion && (count ($this->questionRecords) > 0))
-        $this->questionRecords = array ();
+        $this->questionRecords = [ ];
       
       // ... or additional informations
       elseif (count ($this->additionalRecords) > ($this->ednsRecord ? 1 : 0)) {

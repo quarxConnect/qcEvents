@@ -102,8 +102,8 @@
       // Create a new record
       if (isset (self::$Records [$recordType]))
         $recordImplementationClass = self::$Records [$recordType];
-      elseif (($typeName = Message::getTypeName ($recordType)) && class_exists (__NAMESPACE__ . '\\Record\\' . $typeName))
-        $recordImplementationClass = __NAMESPACE__ . '\\Record\\' . $typeName;
+      elseif (($typeName = Message::getTypeName ($recordType)) && class_exists (__CLASS__ . '\\' . $typeName))
+        $recordImplementationClass = __CLASS__ . '\\' . $typeName;
       else
         $recordImplementationClass = get_called_class ();
       

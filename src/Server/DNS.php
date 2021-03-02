@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Asyncronous DNS Server
-   * Copyright (C) 2013 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxCOnnect Events - Asyncronous DNS Server
+   * Copyright (C) 2013-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,12 +18,15 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Stream/DNS.php');
-  require_once ('qcEvents/Stream/DNS/Header.php');
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events\Server;
+  use \quarxConnect\Events;
+  use \quarxConnect\Events\Stream;
   
-  class qcEvents_Server_DNS extends qcEvents_Stream_DNS {
+  class DNS extends Stream\DNS {
     /* IDs of known DNS-Queries */
-    private $IDs = array ();
+    private $IDs = [ ];
     
     // {{{ __construct   
     /**
@@ -34,36 +37,42 @@
      **/
     function __construct () {
       // Register hooks
-      $this->addHook ('dnsQuestionReceived', function (qcEvents_Server_DNS $Self, qcEvents_Stream_DNS_Message $Message) {
-        // Store the ID as known
-        $this->IDs [$Message->getID ()] = $Message;
-        
-        // Fire a callback
-        if (!is_object ($rc = $this->___callback ('dnsQueryReceived', $Message)) || !($rc instanceof qcEvents_Stream_DNS_Message))
-          return;
-        
-        // Overwrite the ID
-        $rc->setID ($Message->getID ());
-        
-        // Write out the reply
-        $this->dnsQueryReply ($rc);
-      });
+      $this->addHook (
+        'dnsQuestionReceived',
+        function (DNS $Self, Stream\DNS\Message $Message) {
+          // Store the ID as known
+          $this->IDs [$Message->getID ()] = $Message;
+         
+          // Fire a callback
+          if (!is_object ($rc = $this->___callback ('dnsQueryReceived', $Message)) || !($rc instanceof Stream\DNS\Message))
+            return;
+          
+          // Overwrite the ID
+          $rc->setID ($Message->getID ());
+          
+          // Write out the reply
+          $this->dnsQueryReply ($rc);
+        }
+      );
       
-      $this->addHook ('dnsQuestionTimeout', function (qcEvents_Server_DNS $Self, qcEvents_Stream_DNS_Message $Message) {
-        // Retrive the ID from that message
-        $ID = $Message->getID ();
-        
-        // Check if the query is still queued
-        if (!isset ($this->IDs [$ID]))
-          return;
-        
-        // Create a response
-        $Response = $this->IDs [$ID]->createClonedResponse ();
-        $Response->setError (qcEvents_Stream_DNS_Message::ERROR_SERVER);
-        
-        // Write out the response
-        $this->dnsQueryReply ($Response);
-      });
+      $this->addHook (
+        'dnsQuestionTimeout',
+        function (DNS $Self, Stream\DNS\Message $Message) {
+          // Retrive the ID from that message
+          $ID = $Message->getID ();
+          
+          // Check if the query is still queued
+          if (!isset ($this->IDs [$ID]))
+            return;
+          
+          // Create a response
+          $Response = $this->IDs [$ID]->createClonedResponse ();
+          $Response->setError (Stream\DNS\Message::ERROR_SERVER);
+          
+          // Write out the response
+          $this->dnsQueryReply ($Response);
+        }
+      );
     }
     // }}}
     
@@ -71,12 +80,12 @@
     /**
      * Generate the reply for a queued query
      * 
-     * @param qcEvents_Stream_DNS_Message $Message
+     * @param Stream\DNS\Message $Message
      * 
      * @access public
      * @return void
      **/
-    public function dnsQueryReply (qcEvents_Stream_DNS_Message $Message) {
+    public function dnsQueryReply (Stream\DNS\Message $Message) : void {
       // Retrive the ID of that message
       $ID = $Message->getID ();
       
@@ -95,12 +104,12 @@
     /**
      * Discaed a cached DNS-Query
      * 
-     * @param qcEvents_Stream_DNS_Message $Message
+     * @param Stream\DNS\Message $Message
      * 
      * @access public
      * @return void
      **/
-    public function dnsQueryDiscard (qcEvents_Stream_DNS_Message $Message) {
+    public function dnsQueryDiscard (Stream\DNS\Message $Message) : void {
       // Retrive the ID of that message
       $ID = $Message->getID ();
       
@@ -115,13 +124,11 @@
     /**
      * Callback: A DNS-Query was received
      * 
-     * @param qcEvents_Stream_DNS_Message $Query
+     * @param Stream\DNS\Message $Query
      * 
      * @access protected
-     * @return qcEvents_Stream_DNS_Message If not NULL a direct reply is issued
+     * @return Stream\DNS\Message If not NULL a direct reply is issued
      **/
-    protected function dnsQueryReceived (qcEvents_Stream_DNS_Message $Query) { }
+    protected function dnsQueryReceived (Stream\DNS\Message $Query) : ?Stream\DNS\Message { }
     // }}}
   }
-
-?>

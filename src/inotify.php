@@ -214,7 +214,7 @@
         $this->inotify = inotify_init ();
         $this->inotifyGeneration = self::$inotifyGenerations++;
         
-        self::$inotifyEvents [$this->inotifyGeneration] = array ();
+        self::$inotifyEvents [$this->inotifyGeneration] = [ ];
         
         $eventBase->addEvent ($this);
       }

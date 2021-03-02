@@ -149,7 +149,7 @@
           throw new \InvalidArgumentException ('Asyncronous calls on event-base not supported');
         else
           $Function = array_shift ($Parameters);
-      } elseif (!is_callable (array ($Handler, 'getEventBase')))
+      } elseif (!is_callable ([ $Handler, 'getEventBase' ]))
         throw new \InvalidArgumentException ('Unable to find event-base anywhere');
       elseif (!is_object ($Base = $Handler->getEventBase ()))
         throw new \InvalidArgumentException ('Did not get an event-base from object');
@@ -176,7 +176,7 @@
       if (!($isPromise = ($Handler instanceof Promise))) {
         $Method = new \ReflectionMethod ($Handler, $Function);
         
-        if (!($isPromise = ($Method->hasReturnType () && ($Method->getReturnType ()->getName () == __NAMESPACE__ . '\\Promise')))) {
+        if (!($isPromise = ($Method->hasReturnType () && ($Method->getReturnType ()->getName () == Promise::class)))) {
           $CallbackIndex = null;
           
           foreach ($Method->getParameters () as $Index=>$Parameter) 
@@ -224,7 +224,7 @@
           function ($Error) use (&$Loop, &$Ready, &$Result, &$Exception, $Base) {
             // Store the result
             $Ready = true;
-            $Result = array (false);
+            $Result = [ false ];
             
             // Leave the loop
             if ($Loop)

@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
-   * qcEvents - Validating Stratum-Server
-   * Copyright (C) 2018 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Validating Stratum-Server
+   * Copyright (C) 2018-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,19 +18,15 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
 
-  // Make sure GMP-Extension is available
-  if (!extension_loaded ('gmp') && (!function_exists ('dl') || !dl ('gmp.so'))) {
-    trigger_error ('Missing GMP-Extension, stratum-validation not working');
+  declare (strict_types=1);
 
-    return;
-  }
+  namespace quarxConnect\Events\Server;
+  use \quarxConnect\Events;
+  use \quarxConnect\Events\Stream;
   
-  require_once ('qcEvents/Stream/Stratum.php');
-  require_once ('qcEvents/Stream/Stratum/Job.php');
-  
-  class qcEvents_Server_Stratum extends qcEvents_Stream_Stratum {
+  class Stratum extends Stream\Stratum {
     // Used nonces
-    private static $Nonces = array ();
+    private static $Nonces = [ ];
     private static $nextNonce = 0;
     
     /* Version-Identifier of our client */
@@ -64,13 +60,13 @@
     private $ExtraNonce2Length = 4;
     
     // Active mining-jobs
-    private $Jobs = array ();
+    private $Jobs = [ ];
     
     // Latest mining-job
     private $jobLatest = null;
     
     /* Pending work-requests */
-    private $workRequests = array ();
+    private $workRequests = [ ];
     
     // Work done for unknown jobs
     private $workUnknown = 0;
@@ -109,43 +105,43 @@
      * @param int $ID
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function sendSubscribtion ($ID) : qcEvents_Promise {
+    public function sendSubscribtion (int $ID) : Events\Promise {
       // Respond depending on protocol-version
       $Version = $this->getProtocolVersion ();
       
       if ($Version == $this::PROTOCOL_ETH_STRATUM_NICEHASH) // Nicehash-Variant of stream for ethereum
-        $Result = array (
-          0 => array (
-            0 => array (
+        $Result = [
+          0 => [
+            0 => [
               0 => 'mining.notify',
               1 => time (),
               2 => 'EthereumStratum/1.0.0',
-            ),
-          ),
+            ],
+          ],
           1 => sprintf ('%06x', $this->ExtraNonce1),
-        );
+        ];
       elseif ($Version != $this::PROTOCOL_ETH_STRATUM) // Anything that's not stratum for ethereum
-        $Result = array (
-          0 => array (
-            0 => array (
+        $Result = [
+          0 => [
+            0 => [
               0 => 'mining.notify',
               1 => time (),
-            ),
-          ),
+            ],
+          ],
           1 => sprintf ('%08x', $this->ExtraNonce1),
           2 => $this->ExtraNonce2Length,
-        );
+        ];
       else // Stratum for ethereum
         $Result = true;
       
       // Send out the response
-      return $this->sendMessage (array (
+      return $this->sendMessage ([
         'id' => $ID,
         'error' => null,
         'result' => $Result,
-      ));
+      ]);
     }
     // }}}
     
@@ -156,7 +152,7 @@
      * @access public
      * @return string
      **/
-    public function getVersion () {
+    public function getVersion () : string {
       return $this->Version;
     }
     // }}}
@@ -170,9 +166,9 @@
      * @access public
      * @return bool
      **/
-    public function setAlgorithm ($Algorithm) {
+    public function setAlgorithm (int $Algorithm) : bool {
       // Set the algorithm
-      if (!parent::setAlgorithm ($Algorithm))
+      if (!parent::setAlgorithm (int $Algorithm))
         return false;
       
       // Indicate success
@@ -187,7 +183,7 @@
      * @access public
      * @return float
      **/
-    public function getDifficulty () {
+    public function getDifficulty () : float {
       return max ($this->minDifficulty, $this->Difficulty);
     }
     // }}}
@@ -201,16 +197,16 @@
      * @access public
      * @return void
      **/
-    public function setDifficulty ($Difficulty) {
+    public function setDifficulty (float $Difficulty) : void {
       // Store the new difficulty
-      $this->Difficulty = (float)$Difficulty;
+      $this->Difficulty = $Difficulty;
       
       // Forward the message
       if (($this->getProtocolVersion () != $this::PROTOCOL_ETH_GETWORK) &&
           ($this->getProtocolVersion () != $this::PROTOCOL_ETH_STRATUM)) // TODO: Check if eth-stratum really don't support this
         return $this->sendNotify (
           'mining.set_difficulty',
-          array ($this->getDifficulty ())
+          [ $this->getDifficulty () ]
         );
     }
     // }}}
@@ -219,15 +215,15 @@
     /**
      * Register a mining-job
      * 
-     * @param qcEvents_Stream_Stratum_Job $Job
+     * @param Stream\Stratum\Job $Job
      * 
      * @access public
      * @return void
      **/
-    public function addJob (qcEvents_Stream_Stratum_Job $Job) {
+    public function addJob (Stream\Stratum\Job $Job) : void {
       // Reset jobs if needed
       if ($Job->isReset ())
-        $this->Jobs = array ();
+        $this->Jobs = [ ];
       
       // Register the job
       $this->Jobs [$this->jobLatest = $Job->getID ()] = $Job;
@@ -237,19 +233,19 @@
       
       // Forward the job
       foreach ($this->workRequests as $Key=>$Message)
-        $this->sendMessage (array (
+        $this->sendMessage ([
           'id' => $Message->id,
           'error' => null,
           'result' => $Job->toArray ($this::PROTOCOL_ETH_GETWORK),
-        ));
+        ]);
       
-      $this->workRequests = array ();
+      $this->workRequests = [ ];
       
       if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK)
-        return $this->sendMessage (array (
+        return $this->sendMessage ([
           'id' => 0,
           'result' => $Job->toArray ($this::PROTOCOL_ETH_GETWORK),
-        ));
+        ]);
       
       return $this->sendNotify (
         'mining.notify',
@@ -265,13 +261,13 @@
      * @access public
      * @return int
      **/
-    public function getExtraNonce1 () {
+    public function getExtraNonce1 () : int {
       // Assign an extra-nonce if we don't have one
       if ($this->ExtraNonce1 === null) {
         $maxNonce = ($this->getAlgorithm () == $this::ALGORITHM_ETH ? 0xffffff : (PHP_INT_SIZE > 4 ? 0xffffffff : 0x7fffffff));
         
         // Set the nonce
-        if (defined ('QCEVENTS_STRAUM_NONCE_RANDOM') && QCEVENTS_STRAUM_NONCE_RANDOM) {
+        if (defined ('\\QCEVENTS_STRAUM_NONCE_RANDOM') && \QCEVENTS_STRAUM_NONCE_RANDOM) {
           do {
             $this->ExtraNonce1 = rand (0, $maxNonce);
           } while (isset (self::$Nonces [$this->ExtraNonce1]));
@@ -313,7 +309,7 @@
      * @access public
      * @return int
      **/
-    public function getExtraNonce2Length () {
+    public function getExtraNonce2Length () : int {
       return $this->ExtraNonce2Length;
     }
     // }}}
@@ -329,7 +325,7 @@
      * @access public
      * @return void
      **/
-    public function setExtraNonce ($ExtraNonce1 = null, $ExtraNonce2Length = null, $Notify = true) {
+    public function setExtraNonce (int $ExtraNonce1 = null, int $ExtraNonce2Length = null, bool $Notify = true) : void {
       // Make sure any change is desired
       if (($ExtraNonce1 === null) && ($ExtraNonce2Length === null))
         return;
@@ -358,13 +354,13 @@
       if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM_NICEHASH)
         $this->sendNotify (
           'mining.set_extranonce',
-          array (sprintf ('%06x', $this->ExtraNonce1))
+          [ sprintf ('%06x', $this->ExtraNonce1) ]
         );
       elseif (($this->getProtocolVersion () != $this::PROTOCOL_ETH_GETWORK) &&
               ($this->getProtocolVersion () != $this::PROTOCOL_ETH_STRATUM))
         $this->sendNotify (
           'mining.set_extranonce',
-          array (sprintf ('%08x', $this->ExtraNonce1), $this->ExtraNonce2Length)
+          [ sprintf ('%08x', $this->ExtraNonce1), $this->ExtraNonce2Length ]
         );
     }
     // }}}
@@ -378,7 +374,7 @@
      * @access public
      * @return void
      **/
-    public function setVersionMask ($VersionMask) {
+    public function setVersionMask (int $VersionMask) : void {
       // Check if the miner is capable of this
       if (!$this->canChangeVersionMask)
         return;
@@ -389,7 +385,7 @@
       // Notify the client
       $this->sendNotify (
         'mining.set_version_mask',
-        array (sprintf ('%08x', $this->versionMask))
+        [ sprintf ('%08x', $this->versionMask) ]
       );
     }
     // }}}
@@ -404,7 +400,7 @@
      * @access public
      * @return void
      **/
-    public function bailOut ($Msg) {
+    public function bailOut (string $Msg) : void {
       // Make sure we have a stream assinged
       if (!is_object ($Stream = $this->getStream ()))
         return;
@@ -428,7 +424,7 @@
      * @access protected
      * @return void
      **/
-    protected function processRequest ($Message) {
+    protected function processRequest (object $Message) : void {
       // Ethereum works sometimes differently
       if ($isEthereum = ($this->getAlgorithm () == $this::ALGORITHM_ETH)) {
         // Try to process a login
@@ -440,14 +436,14 @@
           // Check number of parameters
           if ((count ($Message->params) < 1) || (count ($Message->params) > 2))
             // Push back an error
-            return $this->sendMessage (array (
+            return $this->sendMessage ([
               'id' => $Message->id,
-              'error' => array (
+              'error' => [
                 24,
                 'Not authorized / message malformed'
-              ),
+              ],
               'result' => null,
-            ));
+            ]);
           
           // Raise a callback for this
           return $this->___callback ('stratumAuthorize', $Message->id, $Message->params [0], (isset ($Message->params [1]) ? $Message->params [1] : null));
@@ -478,32 +474,32 @@
                 if (($this->jobLatest === null) || !isset ($this->Jobs [$this->jobLatest])) {
                   $this->bailOut (':: Rejecting getWork due to timeout');
                   
-                  return $this->sendMessage (array (
+                  return $this->sendMessage ([
                     'id' => $Message->id,
-                    'error' => array (
+                    'error' => array [
                       0,
                       'Work not ready',
-                    ),
+                    ],
                     'result' => null,
-                  ));
+                  ]);
                 }
                 
                 // Forward the work
-                return $this->sendMessage (array (
+                return $this->sendMessage ([
                   'id' => $Message->id,
                   'error' => null,
                   'result' => $this->Jobs [$this->jobLatest]->toArray ($this::PROTOCOL_ETH_GETWORK),
-                ));
+                ]);
               }
             );
           }
           
           // Push back the latest job
-          return $this->sendMessage (array (
+          return $this->sendMessage ([
             'id' => $Message->id,
             'error' => null,
             'result' => $this->Jobs [$this->jobLatest]->toArray ($this::PROTOCOL_ETH_GETWORK),
-          ));
+          ]);
         } elseif ($Message->method == 'eth_submitWork') {
           // Signal getwork-based implementation
           $this->setProtocolVersion ($this::PROTOCOL_ETH_GETWORK);
@@ -519,11 +515,11 @@
             $this->___callback ('stratumWorkUnknownJob', $JobID, $Message->params);
             
             // Push back a non-sense-message
-            return $this->sendMessage (array (
+            return $this->sendMessage ([
               'id' => $Message->id,
               'error' => null,
               'result' => true,
-            ));
+            ]);
           }
           
           // Check the input
@@ -538,11 +534,11 @@
             $this->___callback ('stratumWorkMalformedJob', $this->Jobs [$JobID], $Message->params);
             
             // Push back a non-sense-message
-            return $this->sendMessage (array (
+            return $this->sendMessage ([
               'id' => $Message->id,
               'error' => null,
               'result' => true,
-            ));
+            ]);
           }
           
           # TODO: Validate the result here
@@ -560,24 +556,24 @@
           if ((count ($Message->params) != 2) ||
               (strlen ($Message->params [0]) > 66) ||
               (strlen ($Message->params [1]) > 66))
-            return $this->sendMessage (array (
+            return $this->sendMessage ([
               'id' => $Message->id,
-              'error' => array (
+              'error' => [
                 24,
                 'Message malformed'
-              ),
+              ],
               'result' => null,
-            ));
+            ]);
           
           // Raise callback for this
           $this->___callback ('stratumHashrate', $Message->params [0], $Message->params [1]);
           
           // Just ACK this
-          return $this->sendMessage (array (
+          return $this->sendMessage ([
             'id' => $Message->id,
             'error' => null,
             'result' => true,
-          ));
+          ]);
         }
         
         // Check if we were nailed to get-work-based protocol
@@ -593,14 +589,14 @@
       if ($Message->method == 'mining.subscribe') {
         // Check if this was done before
         if ($this->Version !== null)
-          return $this->sendMessage (array (
+          return $this->sendMessage ([
             'id' => $Message->id,
-            'error' => array (
+            'error' => [
               25,
               'Duplicate subscribtion',
-            ),
+            ],
             'result' => null,
-          ));
+          ]);
         
         // Treat ethereum special
         if ($isEthereum) {
@@ -625,14 +621,14 @@
         // Check number of parameters
         if (count ($Message->params) < 2)
           // Push back an error
-          return $this->sendMessage (array (
+          return $this->sendMessage ([
             'id' => $Message->id,
-            'error' => array (
+            'error' => [
               24,
               'Not authorized / message malformed'
-            ),
+            ],
             'result' => null,
-          ));
+          ]);
         
         // Raise a callback for this
         return $this->___callback ('stratumAuthorize', $Message->id, $Message->params [0], $Message->params [1]);
@@ -648,14 +644,14 @@
           $this->___callback ('stratumWorkUnknownJob', $JobID, $Message->params);
           
           // Push back an error
-          return $this->sendMessage (array (
+          return $this->sendMessage ([
             'id' => $Message->id,
-            'error' => array (
+            'error' => [
               21,
               'Job not found',
-            ),
+            ],
             'result' => null,
-          ));
+          ]);
         }
         
         // Treat ethereum special
@@ -663,18 +659,18 @@
           // Convert work to Eth-Submit-Work-Format
           if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM_NICEHASH) {
             if ($Wellformed = (count ($Message->params) == 3))
-              $Message->params = array (
+              $Message->params = [
                 '0x' . $Message->params [2],
                 '0x' . $this->Jobs [$JobID]->getHeaderHash (),
                 '0x' // TODO!!!
-              );
+              ];
           } elseif ($this->getProtocolVersion () == $this::PROTOCOL_ETH_STRATUM) {
             if ($Wellformed = (count ($Message->params) == 5))
-              $Message->params = array (
+              $Message->params = [
                 '0x' . $Message->params [2],
                 '0x' . $Message->params [3],
                 '0x' . $Message->params [4],
-              );
+              ];
           } else
             $Wellformed = (count ($Message->params) == 3);
           
@@ -690,14 +686,14 @@
           $this->___callback ('stratumWorkMalformedJob', $this->Jobs [$JobID], $Message->params);
           
           // Push back an error
-          return $this->sendMessage (array (
+          return $this->sendMessage ([
             'id' => $Message->id,
-            'error' => array (
+            'error' => [
               20,
               'Message malformed',
-            ),
+            ],
             'result' => null,
-          ));
+          ]);
         }
         
         // Validate the work
@@ -725,7 +721,7 @@
         return $this->___callback ('stratumWork', $Message->id, $Valid, $Block, $this->Jobs [$JobID], $Message->params);
       // Check for Miner-Configuration (BIP 310)
       } elseif ($Message->method == 'mining.configure') {
-        $Params = array ();
+        $Params = [ ];
         
         foreach ($Message->params [0] as $Extension)
           if ($Extension == 'version-rolling') {
@@ -755,11 +751,11 @@
           } else
             $Params [$Extension] = false;
         
-        $this->sendMessage (array (
+        $this->sendMessage ([
           'id' => $Message->id,
           'error' => null,
           'result' => $Params,
-        ));
+        ]);
       } elseif ($Message->method == 'mining.multi_version') {
         // Client is capable of multi-version-mining
         $this->canMineMultiVersion = true;
@@ -769,30 +765,30 @@
           $this->versionMask = 0x00c00000;
         
         // Inidcate success
-        $this->sendMessage (array (
+        $this->sendMessage ([
           'id' => $Message->id,
           'error' => null,
-          'result' => array (4),
-        ));
+          'result' => [ 4 ],
+        ]);
       } elseif ($Message->method == 'mining.extranonce.subscribe') {
         // Store the support for mining.set_extranonce
         $this->canChangeExtranonce = true;
         
         // Indicate success
-        $this->sendMessage (array (
+        $this->sendMessage ([
           'id' => $Message->id,
           'error' => null,
           'result' => true,
-        ));
+        ]);
       } elseif ($Message->method == 'miner_file') {
-        $this->sendMessage (array (
+        $this->sendMessage ([
           'id' => $Message->id,
-          'error' => array (
+          'error' => [
             42,
             'G0 aw4y 1337 haXXor :-P'
-          ),
+          ],
           'result' => null,
-        ));
+        ]);
       } else {
         $this->bailOut ('>> Unknown method %s', $Message->method);
         var_dump ($Message);
@@ -806,13 +802,13 @@
     /**
      * Rebuild block-header for a given job and mining-result
      * 
-     * @param qcEvents_Stream_Stratum_Job $Job
+     * @param Stream\Stratum\Job $Job
      * @param object $Message
      * 
      * @access public
      * @return string
      **/
-    public function rebuildBlockHeader (qcEvents_Stream_Stratum_Job $Job, $Message) {
+    public function rebuildBlockHeader (Stream\Stratum\Job $Job, object $Message) : string {
       // Reassemle the coinbase
       $Coinbase = $this->rebuildCoinbase ($Job, $Message);
       
@@ -867,13 +863,13 @@
     /**
      * Rebuild a coinbase-transaction from a job and a work-result
      * 
-     * @param qcEvents_Stream_Stratum_Job $Job
-     * @param array $Message
+     * @param Stream\Stratum\Job $Job
+     * @param object $Message
      * 
      * @access public
      * @return string
      **/
-    public function rebuildCoinbase (qcEvents_Stream_Stratum_Job $Job, $Message) {
+    public function rebuildCoinbase (Stream\Stratum\Job $Job, object $Message) : string {
       return hex2bin (sprintf (
         '%s%08x%0' . ($this->ExtraNonce2Length * 2) . 's%s',
         $Job->getCoinbaseStart (),
@@ -888,14 +884,14 @@
     /**
      * Validate an sha256-mining-job
      * 
-     * @param qcEvents_Stream_Stratum_Job $Job
+     * @param Stream\Stratum\Job $Job
      * @param object $Message
      * @param bool $Block (optional)
      * 
      * @access private
      * @return bool
      **/
-    private function validateSHA256 (qcEvents_Stream_Stratum_Job $Job, $Message, &$Block = false) {
+    private function validateSHA256 (Stream\Stratum\Job $Job, object $Message, bool &$Block = false) : bool {
       // Rebuild the block-header
       $Header = $this->rebuildBlockHeader ($Job, $Message);
       
@@ -917,25 +913,27 @@
       // Return the result
       return $Valid;
     }
+    // }}}
     
     // {{{ validateScrypt
     /**
      * Validate an scrypt-mining-job
      * 
-     * @param qcEvents_Stream_Stratum_Job $Job
+     * @param Stream\Stratum\Job $Job
      * @param object $Message
+     * @param bool $Block (optional)
      * 
      * @access private
      * @return bool
      **/
-    private function validateScrypt (qcEvents_Stream_Stratum_Job $Job, $Message, &$Block = false) {
+    private function validateScrypt (Stream\Stratum\Job $Job, object $Message, bool &$Block = false) : bool {
       // Make sure we have Scrypt available
       require_once ('Scrypt/Scrypt.php');
       
       static $Scrypt  = null;
       
       if ($Scrypt === null)
-        $Scrypt = new Scrypt (1024, 1, 1, 32);
+        $Scrypt = new \Scrypt (1024, 1, 1, 32);
       
       // Rebuild the block-header
       $Header = $this->rebuildBlockHeader ($Job, $Message);
@@ -971,7 +969,7 @@
      * @access protected
      * @return void
      **/
-    protected function stratumSubscribe ($ID, $ClientVersion = null, $ExtraNonce = null) { }
+    protected function stratumSubscribe (int $ID, string $ClientVersion = null, string $ExtraNonce = null) : void { }
     // }}}
     
     // {{{ stratumAuthorize
@@ -985,7 +983,7 @@
      * @access protected
      * @return void
      **/
-    protected function stratumAuthorize ($ID, $Username, $Password) { }
+    protected function stratumAuthorize (int $ID, string $Username, string $Password) : void { }
     // }}}
     
     // {{{ stratumExtraNonceChanged
@@ -998,7 +996,7 @@
      * @access protected
      * @return void
      **/
-    protected function stratumExtraNonceChanged ($ExtraNonce1, $ExtraNonce2Length) { }
+    protected function stratumExtraNonceChanged (int $ExtraNonce1, int $ExtraNonce2Length) : void { }
     // }}}
     
     // {{{ stratumWorkRequest
@@ -1008,7 +1006,7 @@
      * @access protected
      * @returtn void
      **/
-    protected function stratumWorkRequest () { }
+    protected function stratumWorkRequest () : void { }
     // }}}
     
     // {{{ stratumWork
@@ -1018,13 +1016,13 @@
      * @param int $ID Message-ID of the request
      * @param bool $Valid Validation-Result (NULL if unsure)
      * @param bool $Block A block was found (NULL if unsure)
-     * @param qcEvents_Stream_Stratum_Job $Job
+     * @param Stream\Stratum\Job $Job
      * @param array $Work
      * 
      * @access protected
      * @return void
      **/
-    protected function stratumWork ($ID, $Valid, $Block, qcEvents_Stream_Stratum_Job $Job, array $Work) { }
+    protected function stratumWork (int $ID, bool $Valid, bool $Block, Stream\Stratum\Job $Job, array $Work) : void { }
     // }}}
     
     // {{{ stratumWorkUnknownJob
@@ -1037,32 +1035,32 @@
      * @access protected
      * @return void
      **/
-    protected function stratumWorkUnknownJob ($JobID, $Work) { }
+    protected function stratumWorkUnknownJob (int $JobID, array $Work) : void { }
     // }}}
     
     // {{{ stratumWorkMalformedJob
     /**
      * Callback: A malformed work was received
      * 
-     * @param qcEvents_Stream_Stratum_Job $Job
+     * @param Stream\Stratum\Job $Job
      * @param array $Work
      * 
      * @access protected
      * @return void
      **/
-    protected function stratumWorkMalformedJob (qcEvents_Stream_Stratum_Job $Job, $Work) { }
+    protected function stratumWorkMalformedJob (Stream\Stratum\Job $Job, array $Work) : void { }
     // }}}
     
     // {{{ stratumWorkNew
     /**
      * Callback: A new job was added
      * 
-     * @param qcEvents_Stream_Stratum_Job $Job
+     * @param Stream\Stratum\Job $Job
      * 
      * @access protected
      * @return void
      **/
-    protected function stratumWorkNew (qcEvents_Stream_Stratum_Job $Job) { }
+    protected function stratumWorkNew (Stream\Stratum\Job $Job) : void { }
     // }}}
     
     // {{{ stratumHashrate
@@ -1075,8 +1073,6 @@
      * @access protected
      * @return void
      **/
-    protected function stratumHashrate ($Hashrate, $ClientID) { }
+    protected function stratumHashrate (string $Hashrate, string $ClientID) : void { }
     // }}}
   }
-
-?>

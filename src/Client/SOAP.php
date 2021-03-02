@@ -179,10 +179,10 @@
          **/
         public function __doRequest ($soapRequest, $soapLocation, $soapAction, $soapVersion, $soapOneWay = false) {
           // Store last used headers
-          $this->lastRequestHeaders = array (
+          $this->lastRequestHeaders = [
             'Content-Type: text/xml; charset=utf-8',
             'SOAPAction: "' . $soapAction . '"',
-          );
+          ];
           
           // Check wheter to modify the URL
           if (isset ($this->soapOptions ['login'])) {
@@ -212,10 +212,10 @@
             'request',
             $soapLocation,
             'POST',
-            array (
+            [
               'Content-Type' => 'text/xml; charset=utf-8',
               'SOAPAction' => '"' . $soapAction . '"',
-            ),
+            ],
             $soapRequest
           );
           

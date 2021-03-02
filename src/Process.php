@@ -116,11 +116,11 @@
       // Spawn using proc_open
       if (function_exists ('proc_open')) {
         // Try to spawn the command
-        $Descriptors = array (
-          0 => array ('pipe', 'r'),
-          1 => array ('pipe', 'w'),
+        $Descriptors = [
+          0 => [ 'pipe', 'r' ],
+          1 => [ 'pipe', 'w' ],
           2 => STDERR,
-        );
+        ];
         
         if (!is_resource ($this->Process = proc_open ($this::toCommandline ($commandName, $commandParams), $Descriptors, $Pipes)))
           return Promise::reject ('Could not spawn command (proc_open)');
@@ -350,10 +350,10 @@
             if ($this->processMode != self::MODE_PROCOPEN) {
               $childRC = pcntl_waitpid ($this->childPID, $childStatus, WNOHANG|WUNTRACED);
               
-              $childStatus = array (
+              $childStatus = [
                 'exitcode' => pcntl_wexitstatus ($childStatus),
                 'running' => ($childRC <= 0),
-              );
+              ];
             } else
               $childStatus = proc_get_status ($this->Process);
             
@@ -375,10 +375,10 @@
                   posix_kill ($this->childPID, SIGKILL);
                 
                 $childRC = pcntl_waitpid ($this->childPID, $childStatus, WNOHANG|WUNTRACED);
-                $childStatus = array (
+                $childStatus = [
                   'exitcode' => pcntl_wexitstatus ($childStatus),
                   'running' => ($childRC <= 0),
-                );
+                ];
               } else {
                 // Send SIGKILL
                 proc_terminate ($this->Process, SIGKILL);
@@ -433,10 +433,10 @@
         if ($this->processMode != self::MODE_PROCOPEN) {
            $childRC = pcntl_waitpid ($this->childPID, $childStatus, WNOHANG|WUNTRACED);
         
-          $childStatus = array (
+          $childStatus = [
             'exitcode' => pcntl_wexitstatus ($childStatus),
             'running' => ($childRC <= 0),
-          );
+          ];
         } else
           $childStatus = proc_get_status ($this->Process);
         

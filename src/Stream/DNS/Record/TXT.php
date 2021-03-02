@@ -46,7 +46,7 @@
      * @return array
      **/
     public function getTexts () {
-      $out = array ();
+      $out = [ ];
       $p = 0;
       $l = strlen ($this->Payload);
       

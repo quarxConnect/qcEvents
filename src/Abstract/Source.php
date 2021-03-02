@@ -74,7 +74,7 @@
       // Check wheter to raise an event
       if ($this->raiseEvents) {
         if ($eventBase = $this->getEventBase ())
-          $eventBase->forceCallback (array ($this, 'raiseRead'));
+          $eventBase->forceCallback ([ $this, 'raiseRead' ]);
         else
           $this->___callback ('eventReadable');
       }
@@ -118,7 +118,7 @@
       // Check if we shall close
       if ($this->closeOnDrain && (strlen ($this->Buffer) == 0)) {
         if ($eventBase = $this->getEventBase ())
-          $eventBase->forceCallback (array ($this, 'close'));
+          $eventBase->forceCallback ([ $this, 'close' ]);
         else
           $this->close ();
       }
@@ -140,7 +140,7 @@
       if ($Set !== null) {
         if ($this->raiseEvents = !!$Set) {
           if ($eventBase = $this->getEventBase ())
-            $eventBase->forceCallback (array ($this, 'raiseRead'));
+            $eventBase->forceCallback ([ $this, 'raiseRead' ]);
           else
             $this->___callback ('eventReadable');
         }
@@ -210,7 +210,7 @@
       $this->___callback ('eventReadable');
       
       if ($eventBase = $this->getEventBase ())
-        $eventBase->forceCallback (array ($this, 'raiseRead'));
+        $eventBase->forceCallback ([ $this, 'raiseRead' ]);
     }
     // }}}
     

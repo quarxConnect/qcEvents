@@ -91,7 +91,7 @@
      * @return bool
      **/
     public function setHeaderClass ($Class) {
-      if (!class_exists ($Class) || !(is_subclass_of ($Class, 'Events\Stream\HTTP\Header') || (strncmp ($Class, '\quarxConnect\Events\Stream\HTTP\Header') == 0)))
+      if (!class_exists ($Class) || !(is_subclass_of ($Class, HTTP\Header::class) || (strcasecmp ($Class, HTTP\Header::class) == 0)))
         return false;
       
       $this->HeaderClass = $Class;
