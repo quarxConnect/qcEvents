@@ -39,7 +39,7 @@
    * @revision 02
    **/
   class inotify extends Hookable implements Interface\Loop {
-    use Trait\Parented {
+    use Trait\Based {
       setEventBase as private traitSetEventBase;
       unsetEventBase as private traitUnsetEventBase;
     }
@@ -291,7 +291,7 @@
      * @access public
      * @return void
      * 
-     * @remark This is implemented by qcEvents_Trait_Parented
+     * @remark This is implemented by Trait\Based
      **/
     public function unsetEventBase () {
       if ($this->inotifyDescriptor !== null) {
