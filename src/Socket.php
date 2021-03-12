@@ -171,19 +171,19 @@
     /**
      * Check if a given address is valid IPv6
      * 
-     * @param string $Address
+     * @param string $ipAddress
      * 
      * @access public
      * @return bool
      **/
-    public static function isIPv6 ($Address) {
-      if (strlen ($Address) == 0)
+    public static function isIPv6 (string $ipAddress) : bool {
+      if (strlen ($ipAddress) == 0)
         return false;
       
-      if ($Address [0] == '[')
-        $Address = substr ($Address, 1, -1);
+      if ($ipAddress [0] == '[')
+        $ipAddress = substr ($ipAddress, 1, -1);
       
-      return (filter_var ($Address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false);
+      return (filter_var ($ipAddress, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false);
     }
     // }}}
     

@@ -343,7 +343,7 @@
       
       // Set credentials (if applicable)
       if (isset ($URL ['user']))
-        $this->setCredentials ($URL ['user'], (isset ($URL ['pass']) ? $URL ['pass'] : ''));
+        $this->setCredentials (urldecode ($URL ['user']), (isset ($URL ['pass']) ? urldecode ($URL ['pass']) : ''));
       
       return true;
     }
