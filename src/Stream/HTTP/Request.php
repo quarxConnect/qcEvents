@@ -167,7 +167,8 @@
      **/
     public function getHostname () {
       // Retrive the hostname from headers
-      $Host = $this->getField ('Host');
+      if (($Host = $this->getField ('Host')) === null)
+        return $Host;
       
       // Check if there is a port
       if (($p = strrpos ($Host, ':')) === false)

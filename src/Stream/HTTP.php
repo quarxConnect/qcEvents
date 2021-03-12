@@ -166,10 +166,10 @@
             $this->httpSetState ($this::HTTP_STATE_BODY);
             
             // Prepare to retrive the body
-            if (!$this->Header->hasField ('transfer-encoding'))
-              $this->bodyEncodings = [ 'identity' ];
-            else
+            if ($this->Header->hasField ('transfer-encoding'))
               $this->bodyEncodings = explode (' ', trim ($this->Header->getField ('transfer-encoding')));
+            else
+              $this->bodyEncodings = [ 'identity' ];
             
             break;
           }

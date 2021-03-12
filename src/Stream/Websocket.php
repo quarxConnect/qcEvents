@@ -621,7 +621,9 @@
 
               # TODO: Status may be 401 (Authz required) or 3xx (Redirect)
 
-              if ($Success && ($this->Protocols !== null) && $Header->hasField ('Sec-WebSocket-Protocol') &&
+              if ($Success &&
+                  ($this->Protocols !== null) &&
+                  $Header->hasField ('Sec-WebSocket-Protocol') &&
                   in_array ($Header->getField ('Sec-WebSocket-Protocol'), $this->Protocols))
                 $this->Protocol = $Header->getField ('Sec-WebSocket-Protocol');
               elseif (($this->Protocols !== null) || $Header->hasField ('Sec-WebSocket-Protocol'))

@@ -232,16 +232,20 @@
      **/
     public function upgradeToWebsocket (Stream\HTTP\Request $Request) : Events\Promise {
       // Make sure the request is valid for a Websocket-Upgrade
-      if ($Request->getField ('Upgrade') != 'websocket')
-        return Events\Promise::reject ('Missing or invalid Upgrade-Header');
+      if (!$Request->hasField ('Upgrade'))
+        return Events\Promise::reject ('Missing Upgrade-Header');
       
-      if (!in_array ('Upgrade', explode (',', str_replace (' ', '', $Request->getField ('Connection')))))
+      if ($Request->getField ('Upgrade') != 'websocket')
+        return Events\Promise::reject ('Cannot upgrade to websocket');
+      
+      if (!$Request->hasField ('Connection') ||
+          !in_array ('Upgrade', explode (',', str_replace (' ', '', $Request->getField ('Connection')))))
         return Events\Promise::reject ('Missing Upgrade-Token on Connection-Header');
       
       if (!($Nonce = $Request->getField ('Sec-WebSocket-Key')))
         return Events\Promise::reject ('Missing Sec-WebSocket-Key-Header');
       
-      if ($Request->getField ('Sec-WebSocket-Version') != 13)
+      if ((int)$Request->getField ('Sec-WebSocket-Version') != 13)
         return Events\Promise::reject ('Invalud WebSocket-Version');
       
       // Preapre response-header
@@ -499,7 +503,9 @@
         $Header->setField ('Date', date ('r'));
       
       // Check wheter to force a close on the connection
-      if (($this->RequestCount >= $this->maxRequestCount) || ($Header->getVersion () < 1.1) || (strcasecmp ($this->Request->getField ('Connection'), 'close') == 0))
+      if (($this->RequestCount >= $this->maxRequestCount) ||
+          ($Header->getVersion () < 1.1) ||
+          ($this->Request->hasField ('Connection') && (strcasecmp ($this->Request->getField ('Connection'), 'close') == 0)))
         $Header->setField ('Connection', 'close');
       elseif (!$Header->hasField ('Connection')) {
         $Header->setField ('Connection', 'Keep-Alive');
