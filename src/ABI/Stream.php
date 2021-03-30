@@ -1,7 +1,7 @@
 <?php
 
   /**
-   * quarxConnect Events - Interface for Source-Consumers
+   * quarxConnect Events - Interface for Event-Streams
    * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
@@ -19,38 +19,35 @@
    **/
   
   declare (strict_types=1);
-
-  namespace quarxConnect\Events\Interface;
   
-  interface Consumer extends Consumer\Common {
-    // {{{ initConsumer
+  namespace quarxConnect\Events\ABI;
+  use quarxConnect\Events;
+  
+  interface Stream extends Source, Sink {
+    // {{{ pipeStream
     /**
-     * Setup ourself to consume data from a source
+     * Create a bidrectional pipe
+     * Forward any data received from this source to another handler and
+     * allow the handler to write back to this stream
      * 
-     * @param Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     *  
-     *   function (Consumer $Self, bool $Status, mixed $Private = null) { }
+     * @param Stream\Consumer $Handler
+     * @param bool $Finish (optional) Raise close on the handler if we are finished (default)
      * 
      * @access public
-     * @return callable
+     * @return Events\Promise
      **/
-    public function initConsumer (Source $Source, callable $Callback = null, $Private = null);
+    public function pipeStream (Stream\Consumer $Handler, $Finish = true) : Events\Promise;
     // }}}
     
-    
-    // {{{ eventPiped
+    // {{{ unpipe
     /**
-     * Callback: A source was attached to this consumer
+     * Remove a handler that is currently being piped
      * 
-     * @param Source $Source
+     * @param Consumer\Common $Handler
      * 
-     * @access protected
-     * @return void
+     * @access public
+     * @return Events\Promise
      **/
-    # protected function eventPiped (Source $Source);
+    public function unpipe (Consumer\Common $Handler) : Events\Promise;
     // }}}
   }

@@ -33,11 +33,11 @@
    * @package quarxConnect\Events
    * @revision 02
    **/
-  abstract class HTTP extends HTTP\Header implements Events\Interface\Consumer, Events\Interface\Stream\Consumer, Events\Interface\Source {
+  abstract class HTTP extends HTTP\Header implements Events\ABI\Consumer, Events\ABI\Stream\Consumer, Events\ABI\Source {
     // Just use everything from the trait
-    use Events\Trait\Hookable;
-    use Events\Trait\Based;
-    use Events\Trait\Pipe;
+    use Events\Feature\Hookable;
+    use Events\Feature\Based;
+    use Events\Feature\Pipe;
     
     /* HTTP States */
     public const HTTP_STATE_DISCONNECTED = 0; // Stream is disconnected
@@ -105,12 +105,12 @@
      * Consume a set of data
      * 
      * @param mixed $Data
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return void
      **/
-    public function consume ($Data, Events\Interface\Source $Source) {
+    public function consume ($Data, Events\ABI\Source $Source) {
       if ($this->httpState == $this::HTTP_STATE_DISCONNECTED)
         return trigger_error ('consume() while disconnected');
       
@@ -292,18 +292,18 @@
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * @param callable $Callback (optional) Callback to raise once the pipe is ready
      * @param mixed $Private (optional) Any private data to pass to the callback
      * 
      * The callback will be raised in the form of
      * 
-     *   function (Events\Interface\Consumer $Self, bool $Status, mixed $Private = null) { }
+     *   function (Events\ABI\Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
      **/
-    public function initConsumer (Events\Interface\Source $Source, callable $Callback = null, $Private = null) {
+    public function initConsumer (Events\ABI\Source $Source, callable $Callback = null, $Private = null) {
       // Check if this source is already set
       if ($this->Source === $Source) {
         $this->___raiseCallback ($Callback, true, $Private);
@@ -343,12 +343,12 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function initStreamConsumer (Events\Interface\Stream $Source) : Events\Promise {
+    public function initStreamConsumer (Events\ABI\Stream $Source) : Events\Promise {
       // Check if this source is already set
       if ($this->Source === $Source)
         return Events\Promise::resolve ();
@@ -384,12 +384,12 @@
     /**
      * Callback: A source was removed from this sink
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function deinitConsumer (Events\Interface\Source $Source) : Events\Promise {
+    public function deinitConsumer (Events\ABI\Source $Source) : Events\Promise {
       // Check if this is the right source
       if ($this->Source !== $Source)
         return Events\Promise::resolve ();
@@ -476,7 +476,7 @@
      **/
     protected function httpHeaderWrite (HTTP\Header $Header) : Events\Promise {
       // Make sure we have the right source for this
-      if (!$this->Source || !($this->Source instanceof Events\Interface\Sink))
+      if (!$this->Source || !($this->Source instanceof Events\ABI\Sink))
         return Events\Promise::reject ('No suitable source to write headers');
       
       if ($this->httpState != $this::HTTP_STATE_CONNECTED)
@@ -502,9 +502,9 @@
      * Return the originator of our pipe
      * 
      * @access public
-     * @return Events\Interface\Source
+     * @return Events\ABI\Source
      **/
-    public function getPipeSource () : ?Events\Interface\Source {
+    public function getPipeSource () : ?Events\ABI\Source {
       return $this->Source;
     }
     // }}}

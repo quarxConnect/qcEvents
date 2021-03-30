@@ -22,7 +22,7 @@
 
   namespace quarxConnect\Events;
   
-  abstract class Hookable implements Interface\Hookable {
+  abstract class Hookable implements ABI\Hookable {
     // Just use everything from the trait
-    use Trait\Hookable;
+    use Feature\Hookable;
   }

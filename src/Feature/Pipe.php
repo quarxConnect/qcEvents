@@ -20,7 +20,7 @@
   
   declare (strict_types=1);
 
-  namespace quarxConnect\Events\Trait;
+  namespace quarxConnect\Events\Feature;
   use quarxConnect\Events;
   
   trait Pipe {
@@ -62,19 +62,19 @@
     /**
      * Forward any data received from this source to another handler
      * 
-     * @param Events\Interface\Consumer $Handler
+     * @param Events\ABI\Consumer $Handler
      * @param bool $Finish (optional) Raise close on the handler if we are finished (default)
      * @param callable $Callback (optional) Callback to raise once the pipe is ready
      * @param mixed $Private (optional) Any private data to pass to the callback
      * 
      * The callback will be raised in the form of
      * 
-     *   function (Events\Interface\Source $Self, bool $Status, mixed $Private = null) { }
+     *   function (Events\ABI\Source $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return bool
      **/
-    public function pipe (Events\Interface\Consumer $Handler, $Finish = true, callable $Callback = null, $Private = null) {
+    public function pipe (Events\ABI\Consumer $Handler, $Finish = true, callable $Callback = null, $Private = null) {
       // Check if there is already such pipe
       if (($key = $this->getPipeHandlerKey ($Handler)) !== false) {
         $this->Pipes [$key][1] = $Finish;
@@ -88,7 +88,7 @@
       $this->addHook ('eventClosed', [ $this, '___pipeClose' ]);
       
       // Raise an event at the handler
-      if (($rc = $Handler->initConsumer ($this, function (Events\Interface\Consumer $Self, $Status) use ($Callback, $Private) {
+      if (($rc = $Handler->initConsumer ($this, function (Events\ABI\Consumer $Self, $Status) use ($Callback, $Private) {
         $this->___raiseCallback ($Callback, $Status, $Private);
       })) === false)
         return false;
@@ -109,13 +109,13 @@
      * Forward any data received from this source to another handler and
      * allow the handler to write back to this stream
      * 
-     * @param Events\Interface\Consumer $Handler
+     * @param Events\ABI\Consumer $Handler
      * @param bool $Finish (optional) Raise close on the handler if we are finished (default)
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function pipeStream (Events\Interface\Stream\Consumer $Handler, $Finish = true) : Events\Promise {
+    public function pipeStream (Events\ABI\Stream\Consumer $Handler, $Finish = true) : Events\Promise {
       // Check if there is already such pipe
       if (($key = $this->getPipeHandlerKey ($Handler)) !== false) {
         $this->Pipes [$key][1] = $Finish;
@@ -155,12 +155,12 @@
     /**
      * Remove a handler that is currently being piped
      * 
-     * @param Events\Interface\Consumer\Common $Handler
+     * @param Events\ABI\Consumer\Common $Handler
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function unpipe (Events\Interface\Consumer\Common $Handler) : Events\Promise {
+    public function unpipe (Events\ABI\Consumer\Common $Handler) : Events\Promise {
       // Check if there is already such pipe
       if (($key = $this->getPipeHandlerKey ($Handler)) === false)
         return Events\Promise::resolve ();
@@ -202,7 +202,7 @@
     public function ___pipeDo () {
       // Check if there are pipes to process
       if (count ($this->Pipes) == 0) {
-        if ($this instanceof Events\Interface\Hookable) {
+        if ($this instanceof Events\ABI\Hookable) {
           $this->removeHook ('eventReadable', [ $this, '___pipeDo' ]);
           $this->removeHook ('eventClosed', [ $this, '___pipeClose' ]);
         }
@@ -264,8 +264,8 @@
      **/
     public function ___pipeHandlerClose ($Handler) {
       // Make sure the given handler is a consumer
-      if (!($Handler instanceof Events\Interface\Consumer) &&
-          !($Handler instanceof Events\Interface\Stream\Consumer))
+      if (!($Handler instanceof Events\ABI\Consumer) &&
+          !($Handler instanceof Events\ABI\Stream\Consumer))
         return;
       
       // Lookup the handler and remove
@@ -276,7 +276,7 @@
       }
       
       // Check if there are consumers left
-      if ((count ($this->Pipes) == 0) && ($this instanceof Events\Interface\Hookable)) {
+      if ((count ($this->Pipes) == 0) && ($this instanceof Events\ABI\Hookable)) {
         $this->removeHook ('eventReadable', [ $this, '___pipeDo' ]);
         $this->removeHook ('eventClosed', [ $this, '___pipeClose' ]);
       }

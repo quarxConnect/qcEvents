@@ -20,11 +20,11 @@
   
   declare (strict_types=1);
 
-  namespace quarxConnect\Events\Abstract;
+  namespace quarxConnect\Events\Virtual;
   use quarxConnect\Events;
   
   abstract class Pipe extends Events\Hookable {
-    use Events\Trait\Pipe;
+    use Events\Feature\Pipe;
     
     // {{{ read
     /**

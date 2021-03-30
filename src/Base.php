@@ -144,12 +144,12 @@
     /**
      * Add an event to our event-loop
      * 
-     * @param Interface\Loop $Event
+     * @param ABI\Loop $Event
      * 
      * @access public
      * @return bool
      **/
-    public function addEvent (Interface\Loop $Event) {
+    public function addEvent (ABI\Loop $Event) {
       // Check if the event is already assigned to an event-loop
       if (is_object ($Base = $Event->getEventBase ()) && ($Base instanceof Base)) {
         if ($Base !== $this)
@@ -174,12 +174,12 @@
     /**
      * Update the FDs of an event
      * 
-     * @param Interface\Loop $Event
+     * @param ABI\Loop $Event
      * 
      * @access public
      * @return bool
      **/
-    public function updateEvent (Interface\Loop $Event) {
+    public function updateEvent (ABI\Loop $Event) {
       // Check if this event is on our collection
       if (($Index = array_search ($Event, $this->Events, true)) === false)
         return false;
@@ -214,12 +214,12 @@
     /**
      * Remove an event from this event-loop
      * 
-     * @param Interface\Loop $Event
+     * @param ABI\Loop $Event
      * 
      * @access public
      * @return void
      **/
-    public function removeEvent (Interface\Loop $Event) {
+    public function removeEvent (ABI\Loop $Event) {
       // Check if this event is on our collection
       if (($Index = array_search ($Event, $this->Events, true)) === false)
         return false;
@@ -237,12 +237,12 @@
     /**
      * Check if we have a given event registered
      * 
-     * @param Interface\Loop $Event
+     * @param ABI\Loop $Event
      * 
      * @access public
      * @return bool
      **/
-    public function haveEvent (Interface\Loop $Event) {
+    public function haveEvent (ABI\Loop $Event) {
       return in_array ($Event, $this->Events, true);
     }
     // }}}
@@ -291,13 +291,13 @@
     /**
      * Force the raise of a given event on next iteration of event-loop
      * 
-     * @param Interface\Loop $Event
+     * @param ABI\Loop $Event
      * @param enum $evType
      * 
      * @access public
      * @return bool
      **/
-    public function forceEventRaise (Interface\Loop $Event, $evType) {
+    public function forceEventRaise (ABI\Loop $Event, $evType) {
       if ($evType == self::EVENT_READ)
         $this->forcedEvents [] = [ $Event, 'raiseRead' ];
       elseif ($evType == self::EVENT_WRITE)

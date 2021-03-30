@@ -20,7 +20,7 @@
   
   declare (strict_types=1);
 
-  namespace quarxConnect\Events\Trait;
+  namespace quarxConnect\Events\Feature;
   use quarxConnect\Events;
   
   trait Based {
@@ -54,13 +54,13 @@
         return;
       
       // Remove ourself from the current event loop
-      if ($this->eventBase && ($this instanceof Events\Interface\Loop))
+      if ($this->eventBase && ($this instanceof Events\ABI\Loop))
         $this->eventBase->removeEvent ($this);
       
       // Assign the new event-loop
       $this->eventBase = $eventBase;   
       
-      if ($this instanceof Events\Interface\Loop)
+      if ($this instanceof Events\ABI\Loop)
         $eventBase->addEvent ($this);
     }
     // }}}
@@ -76,7 +76,7 @@
       if (!$this->eventBase)
         return;
       
-      if ($this instanceof Events\Interface\Loop)
+      if ($this instanceof Events\ABI\Loop)
         $this->eventBase->removeEvent ($this);
       
       $this->eventBase = null;

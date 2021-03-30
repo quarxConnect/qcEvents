@@ -24,7 +24,7 @@
   use \quarxConnect\Events\Stream;
   use \quarxConnect\Events;
   
-  class Message extends Events\Abstract\Source {
+  class Message extends Events\Virtual\Source {
     /* Default opcode for messages */
     protected const MESSAGE_OPCODE = 0x00;
     

@@ -35,7 +35,7 @@
    * @revision 02
    **/
   class POP3 extends Events\Hookable {
-    use Events\Trait\Based;
+    use Events\Feature\Based;
     
     /* Our underlying POP3-Stream */
     private $Stream = null;

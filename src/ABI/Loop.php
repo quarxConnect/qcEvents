@@ -20,7 +20,7 @@
   
   declare (strict_types=1);
   
-  namespace quarxConnect\Events\Interface;
+  namespace quarxConnect\Events\ABI;
   
   interface Loop extends Based {
     // {{{ getReadFD

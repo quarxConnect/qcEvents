@@ -34,7 +34,7 @@
    * @revision 02
    **/
   class DNS extends Events\Hookable {
-    use Events\Trait\Based;
+    use Events\Feature\Based;
     
     /* DNS64-Prefix-Hack */
     public static $DNS64_Prefix = null;

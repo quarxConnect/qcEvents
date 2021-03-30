@@ -23,7 +23,7 @@
   namespace quarxConnect\Events\Stream;
   use \quarxConnect\Events;
   
-  class Websocket extends Events\Hookable implements Events\Interface\Stream\Consumer {
+  class Websocket extends Events\Hookable implements Events\ABI\Stream\Consumer {
     /* Known frame-opcodes */
     public const OPCODE_CONTINUE = 0x00;
     public const OPCODE_TEXT = 0x01;
@@ -127,12 +127,12 @@
      * Consume a set of data
      * 
      * @param mixed $Data
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return void
      **/
-    public function consume ($Data, Events\Interface\Source $Source) : void {
+    public function consume ($Data, Events\ABI\Source $Source) : void {
       // Validate the source
       if ($Source !== $this->Stream)
         return;
@@ -329,7 +329,7 @@
       
       // Process special messages
       if ($Message instanceof Websocket\Ping) {
-        $Response = new Websocket\Pong ($this, $Message->getData ());
+        $Response = new Websocket\Pong ($this, null, $Message->getData ());
         
         $this->sendMessage ($Response);
       } elseif ($Message instanceof Websocket\Close)
@@ -550,12 +550,12 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function initStreamConsumer (Events\Interface\Stream $Source) : Events\Promise {
+    public function initStreamConsumer (Events\ABI\Stream $Source) : Events\Promise {
       // Check if we are server or a handshake isn't needed
       if (($this->Type == $this::TYPE_SERVER) ||
           ($this->URI === null)) {
@@ -655,12 +655,12 @@
     /**
      * Callback: A source was removed from this consumer
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function deinitConsumer (Events\Interface\Source $Source) : Events\Promise {
+    public function deinitConsumer (Events\ABI\Source $Source) : Events\Promise {
       // Check if the source is our stream
       if ($this->Stream === $Source) {
         // Remove reference to stream
@@ -680,24 +680,24 @@
     /**
      * Callback: A stream was attached to this consumer
      * 
-     * @param Events\Interface\Stream $Source
+     * @param Events\ABI\Stream $Source
      * 
      * @access protected
      * @return void
      **/
-    protected function eventPipedStream (Events\Interface\Stream $Source) : void { }
+    protected function eventPipedStream (Events\ABI\Stream $Source) : void { }
     // }}}
     
     // {{{ eventUnpiped
     /**
      * Callback: A source was removed from this consumer
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access protected
      * @return void
      **/
-    protected function eventUnpiped (Events\Interface\Source $Source) : void { }
+    protected function eventUnpiped (Events\ABI\Source $Source) : void { }
     // }}}
     
     // {{{ eventReadable

@@ -6,7 +6,7 @@
   use quarxConnect\Events;
 
   final class TimerTest extends TestCase {
-    private const TOLERANCE = 0.01;
+    private const TOLERANCE = 0.03;
     
     /**
      * @dataProvider timerParameters

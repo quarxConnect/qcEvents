@@ -1,7 +1,7 @@
 <?php
 
   /**
-   * quarxConnect Events - Interface for Event-Sinks
+   * quarxConnect Events - Interface for Stream-Consumers
    * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
@@ -20,52 +20,33 @@
   
   declare (strict_types=1);
   
-  namespace quarxConnect\Events\Interface;
+  namespace quarxConnect\Events\ABI\Stream;
+  use quarxConnect\Events\ABI;
   use quarxConnect\Events;
   
-  interface Sink extends Common, Consumer {
-    // {{{ write
+  interface Consumer extends ABI\Consumer\Common {
+    // {{{ initStreamConsumer
     /**
-     * Write data to this sink
+     * Setup ourself to consume data from a stream
      * 
-     * @param string $Data The data to write to this sink
+     * @param ABI\Source $Source
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function write ($Data) : Events\Promise;
+    public function initStreamConsumer (ABI\Stream $Source) : Events\Promise;
     // }}}
     
-    // {{{ watchWrite
+    
+    // {{{ eventPipedStream
     /**
-     * Set/Retrive the current event-watching status
+     * Callback: A stream was attached to this consumer
      * 
-     * @param bool $Set (optional) Set the status
-     *  
-     * @access public
-     * @return bool
-     **/
-    public function watchWrite ($Set = null);
-    // }}}
-    
-    
-    // {{{ eventWritable
-    /**
-     * Callback: A writable-event was received for this handler on the event-loop
+     * @param ABI\Stream $Source
      * 
      * @access protected
      * @return void
      **/
-    # protected function eventWritable ();
-    // }}}
-    
-    // {{{ eventError
-    /**
-     * Callback: An error was received for this handler on the event-loop
-     * 
-     * @access protected
-     * @return void  
-     **/
-    # protected function eventError ();
+    # protected function eventPipedStream (ABI\Stream $Source);
     // }}}
   }

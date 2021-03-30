@@ -38,8 +38,8 @@
    * @package quarxConnect\Events
    * @revision 02
    **/
-  class inotify extends Hookable implements Interface\Loop {
-    use Trait\Based {
+  class inotify extends Hookable implements ABI\Loop {
+    use Feature\Based {
       setEventBase as private traitSetEventBase;
       unsetEventBase as private traitUnsetEventBase;
     }
@@ -291,7 +291,7 @@
      * @access public
      * @return void
      * 
-     * @remark This is implemented by Trait\Based
+     * @remark This is implemented by Feature\Based
      **/
     public function unsetEventBase () {
       if ($this->inotifyDescriptor !== null) {

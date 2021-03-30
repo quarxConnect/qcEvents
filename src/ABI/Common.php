@@ -1,7 +1,7 @@
 <?php
 
   /**
-   * quarxConnect Events - Interface Based
+   * quarxConnect Events - Interface Commons
    * Copyright (C) 2020-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
@@ -20,38 +20,50 @@
   
   declare (strict_types=1);
   
-  namespace quarxConnect\Events\Interface;
+  namespace quarxConnect\Events\ABI;
+  use quarxConnect\Events;
   
-  interface Based {
-    // {{{ getEventBase
+  interface Common extends Hookable, Based {
+    // {{{ isWatching
     /**
-     * Retrive the handle of the current event-loop-handler
+     * Check if we are registered on the assigned Event-Base and watching for events
+     * 
+     * @param bool $Set (optional) Toogle the state
      * 
      * @access public
-     * @return \quarxConnect\Events\Base
+     * @return bool
      **/
-    public function getEventBase () : ?\quarxConnect\Events\Base;
+    public function isWatching ($Set = null);
     // }}}
     
-    // {{{ setEventBase
+    // {{{ close
     /**
-     * Set the Event-Base of this source
+     * Close this event-interface
      * 
-     * @param \quarxConnect\Events\Base $eventBase
+     * @access public
+     * @return Events\Promise
+     **/
+    public function close () : Events\Promise;
+    // }}}
+    
+    
+    // {{{ eventClosed
+    /**
+     * Callback: The interface was closed
      * 
      * @access public
      * @return void
      **/
-    public function setEventBase (\quarxConnect\Events\Base $eventBase);
+    # protected function eventClosed ();
     // }}}
     
-    // {{{ unsetEventBase
+    // {{{ eventError
     /**
-     * Remove any assigned event-loop-handler
+     * Callback: An error was received for this handler on the event-loop
      * 
      * @access public
-     * @return void
+     * @return void  
      **/
-    public function unsetEventBase ();
+    # protected function eventError ();
     // }}}
   }

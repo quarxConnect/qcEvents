@@ -1,7 +1,7 @@
 <?php
 
   /**
-   * quarxConnect Events - Interface for Stream-Consumers
+   * quarxConnect Events - Interface for Event-Sinks
    * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
@@ -20,33 +20,52 @@
   
   declare (strict_types=1);
   
-  namespace quarxConnect\Events\Interface\Stream;
-  use quarxConnect\Events\Interface;
+  namespace quarxConnect\Events\ABI;
   use quarxConnect\Events;
   
-  interface Consumer extends Interface\Consumer\Common {
-    // {{{ initStreamConsumer
+  interface Sink extends Common, Consumer {
+    // {{{ write
     /**
-     * Setup ourself to consume data from a stream
+     * Write data to this sink
      * 
-     * @param Interface\Source $Source
+     * @param string $Data The data to write to this sink
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function initStreamConsumer (Interface\Stream $Source) : Events\Promise;
+    public function write ($Data) : Events\Promise;
+    // }}}
+    
+    // {{{ watchWrite
+    /**
+     * Set/Retrive the current event-watching status
+     * 
+     * @param bool $Set (optional) Set the status
+     *  
+     * @access public
+     * @return bool
+     **/
+    public function watchWrite ($Set = null);
     // }}}
     
     
-    // {{{ eventPipedStream
+    // {{{ eventWritable
     /**
-     * Callback: A stream was attached to this consumer
-     * 
-     * @param Interface\Stream $Source
+     * Callback: A writable-event was received for this handler on the event-loop
      * 
      * @access protected
      * @return void
      **/
-    # protected function eventPipedStream (Interface\Stream $Source);
+    # protected function eventWritable ();
+    // }}}
+    
+    // {{{ eventError
+    /**
+     * Callback: An error was received for this handler on the event-loop
+     * 
+     * @access protected
+     * @return void  
+     **/
+    # protected function eventError ();
     // }}}
   }

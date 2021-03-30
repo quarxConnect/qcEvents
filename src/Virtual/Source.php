@@ -20,11 +20,11 @@
   
   declare (strict_types=1);
 
-  namespace quarxConnect\Events\Abstract;
+  namespace quarxConnect\Events\Virtual;
   use quarxConnect\Events;
   
-  class Source extends Pipe implements Events\Interface\Source {
-    use Events\Trait\Based;
+  class Source extends Pipe implements Events\ABI\Source {
+    use Events\Feature\Based;
     
     /* Local buffer of abstract source */
     private $Buffer = '';

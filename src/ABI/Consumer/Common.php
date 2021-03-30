@@ -1,8 +1,8 @@
 <?php
 
   /**
-   * quarxConnect Events - Interface Commons
-   * Copyright (C) 2020-2021 Bernd Holzmueller <bernd@quarxconnect.de>
+   * quarxConnect Events - Interface for Source-Consumers
+   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -19,21 +19,23 @@
    **/
   
   declare (strict_types=1);
-  
-  namespace quarxConnect\Events\Interface;
+
+  namespace quarxConnect\Events\ABI\Consumer;
+  use quarxConnect\Events\ABI;
   use quarxConnect\Events;
   
-  interface Common extends Hookable, Based {
-    // {{{ isWatching
+  interface Common extends ABI\Hookable {
+    // {{{ consume
     /**
-     * Check if we are registered on the assigned Event-Base and watching for events
+     * Consume a set of data
      * 
-     * @param bool $Set (optional) Toogle the state
+     * @param mixed $Data
+     * @param ABI\Source $Source
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function isWatching ($Set = null);
+    public function consume ($Data, ABI\Source $Source);
     // }}}
     
     // {{{ close
@@ -44,6 +46,18 @@
      * @return Events\Promise
      **/
     public function close () : Events\Promise;
+    // }}}
+    
+    // {{{ deinitConsumer
+    /**
+     * Callback: A source was removed from this consumer
+     * 
+     * @param ABI\Source $Source
+     * 
+     * @access public
+     * @return Events\Promise
+     **/
+    public function deinitConsumer (ABI\Source $Source) : Events\Promise;
     // }}}
     
     
@@ -57,13 +71,15 @@
     # protected function eventClosed ();
     // }}}
     
-    // {{{ eventError
+    // {{{ eventUnpiped
     /**
-     * Callback: An error was received for this handler on the event-loop
+     * Callback: A source was removed from this consumer
      * 
-     * @access public
-     * @return void  
+     * @param Source $Source
+     * 
+     * @access protected
+     * @return void
      **/
-    # protected function eventError ();
+    # protected function eventUnpiped (Source $Source);
     // }}}
   }

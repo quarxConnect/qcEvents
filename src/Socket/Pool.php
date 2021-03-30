@@ -179,12 +179,12 @@
      * Mark a socket as enabled/connection established
      * 
      * @param Events\Socket $Socket
-     * @param Events\Interface\Stream\Consumer $Pipe (optional)
+     * @param Events\ABI\Stream\Consumer $Pipe (optional)
      * 
      * @access public
      * @return void
      **/
-    public function enableSocket (Events\Socket $Socket, Events\Interface\Stream\Consumer $Pipe = null) {
+    public function enableSocket (Events\Socket $Socket, Events\ABI\Stream\Consumer $Pipe = null) {
       // Try to find the socket on pool
       if (($socketIndex = array_search ($Socket, $this->Sockets, true)) === false) {
         trigger_error ('Trying to enable unknown socket');

@@ -33,7 +33,7 @@
    * @package quarxConnect\Events
    * @revision 02
    **/
-  class Client extends Events\Hookable implements Events\Interface\Stream\Consumer {
+  class Client extends Events\Hookable implements Events\ABI\Stream\Consumer {
     /* Defaults for POP3 */
     protected const DEFAULT_PORT = 110;
     protected const DEFAULT_TYPE = Events\Socket::TYPE_TCP;
@@ -703,12 +703,12 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function initStreamConsumer (Events\Interface\Stream $streamSource) : Events\Promise {
+    public function initStreamConsumer (Events\ABI\Stream $streamSource) : Events\Promise {
       // Check if this is really a new stream
       if ($this->Stream === $streamSource)
         return Events\Promise::resolve ();
@@ -753,12 +753,12 @@
     /**
      * Callback: A source was removed from this consumer
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function deinitConsumer (Events\Interface\Source $Source) : Events\Promise {
+    public function deinitConsumer (Events\ABI\Source $Source) : Events\Promise {
       // Check if the source is authentic
       if ($this->Stream !== $Source)
         return Events\Promise::reject ('Invalid source');
@@ -776,12 +776,12 @@
      * Consume a set of data
      * 
      * @param mixed $Data  
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return void  
      **/
-    public function consume ($Data, Events\Interface\Source $Source) {
+    public function consume ($Data, Events\ABI\Source $Source) {
       // Append data to internal buffer
       $this->Buffer .= $Data;
       unset ($Data);

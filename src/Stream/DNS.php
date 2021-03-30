@@ -23,8 +23,8 @@
   namespace quarxConnect\Events\Stream;
   use quarxConnect\Events;
   
-  class DNS implements Events\Interface\Consumer, Events\Interface\Stream\Consumer {
-    use Events\Trait\Hookable;
+  class DNS implements Events\ABI\Consumer, Events\ABI\Stream\Consumer {
+    use Events\Feature\Hookable;
     
     /* Internal DNS-Buffer for TCP-Mode */
     private $dnsBuffer = '';
@@ -52,9 +52,9 @@
      * Retrive the source for this DNS-Stream
      * 
      * @access public
-     * @return Events\Interface\Source
+     * @return Events\ABI\Source
      **/
-    public function getSource () : Events\Interface\Source {
+    public function getSource () : Events\ABI\Source {
       return $this->Source;
     }
     // }}}
@@ -136,7 +136,7 @@
         $Data = chr ((strlen ($Data) & 0xFF00) >> 8) . chr (strlen ($Data) & 0xFF) . $Data;
       
       // Add to local storage if it is a query
-      if ($Query && ($this->Source instanceof Events\Interface\Common)) {
+      if ($Query && ($this->Source instanceof Events\ABI\Common)) {
         $this->dnsQueries [$Message->getID ()] = $Message;
         $this->dnsAddTimeout ($Message);
         
@@ -236,12 +236,12 @@
      * Internal Callback: Data was received over the wire
      * 
      * @param string $Data
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return void
      **/
-    public function consume ($Data, Events\Interface\Source $Source) {
+    public function consume ($Data, Events\ABI\Source $Source) {
       // Make sure we have a source
       if (!$this->Source) {
         trigger_error ('consume() without Source assigned');
@@ -319,18 +319,18 @@
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * @param callable $Callback (optional) Callback to raise once the pipe is ready
      * @param mixed $Private (optional) Any private data to pass to the callback
      * 
      * The callback will be raised in the form of
      *  
-     *   function (Events\Interface\Consumer $Self, bool $Status, mixed $Private = null) { }
+     *   function (Events\ABI\Consumer $Self, bool $Status, mixed $Private = null) { }
      *    
      * @access public
      * @return callable
      **/
-    public function initConsumer (Events\Interface\Source $Source, callable $Callback = null, $Private = null) {
+    public function initConsumer (Events\ABI\Source $Source, callable $Callback = null, $Private = null) {
       // Check if this source is already set
       if ($this->Source === $Source) {
         $this->___raiseCallback ($Callback, true, $Private);
@@ -364,12 +364,12 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function initStreamConsumer (Events\Interface\Stream $Source) : Events\Promise {
+    public function initStreamConsumer (Events\ABI\Stream $Source) : Events\Promise {
       // Check if this source is already set
       if ($this->Source === $Source)
         return Events\Promise::resolve ();
@@ -401,12 +401,12 @@
     /**
      * Callback: A source was removed from this sink
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function deinitConsumer (Events\Interface\Source $Source) : Events\Promise {
+    public function deinitConsumer (Events\ABI\Source $Source) : Events\Promise {
       // Check if this is the right source
       if ($this->Source !== $Source)
         return Events\Promise::reject ('Invalid source');
@@ -494,35 +494,35 @@
     /**
      * Callback: A source was attached to this consumer
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access protected
      * @return void
      **/
-    protected function eventPiped (Events\Interface\Source $Source) { }
+    protected function eventPiped (Events\ABI\Source $Source) { }
     // }}}
     
     // {{{ eventPipedStream
     /**
      * Callback: A stream was attached to this consumer
      * 
-     * @param Events\Interface\Stream $Source
+     * @param Events\ABI\Stream $Source
      * 
      * @access protected
      * @return void
      **/
-    protected function eventPipedStream (Events\Interface\Stream $Source) { }
+    protected function eventPipedStream (Events\ABI\Stream $Source) { }
     // }}}
     
     // {{{ eventUnpiped
     /**
      * Callback: A source was removed from this consumer
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access protected
      * @return void
      **/
-    protected function eventUnpiped (Events\Interface\Source $Source) { }
+    protected function eventUnpiped (Events\ABI\Source $Source) { }
     // }}}
   }

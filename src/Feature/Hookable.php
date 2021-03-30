@@ -20,7 +20,7 @@
   
   declare (strict_types=1);
 
-  namespace quarxConnect\Events\Trait;
+  namespace quarxConnect\Events\Feature;
   use quarxConnect\Events;
   
   trait Hookable {

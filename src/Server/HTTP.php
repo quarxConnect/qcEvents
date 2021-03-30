@@ -308,7 +308,7 @@
         function () use ($responseBody) {
           // Make sure we may write to our source (should never fail)
           if (!is_object ($Source = $this->getPipeSource ()) ||
-              !($Source instanceof Events\Interface\Sink))
+              !($Source instanceof Events\ABI\Sink))
             throw new \exception ('Source is not writeable');
           
           // Write out the body
@@ -381,7 +381,7 @@
         return Events\Promise::reject ('Request-Headers have not been sent yet');
       
       // Write out the chunk
-      if (!(($Source = $this->getPipeSource ()) instanceof Events\Interface\Sink))
+      if (!(($Source = $this->getPipeSource ()) instanceof Events\ABI\Sink))
         return Events\Promise::reject ('Source is not writable');
       
       if ($this->Response->getVersion () < 1.1)
@@ -409,7 +409,7 @@
       if (!$this->Response)
         return Events\Promise::reject ('Request-Headers have not been sent yet');
       
-      if (!(($Source = $this->getPipeSource ()) instanceof Events\Interface\Sink))
+      if (!(($Source = $this->getPipeSource ()) instanceof Events\ABI\Sink))
         return Events\Promise::reject ('Source is not writable');
       
       // Check for tailing header
@@ -533,7 +533,7 @@
       if (!($Expect = $Header->getField ('Expect')) ||
           !(strcasecmp ($Expect, '100-continue') == 0) || # TODO: Add support for extensions
           !($Source = $this->getPipeSource ()) ||
-          !($Source instanceof Events\Interface\Sink))
+          !($Source instanceof Events\ABI\Sink))
         return;
       
       # TODO: Check here if the expection was met
@@ -621,7 +621,7 @@
       }
       
       // Make sure we have a source with getEventBase() and close()
-      if (!(($Source = $this->getPipeSource ()) instanceof Events\Interface\Common))
+      if (!(($Source = $this->getPipeSource ()) instanceof Events\ABI\Common))
         return;
       
       // Make sure we have an event-base
@@ -642,12 +642,12 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function initStreamConsumer (Events\Interface\Stream $Source) : Events\Promise {
+    public function initStreamConsumer (Events\ABI\Stream $Source) : Events\Promise {
       // Setup our parent first
       return parent::initStreamConsumer ($Source)->then (
         function () use ($Source) {
@@ -671,18 +671,18 @@
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * @param callable $Callback (optional) Callback to raise once the pipe is ready
      * @param mixed $Private (optional) Any private data to pass to the callback
      * 
      * The callback will be raised in the form of
      * 
-     *   function (Events\Interface\Consumer $Self, bool $Status, mixed $Private = null) { }
+     *   function (Events\ABI\Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
      **/
-    public function initConsumer (Events\Interface\Source $Source, callable $Callback = null, $Private = null) {
+    public function initConsumer (Events\ABI\Source $Source, callable $Callback = null, $Private = null) {
       // Make sure the source is a socket and close the connection if it misses to send the first request
       if (($rc = parent::initConsumer ($Source, $Callback, $Private)) && ($Source instanceof Events\Socket))
         $this->httpdSetKeepAlive (true);
@@ -703,12 +703,12 @@
     /**
      * Callback: A source was removed from this consumer
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return Events\Promise
      **/  
-    public function deinitConsumer (Events\Interface\Source $Source) : Events\Promise {
+    public function deinitConsumer (Events\ABI\Source $Source) : Events\Promise {
       // Remove our hooks again
       $this->removeHook ('httpFinished', [ $this, 'httpdRequestReady' ]);
       $this->removeHook ('httpHeaderReady', [ $this, 'httpdHeaderReady' ]);

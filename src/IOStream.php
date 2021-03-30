@@ -22,8 +22,8 @@
 
   namespace quarxConnect\Events;
   
-  abstract class IOStream extends Abstract\Pipe implements Interface\Loop, Interface\Stream, Interface\Stream\Consumer {
-    use Trait\Based;
+  abstract class IOStream extends Virtual\Pipe implements ABI\Loop, ABI\Stream, ABI\Stream\Consumer {
+    use Feature\Based;
     
     protected const DEFAULT_READ_LENGTH = 4096;
     
@@ -258,12 +258,12 @@
      * Consume a set of data
      * 
      * @param mixed $Data
-     * @param Interface\Source $Source
+     * @param ABI\Source $Source
      * 
      * @access public
      * @return void
      **/
-    public function consume ($Data, Interface\Source $Source) {
+    public function consume ($Data, ABI\Source $Source) {
       $this->write ($Data);
     }
     // }}}
@@ -503,18 +503,18 @@
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param Interface\Source $Source
+     * @param ABI\Source $Source
      * @param callable $Callback (optional) Callback to raise once the pipe is ready
      * @param mixed $Private (optional) Any private data to pass to the callback
      * 
      * The callback will be raised in the form of
      * 
-     *   function (Interface\Consumer $Self, bool $Status, mixed $Private = null) { }
+     *   function (ABI\Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
      **/
-    public function initConsumer (Interface\Source $Source, callable $Callback = null, $Private = null) {
+    public function initConsumer (ABI\Source $Source, callable $Callback = null, $Private = null) {
       $this->___raiseCallback ($Callback, true, $Private);
       $this->___callback ('eventPiped', $Source);
     }
@@ -524,12 +524,12 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param Interface\Stream $Source
+     * @param ABI\Stream $Source
      * 
      * @access public
      * @return Promise
      **/
-    public function initStreamConsumer (Interface\Stream $Source) : Promise {
+    public function initStreamConsumer (ABI\Stream $Source) : Promise {
       // Raise a callback for this
       $this->___callback ('eventPipedStream', $Source);
       
@@ -542,12 +542,12 @@
     /**
      * Callback: A source was removed from this sink
      * 
-     * @param Interface\Source $Source
+     * @param ABI\Source $Source
      * 
      * @access public
      * @return Promise
      **/
-    public function deinitConsumer (Interface\Source $Source) : Promise {
+    public function deinitConsumer (ABI\Source $Source) : Promise {
       $this->___callback ('eventUnpiped', $Source);
       
       return Promise::resolve ();
@@ -623,36 +623,36 @@
     /**
      * Callback: A source was attached to this consumer
      * 
-     * @param Interface\Source $Source
+     * @param ABI\Source $Source
      * 
      * @access protected
      * @return void
      **/
-    protected function eventPiped (Interface\Source $Source) { }
+    protected function eventPiped (ABI\Source $Source) { }
     // }}}
 
     // {{{ eventPipedStream
     /**
      * Callback: A stream was attached to this consumer
      * 
-     * @param Interface\Stream $Source
+     * @param ABI\Stream $Source
      * 
      * @access protected
      * @return void
      **/  
-    protected function eventPipedStream (Interface\Stream $Source) { }
+    protected function eventPipedStream (ABI\Stream $Source) { }
     // }}}
 
     // {{{ eventUnpiped
     /**
      * Callback: A source was removed from this consumer
      * 
-     * @param Interface\Source $Source
+     * @param ABI\Source $Source
      * 
      * @access protected
      * @return void
      **/
-    protected function eventUnpiped (Interface\Source $Source) { }
+    protected function eventUnpiped (ABI\Source $Source) { }
     // }}}
   }
 

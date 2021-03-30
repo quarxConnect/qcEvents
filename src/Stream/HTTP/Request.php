@@ -564,12 +564,12 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function initStreamConsumer (Events\Interface\Stream $Source) : Events\Promise {
+    public function initStreamConsumer (Events\ABI\Stream $Source) : Events\Promise {
       // Inherit to our parent
       return parent::initStreamConsumer ($Source)->then (
         function () use ($Source) {
@@ -601,18 +601,18 @@
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param Events\Interface\Source $Source
+     * @param Events\ABI\Source $Source
      * @param callable $Callback (optional) Callback to raise once the pipe is ready
      * @param mixed $Private (optional) Any private data to pass to the callback
      * 
      * The callback will be raised in the form of
      * 
-     *   function (Events\Interface\Consumer $Self, bool $Status, mixed $Private = null) { }
+     *   function (Events\ABI\Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
      **/
-    public function initConsumer (Events\Interface\Source $Source, callable $Callback = null, $Private = null) {
+    public function initConsumer (Events\ABI\Source $Source, callable $Callback = null, $Private = null) {
       // Inherit to our parent
       if (($rc = parent::initConsumer ($Source, $Callback, $Private)) && ($Source instanceof Events\Socket)) {
         # TODO: This is Sockets-API!

@@ -32,9 +32,9 @@
    * @package \quarxConnect\Events
    * @revision 03
    **/
-  class Server implements Events\Interface\Loop, Events\Interface\Server {
-    use Events\Trait\Hookable;
-    use Events\Trait\Based;
+  class Server implements Events\ABI\Loop, Events\ABI\Server {
+    use Events\Feature\Hookable;
+    use Events\Feature\Based;
     
     /* Base-Class for Child-Connections */
     protected const CHILD_CLASS_BASE = Events\Socket::class;
@@ -182,8 +182,8 @@
     public function setChildClass (string $Classname, bool $Piped = false) : bool {
       // Verify the class
       if ((!$Piped && !is_a ($Classname, $this::CHILD_CLASS_BASE, true)) ||
-          ($Piped && !is_a ($Classname, Events\Interface\Consumer::class, true) && !is_a ($Classname, Events\Interface\Stream_Consumer::class, true))) {
-        trigger_error ($Classname . ' has to implement ' . ($Piped ? Events\Interface\Consumer::class . ' or ' . Events\Interface\Stream\Consumer::class : $this::CHILD_CLASS_BASE));
+          ($Piped && !is_a ($Classname, Events\ABI\Consumer::class, true) && !is_a ($Classname, Events\ABI\Stream_Consumer::class, true))) {
+        trigger_error ($Classname . ' has to implement ' . ($Piped ? Events\ABI\Consumer::class . ' or ' . Events\ABI\Stream\Consumer::class : $this::CHILD_CLASS_BASE));
         
         return false;
       }
@@ -564,7 +564,7 @@
       
       // Pipe if client and socket are not the same
       if ($Socket !== $Client) {
-        if ($Client instanceof Events\Interface\Stream\Consumer)
+        if ($Client instanceof Events\ABI\Stream\Consumer)
           $Socket->pipeStream ($Client);
         else
           $Socket->pipe ($Client);
