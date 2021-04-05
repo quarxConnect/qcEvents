@@ -426,7 +426,7 @@
             
             if (count ($this->socketMaps [$socketKey]) > 0) {
               // Check if there is another socket available for usage
-              foreach ($this->socketMaps [$socketKey] as $socketIndex) {
+              foreach (array_keys ($this->socketMaps [$socketKey]) as $socketIndex) {
                 if ($this->socketStatus [$socketIndex] != self::STATUS_AVAILABLE)
                   continue;
                 
