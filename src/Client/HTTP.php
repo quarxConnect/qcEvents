@@ -576,8 +576,8 @@
         }
         
         // Compare domain
-        if ((!$Cookie ['origin'] && (strcasecmp (substr ($Hostname, -strlen ($Cookie ['domain']), strlen ($Cookie ['domain'])), $Hostname) != 0)) ||
-            (strcasecmp ($Cookie ['domain'], $Hostname) != 0))
+        if ((!$Cookie ['origin'] && (strcasecmp (substr ($Hostname, -strlen ($Cookie ['domain']), strlen ($Cookie ['domain'])), $Cookie ['domain']) != 0)) ||
+            ($Cookie ['origin'] && (strcasecmp ($Cookie ['domain'], $Hostname) != 0)))
           continue;
         
         // Compare path
@@ -706,6 +706,9 @@
               continue;
           
           } elseif ($Name == 'path') {
+            // BUGFIX: 1und1.de has urlencoded paths
+            $Value = urldecode ($Value);
+            
             if (substr ($Value, -1, 1) != '/')
               $Value .= '/';
             
