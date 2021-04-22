@@ -182,7 +182,7 @@
     public function setChildClass (string $Classname, bool $Piped = false) : bool {
       // Verify the class
       if ((!$Piped && !is_a ($Classname, $this::CHILD_CLASS_BASE, true)) ||
-          ($Piped && !is_a ($Classname, Events\ABI\Consumer::class, true) && !is_a ($Classname, Events\ABI\Stream_Consumer::class, true))) {
+          ($Piped && !is_a ($Classname, Events\ABI\Consumer::class, true) && !is_a ($Classname, Events\ABI\Stream\Consumer::class, true))) {
         trigger_error ($Classname . ' has to implement ' . ($Piped ? Events\ABI\Consumer::class . ' or ' . Events\ABI\Stream\Consumer::class : $this::CHILD_CLASS_BASE));
         
         return false;

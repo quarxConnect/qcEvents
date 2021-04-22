@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
    * qcEvents - Stratum-Client
-   * Copyright (C) 2018-2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,11 +18,12 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Stream/Stratum.php');
-  require_once ('qcEvents/Stream/Stratum/Job.php');
-  require_once ('qcEvents/Promise.php');
+  declare (strict_types=1);
   
-  class qcEvents_Client_Stratum extends qcEvents_Stream_Stratum {
+  namespace quarxConnect\Events\Client;
+  use \quarxConnect\Events;
+  
+  class Stratum extends Events\Stream\Stratum {
     /* Mining-Difficulty */
     private $Difficulty = 1;
     
@@ -39,27 +40,27 @@
      * @param string $clientVersion (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function subscribe ($Version = 'qcEvents/Stratum') : qcEvents_Promise {
+    public function subscribe (string $Version = 'qcEvents/Stratum') : Events\Promise {
       switch ($this->getProtocolVersion ()) {
         // Ethereum-GetWork does not support this and negotiates version later
         case $this::PROTOCOL_ETH_GETWORK:
           $this->Version = $Version;
           
-          return qcEvents_Promise::resolve (array (), null, null);
+          return Events\Promise::resolve ([ ], null, null);
         // Ethereum-Stratum has empty parameters?!
         case $this::PROTOCOL_ETH_STRATUM:
-          $Params = array ();
+          $Params = [ ];
           
           break;
         // Ethereum-Nicehash has protocol-version right after client-version
         case $this::PROTOCOL_ETH_STRATUM_NICEHASH:
-          $Params = array ($Version, 'EthereumStratum/1.0.0');
+          $Params = [ $Version, 'EthereumStratum/1.0.0' ];
           
           break;
         default:
-          $Params = array ($Version);
+          $Params = [ $Version ];
       }
       
       return $this->sendRequest (
@@ -70,23 +71,23 @@
         use ($Version) {
           // Sanatize the result
           if (!$Result || !is_array ($Result) || (count ($Result) <= 2))
-            throw new exception ('Invalid result received');
+            throw new \Exception ('Invalid result received');
           
           // Store the version
           $this->Version = $Version;
           
           // Transform the result
-          $Result = array (
+          $Result = [
             'Services' => $Result [0],
             'ExtraNonce1' => hexdec ($Result [1]),
             'ExtraNonce2Length' => $Result [2],
-          );
+          ];
           
           // Raise the callback
           $this->___callback ('stratumSubscribed', $Result ['Services'], $Result ['ExtraNonce1'], $Result ['ExtraNonce2Length']);
           
           // Forward the result
-          return new qcEvents_Promise_Solution (array ($Result ['Services'], $Result ['ExtraNonce1'], $Result ['ExtraNonce2Length']));
+          return new Events\Promise\Solution ([ $Result ['Services'], $Result ['ExtraNonce1'], $Result ['ExtraNonce2Length'] ]);
         }
       );
     }
@@ -99,15 +100,15 @@
      * @param array $Extensions
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function configure (array $Extensions) : qcEvents_Promise {
+    public function configure (array $Extensions) : Events\Promise {
       // Check if this call is supported
       if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK)
-        return qcEvents_Promise::reject ('Unsupported on eth-getwork');
+        return Events\Promise::reject ('Unsupported on eth-getwork');
       
       // Convert extensions
-      $Parameters = array ();
+      $Parameters = [ ];
       
       foreach ($Extensions as $Extension=>$eParameters)
         foreach ($eParameters as $Key=>$Value)
@@ -116,7 +117,7 @@
       // Forward the request
       return $this->sendRequest (
         'mining.configure',
-        array (array_keys ($Extensions), $Parameters)
+        [ array_keys ($Extensions), $Parameters ]
       );
     }
     // }}}
@@ -129,13 +130,13 @@
      * @param string $Password (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function authenticate ($Username, $Password = null) : qcEvents_Promise {
+    public function authenticate (string $Username, string $Password = null) : Events\Promise {
       return $this->sendRequest (
         ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK ? 'eth_submitLogin' : 'mining.authorize'),
-        ($Password !== null ? array ($Username, $Password) : array ($Username)),
-        ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK ? array ('worker' => $this->Version) : null)
+        ($Password !== null ? [ $Username, $Password ] : [ $Username ]),
+        ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK ? [ 'worker' => $this->Version ] : null)
       )->then (
         function ($Result)
         use ($Username) {
@@ -147,11 +148,11 @@
             $this->___callback ('stratumAuthenticated', $Username);
             
             if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK)
-              $this->sendMessage (array (
+              $this->sendMessage ([
                 'id' => 0,
                 'method' => 'eth_getWork',
-                'params' => array (),
-              ));
+                'params' => [ ],
+              ]);
           }
           
           // Forward the result
@@ -168,7 +169,7 @@
      * @access public
      * @return string
      **/
-    public function getUsername () {
+    public function getUsername () : string {
       return $this->Username;
     }
     // }}}
@@ -180,9 +181,9 @@
      * @param array $Work
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function submitWork (array $Work) : qcEvents_Promise {
+    public function submitWork (array $Work) : Events\Promise {
       // Preprocess Work for ethereum
       if ($this->getAlgorithm () == $this::ALGORITHM_ETH) {
         # GetWork:
@@ -218,16 +219,17 @@
      * @access protected
      * @return void
      **/
-    protected function processRequest ($Message) {
+    protected function processRequest (object $Message) : void {
       // Pool sets a new difficulty
       if ($Message->method == 'mining.set_difficulty') {
         $this->Difficulty = $Message->params [0];
+        $this->___callback ('stratumSetDifficulty', $this->Difficulty);
         
-        return $this->___callback ('stratumSetDifficulty', $this->Difficulty);
+        return;
       
       // Pool sends new job
       } elseif ($Message->method == 'mining.notify') {
-        if ($Job = qcEvents_Stream_Stratum_Job::fromArray ($this, $Message->params))
+        if ($Job = Events\Stream\Stratum\Job::fromArray ($this, $Message->params))
           $this->___callback ('stratumNewJob', $Job);
         
         return;
@@ -247,14 +249,13 @@
      * @access protected
      * @return void
      **/
-    protected function processNotify ($Message) {
+    protected function processNotify (object $Message) : void {
       // Check if this might be a job or inherit to our parent
       if (($this->getProtocolVersion () != $this::PROTOCOL_ETH_GETWORK) ||
-          !($Job = qcEvents_Stream_Stratum_Job::fromArray ($this, $Message->result)))
-        return parent::processNotify ($Message);
-      
-      // Propagate the job
-      return $this->___callback ('stratumNewJob', $Job);
+          !($Job = Events\Stream\Stratum\Job::fromArray ($this, $Message->result)))
+        parent::processNotify ($Message);
+      else
+        $this->___callback ('stratumNewJob', $Job);
     }
     // }}}
     
@@ -301,13 +302,11 @@
     /**
      * Callback: A new Job was received from our server
      * 
-     * @param qcEvents_Stream_Stratum_Job $Job
+     * @param Events\Stream\Stratum\Job $Job
      * 
      * @access protected
      * @return void
      **/
-    protected function stratumNewJob (qcEvents_Stream_Stratum_Job $Job) { }
+    protected function stratumNewJob (Events\Stream\Stratum\Job $Job) { }
     // }}}
   }
-
-?>

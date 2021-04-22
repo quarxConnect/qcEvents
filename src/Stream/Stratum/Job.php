@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
    * qcEvents - Stratum Job
-   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,7 +18,12 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  class qcEvents_Stream_Stratum_Job {
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events\Stream\Stratum;
+  use \quarxConnect\Events;
+  
+  class Job {
     /* The ID of tis job */
     private $ID = null;
     
@@ -53,14 +58,14 @@
     /**
      * Create a new Stratum-Job from a given array
      * 
-     * @param qcEvents_Stream_Stratum $Stratum Instance of the stratum-stream the job is for
+     * @param Events\Stream\Stratum $Stratum Instance of the stratum-stream the job is for
      * @param array $Job All informations regarding the job
      * @param enum $Format (optional) Format of the job, if not given informations from stream will be used
      * 
      * @access public
-     * @return qcEvents_Stream_Stratum_Job
+     * @return Job
      **/
-    public static function fromArray (qcEvents_Stream_Stratum $Stratum, array $Job, $Format = null) : ?qcEvents_Stream_Stratum_Job {
+    public static function fromArray (Events\Stream\Stratum $Stratum, array $Job, $Format = null) : ?Job {
       // Prepare the job
       $Instance = new static ();
       
@@ -71,11 +76,11 @@
          * Ethereum-Stratum has 5 Elements          (Job-ID, Headerhash, Seedhash, Target, Reset)
          * Ethereum-Stratum-Nicehash has 4 Elements (Job-ID, Seedhash, Headerhash,         Reset)
          **/
-        static $jobTypes = array (
-          3 => qcEvents_Stream_Stratum::PROTOCOL_ETH_GETWORK,
-          5 => qcEvents_Stream_Stratum::PROTOCOL_ETH_STRATUM,
-          4 => qcEvents_Stream_Stratum::PROTOCOL_ETH_STRATUM_NICEHASH,
-        );
+        static $jobTypes = [
+          3 => Events\Stream\Stratum::PROTOCOL_ETH_GETWORK,
+          5 => Events\Stream\Stratum::PROTOCOL_ETH_STRATUM,
+          4 => Events\Stream\Stratum::PROTOCOL_ETH_STRATUM_NICEHASH,
+        ];
         
         // Make sure we know how to process this job
         if (!isset ($jobTypes [count ($Job)])) {
@@ -87,19 +92,19 @@
         // Check wheter to convert the job
         $inFormat = $jobTypes [count ($Job)];
         
-        if ($inFormat == qcEvents_Stream_Stratum::PROTOCOL_ETH_GETWORK) {
+        if ($inFormat == $Stratum::PROTOCOL_ETH_GETWORK) {
           $Instance->ID = $Job [0];
           $Instance->Headerhash = $Job [0];
           $Instance->Seedhash = $Job [1];
           $Instance->Difficulty = $Job [2];
           $Instance->Reset = true;
-        } elseif ($inFormat == qcEvents_Stream_Stratum::PROTOCOL_ETH_STRATUM) {
+        } elseif ($inFormat == $Stratum::PROTOCOL_ETH_STRATUM) {
           $Instance->ID = $Job [0];
           $Instance->Headerhash = $Job [1];
           $Instance->Seedhash = $Job [2];
           $Instance->Difficulty = $Job [3];
           $Instance->Reset = $Job [4];
-        } elseif ($inFormat == qcEvents_Stream_Stratum::PROTOCOL_ETH_STRATUM_NICEHASH) {
+        } elseif ($inFormat == $Stratum::PROTOCOL_ETH_STRATUM_NICEHASH) {
           $Instance->ID = $Job [0];
           $Instance->Headerhash = $Job [2];
           $Instance->Seedhash = $Job [1];
@@ -231,35 +236,35 @@
      * @access public
      * @return array
      **/
-    public function toArray ($Protocol = null) {
+    public function toArray ($Protocol = null) : array {
       // Return a GetWork-Job for ethereum
-      if ($Protocol == qcEvents_Stream_Stratum::PROTOCOL_ETH_GETWORK)
-        return array (
+      if ($Protocol == Events\Stream\Stratum::PROTOCOL_ETH_GETWORK)
+        return [
           $this->Headerhash,
           $this->Seedhash,
           $this->Difficulty,
-        );
+        ];
       
       // Return Stratum for ethereum
-      if ($Protocol == qcEvents_Stream_Stratum::PROTOCOL_ETH_STRATUM)
-        return array (
+      if ($Protocol == Events\Stream\Stratum::PROTOCOL_ETH_STRATUM)
+        return [
           $this->ID,
           $this->Headerhash,
           $this->Seedhash,
           $this->Difficulty,
           $this->Reset
-        );
+        ];
       
       // Return Stratum for Nicehash-Ethereum
-      if ($Protocol == qcEvents_Stream_Stratum::PROTOCOL_ETH_STRATUM_NICEHASH)
-        return array (
+      if ($Protocol == Events\Stream\Stratum::PROTOCOL_ETH_STRATUM_NICEHASH)
+        return [
           $this->ID,
           $this->Seedhash,
           $this->Headerhash,
           $this->Reset,
-        );
+        ];
       
-      return array (
+      return [
         $this->ID,
         $this->Headerhash,
         $this->CoinbaseStart,
@@ -269,9 +274,7 @@
         $this->Difficulty,
         $this->Time,
         $this->Reset,
-      );
+      ];
     }
     // }}}
   }
-
-?>

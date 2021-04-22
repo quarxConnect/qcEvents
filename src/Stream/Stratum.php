@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
    * qcEvents - Stratum-Stream Implementation
-   * Copyright (C) 2018-2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,16 +18,18 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Hookable.php');
-  require_once ('qcEvents/Interface/Stream/Consumer.php');
-  require_once ('qcEvents/Promise.php');
+  declare (strict_types=1);
+
+  namespace quarxConnect\Events\Stream;
+  use \quarxConnect\Events;
   
-  class qcEvents_Stream_Stratum extends qcEvents_Hookable implements qcEvents_Interface_Stream_Consumer {
+  class Stratum extends Events\Hookable implements Events\ABI\Stream\Consumer {
     // Mining-Algorithm of our client
-    const ALGORITHM_SHA256 = 'sha256';
-    const ALGORITHM_SCRYPT = 'scrypt';
-    const ALGORITHM_X11 = 'x11';
-    const ALGORITHM_ETH = 'eth';
+    public const ALGORITHM_SHA256 = 'sha256';
+    public const ALGORITHM_SCRYPT = 'scrypt';
+    public const ALGORITHM_X11 = 'x11';
+    public const ALGORITHM_BLAKE2b = 'blake2b';
+    public const ALGORITHM_ETH = 'eth';
     
     private $Algorithm = null;
     
@@ -37,7 +39,7 @@
     const PROTOCOL_ETH_STRATUM_NICEHASH = 0x02;
     const PROTOCOL_ETH_GETWORK = 0x03;
 
-    private $ProtocolVersion = qcEvents_Stream_Stratum::PROTOCOL_STRATUM;
+    private $ProtocolVersion = Stratum::PROTOCOL_STRATUM;
     
     /* Stream to our peer */
     private $Stream = null;
@@ -46,20 +48,20 @@
     private $Buffer = '';
     
     /* Queue for pending requests */
-    private $Requests = array ();
+    private $Requests = [ ];
     private $nextRequest = 1;
     
     /* Queue of messages to send once a stream is connected */
-    private $Queue = array ();
+    private $Queue = [ ];
     
     // {{{ getStream
     /**
      * Retrive the piped stream
      * 
      * @access public
-     * @return qcEvents_Interface_Stream
+     * @return Events\ABI\Stream
      **/
-    public function getStream () {
+    public function getStream () : ?Events\ABI\Stream {
       return $this->Stream;
     }
     // }}}
@@ -71,7 +73,7 @@
      * @access public
      * @return enum
      **/
-    public function getAlgorithm () {
+    public function getAlgorithm () : string {
       return $this->Algorithm;
     }
     // }}}
@@ -83,14 +85,11 @@
      * @param enum $Algorithm
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function setAlgorithm ($Algorithm) {
+    public function setAlgorithm (string $Algorithm) : void {
       // Set the algorithm
       $this->Algorithm = $Algorithm;
-      
-      // Indicate success
-      return true;
     }
     // }}}
     
@@ -115,7 +114,7 @@
      * @access public
      * @return void
      **/
-    public function setProtocolVersion ($Version) {
+    public function setProtocolVersion ($Version) : void {
       $this->ProtocolVersion = $Version;
     }
     // }}}
@@ -129,24 +128,24 @@
      * @param array $Extra (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function sendRequest ($Request, array $Parameters = null, array $Extra = null) : qcEvents_Promise {
+    public function sendRequest ($Request, array $Parameters = null, array $Extra = null) : Events\Promise {
       // Make sure parameters are an array
       if ($Parameters === null)
-        $Parameters = array ();
+        $Parameters = [ ];
       
       // Get a message-id
       $MessageID = $this->nextRequest++;
       
       // Prepare the request
-      $Message = array (
+      $Message = [
         'id' => $MessageID,
         'method' => $Request,
         'params' => $Parameters,
-      );
+      ];
       
-      return new qcEvents_Promise (
+      return new Events\Promise (
         function ($Resolve, $Reject)
         use ($Message, $Extra) {
           // Store the callback
@@ -170,18 +169,18 @@
      * @access public
      * @return void
      **/
-    public function sendNotify ($Notify, array $Parameters = null, array $Extra = null) {
+    public function sendNotify ($Notify, array $Parameters = null, array $Extra = null) : void {
       // Make sure parameters are an array
       if ($Parameters === null)
-        $Parameters = array ();
+        $Parameters = [ ];
       
       // Write out the request
       $this->sendMessage (
-        array (
+        [
           'id' => ($this->Algorithm == $this::ALGORITHM_ETH ? 0 : null),
           'method' => $Notify,
           'params' => $Parameters,
-        ),
+        ],
         $Extra
       );
     }
@@ -195,9 +194,9 @@
      * @param array $Extra (optional)
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function sendMessage ($Message, array $Extra = null) : qcEvents_Promise {
+    public function sendMessage ($Message, array $Extra = null) : Events\Promise {
       // Make sure the message is an array
       $Message = (array)$Message;
       
@@ -210,7 +209,7 @@
       
       // Push message to the wire
       if (!$this->Stream || !$this->Stream->isConnected ())
-        return new qcEvents_Promise (
+        return new Events\Promise (
           function (callable $Resolve, callable $Reject) use ($Message) {
             $this->Queue [] = array ($Message, $Resolve, $Reject);
           }
@@ -225,12 +224,12 @@
      * Consume a set of data
      * 
      * @param mixed $Data
-     * @param qcEvents_Interface_Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
      * @return void
      **/
-    public function consume ($Data, qcEvents_Interface_Source $Source) {
+    public function consume ($Data, Events\ABI\Source $Source) : void {
       // Push data to local buffer
       $this->Buffer .= $Data;
       unset ($Data);
@@ -242,8 +241,9 @@
         // Try to read JSON
         if (!is_object ($call = json_decode (substr ($this->Buffer, $s, $p - $s)))) {
           $this->___callback ('stratumInvalidJSON', substr ($this->Buffer, $s, $p - $s));
+          $this->close ();
           
-          return $this->close ();
+          return;
         }
         
         // Do some eth-magic
@@ -263,8 +263,9 @@
             (property_exists ($call, 'result') && property_exists ($call, 'error'))
           )) {
           $this->___callback ('stratumInvalidJSON', $call);
+          $this->close ();
           
-          return $this->close ();
+          return;
         }
 
         // Forward to handler
@@ -289,7 +290,7 @@
      * @access protected
      * @return void
      **/
-    protected function processMessage ($Message) {
+    protected function processMessage (object $Message) : void {
       // Notify about the message in general
       $this->___callback ('stratumMessage', $Message);
       
@@ -312,7 +313,7 @@
      * @access protected
      * @return void
      **/
-    protected function processRequest ($Message) {
+    protected function processRequest (object $Message) : void {
       $this->___callback ('stratumRequest', $Message);
     }
     // }}}
@@ -326,7 +327,7 @@
      * @access protected
      * @return void
      **/
-    protected function processResponse ($Message) {
+    protected function processResponse (object $Message) : void {
       // Check if there is a request pending
       if (isset ($this->Requests [$Message->id])) {
         // Get the callback
@@ -356,7 +357,7 @@
      * @access protected
      * @return void
      **/
-    protected function processNotify ($Message) {
+    protected function processNotify (object $Message) : void {
       $this->___callback ('stratumNotify', $Message);
     }
     // }}}
@@ -366,18 +367,18 @@
      * Close this event-interface
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function close () : qcEvents_Promise {
+    public function close () : Events\Promise {
       // Cancel pending requests
       foreach ($this->Requests as $Callbacks)
         call_user_func ($Callbacks [1], 'Stream closing');
       
-      $this->Requests = array ();
+      $this->Requests = [ ];
       
       // Make sure we have a stream assigned ...
       if (!$this->Stream || !$this->Stream->isConnected ())
-        return qcEvents_Promise::resolve ();
+        return Events\Promise::resolve ();
       
       // ... and forward the call
       $this->___callback ('eventClosed');
@@ -393,22 +394,22 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param qcEvents_Interface_Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+    public function initStreamConsumer (Events\ABI\Stream $Source) : Events\Promise {
       // Store the stream
       $this->Stream = $Source;
       
       // Indicate success
-      if (($Source instanceof qcEvents_Socket) && !$Source->isConnected ())
+      if (($Source instanceof Events\Socket) && !$Source->isConnected ())
         return $Source->once ('socketConnected')->then (
           function () use ($Source) {
             // Sanity-Check stream and source
             if ($this->Stream !== $Source)
-              throw new exception ('Stream was changed');
+              throw new \Exception ('Stream was changed');
             
             // Raise callback
             $this->___callback ('eventPipedStream', $this->Stream);
@@ -417,7 +418,7 @@
             foreach ($this->Queue as $Q)
               $this->sendMessage ($Q [0])->then ($Q [1], $Q [2]);
                                   
-            $this->Queue = array ();
+            $this->Queue = [ ];
                         
             // Forward success
             return true;
@@ -428,7 +429,7 @@
       $this->___callback ('eventPipedStream', $Source);
       
       // Return resolved promise
-      return qcEvents_Promise::resolve ();
+      return Events\Promise::resolve ();
     }
     // }}}
     
@@ -436,15 +437,15 @@
     /**
      * Callback: A source was removed from this consumer
      * 
-     * @param qcEvents_Interface_Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
+    public function deinitConsumer (Events\ABI\Source $Source) : Events\Promise {
       // Check if the stream is ours
       if ($this->Stream !== $Source)
-        return qcEvents_Promise::reject ('Invalid source');
+        return Events\Promise::reject ('Invalid source');
       
       // Remove the stream
       $this->Stream = null;
@@ -454,12 +455,12 @@
       foreach ($this->Requests as $Callbacks)
         call_user_func ($Callbacks [1], 'Removing pipe from consumer');
       
-      $this->Requests = array ();
+      $this->Requests = [ ];
       
       // Indicate success
       $this->___callback ('eventUnpiped', $Source);
       
-      return qcEvents_Promise::resolve ();
+      return Events\Promise::resolve ();
     }
     // }}}
     
@@ -467,24 +468,24 @@
     /**
      * Callback: A stream was attached to this consumer
      * 
-     * @param qcEvents_Interface_Stream $Source
+     * @param Events\ABI\Stream $Source
      * 
      * @access protected
      * @return void
      **/
-    protected function eventPipedStream (qcEvents_Interface_Stream $Source) { }
+    protected function eventPipedStream (Events\ABI\Stream $Source) { }
     // }}}
 
     // {{{ eventUnpiped
     /**
      * Callback: A source was removed from this consumer
      * 
-     * @param qcEvents_Interface_Source $Source
+     * @param Events\ABI\Source $Source
      * 
      * @access protected
      * @return void
      **/
-    protected function eventUnpiped (qcEvents_Interface_Source $Source) { }
+    protected function eventUnpiped (Events\ABI\Source $Source) { }
     // }}}
 
     // {{{ eventReadable
@@ -567,5 +568,3 @@
     protected function stratumNotify ($Message) { }
     // }}}
   }
-
-?>

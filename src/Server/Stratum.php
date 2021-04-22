@@ -157,25 +157,6 @@
     }
     // }}}
     
-    // {{{ setAlgorithm
-    /**
-     * Set mining-algorithm of our client
-     * 
-     * @param enum $Algorithm
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function setAlgorithm (int $Algorithm) : bool {
-      // Set the algorithm
-      if (!parent::setAlgorithm (int $Algorithm))
-        return false;
-      
-      // Indicate success
-      return true;
-    }
-    // }}}
-    
     // {{{ getDifficulty
     /**
      * Retrive the assigned mininig-difficulty
@@ -204,7 +185,7 @@
       // Forward the message
       if (($this->getProtocolVersion () != $this::PROTOCOL_ETH_GETWORK) &&
           ($this->getProtocolVersion () != $this::PROTOCOL_ETH_STRATUM)) // TODO: Check if eth-stratum really don't support this
-        return $this->sendNotify (
+        $this->sendNotify (
           'mining.set_difficulty',
           [ $this->getDifficulty () ]
         );
@@ -242,15 +223,15 @@
       $this->workRequests = [ ];
       
       if ($this->getProtocolVersion () == $this::PROTOCOL_ETH_GETWORK)
-        return $this->sendMessage ([
+        $this->sendMessage ([
           'id' => 0,
           'result' => $Job->toArray ($this::PROTOCOL_ETH_GETWORK),
         ]);
-      
-      return $this->sendNotify (
-        'mining.notify',
-        $Job->toArray ($this->getProtocolVersion ())
-      );
+      else
+        $this->sendNotify (
+          'mining.notify',
+          $Job->toArray ($this->getProtocolVersion ())
+        );
     }
     // }}}
     
@@ -436,7 +417,7 @@
           // Check number of parameters
           if ((count ($Message->params) < 1) || (count ($Message->params) > 2))
             // Push back an error
-            return $this->sendMessage ([
+            $this->sendMessage ([
               'id' => $Message->id,
               'error' => [
                 24,
@@ -444,9 +425,10 @@
               ],
               'result' => null,
             ]);
+          else
+            $this->___callback ('stratumAuthorize', $Message->id, $Message->params [0], (isset ($Message->params [1]) ? $Message->params [1] : null));
           
-          // Raise a callback for this
-          return $this->___callback ('stratumAuthorize', $Message->id, $Message->params [0], (isset ($Message->params [1]) ? $Message->params [1] : null));
+          return;
         } elseif ($Message->method == 'eth_getWork') {
           // Signal getwork-based implementation
           $this->setProtocolVersion ($this::PROTOCOL_ETH_GETWORK);
@@ -460,7 +442,7 @@
             $this->___callback ('stratumWorkRequest');
             
             // Enqueue timeout
-            return $this->getStream ()->getEventBase ()->addTimeout (20)->then (
+            $this->getStream ()->getEventBase ()->addTimeout (20)->then (
               function () use ($Message) {
                 // Check if the job was already done
                 $Key = array_search ($Message, $this->workRequests, true);
@@ -476,7 +458,7 @@
                   
                   return $this->sendMessage ([
                     'id' => $Message->id,
-                    'error' => array [
+                    'error' => [
                       0,
                       'Work not ready',
                     ],
@@ -492,10 +474,12 @@
                 ]);
               }
             );
+            
+            return;
           }
           
           // Push back the latest job
-          return $this->sendMessage ([
+          $this->sendMessage ([
             'id' => $Message->id,
             'error' => null,
             'result' => $this->Jobs [$this->jobLatest]->toArray ($this::PROTOCOL_ETH_GETWORK),
@@ -515,11 +499,13 @@
             $this->___callback ('stratumWorkUnknownJob', $JobID, $Message->params);
             
             // Push back a non-sense-message
-            return $this->sendMessage ([
+            $this->sendMessage ([
               'id' => $Message->id,
               'error' => null,
               'result' => true,
             ]);
+            
+            return;
           }
           
           // Check the input
@@ -534,11 +520,13 @@
             $this->___callback ('stratumWorkMalformedJob', $this->Jobs [$JobID], $Message->params);
             
             // Push back a non-sense-message
-            return $this->sendMessage ([
+            $this->sendMessage ([
               'id' => $Message->id,
               'error' => null,
               'result' => true,
             ]);
+            
+            return;
           }
           
           # TODO: Validate the result here
@@ -547,7 +535,9 @@
           $this->workDone++;
           
           // Raise a callback
-          return $this->___callback ('stratumWork', $Message->id, null, null, $this->Jobs [$JobID], $Message->params);
+          $this->___callback ('stratumWork', $Message->id, null, null, $this->Jobs [$JobID], $Message->params);
+          
+          return;
         } elseif ($Message->method == 'eth_submitHashrate') {
           // Signal getwork-based implementation
           $this->setProtocolVersion ($this::PROTOCOL_ETH_GETWORK);
@@ -555,8 +545,8 @@
           // Check the input
           if ((count ($Message->params) != 2) ||
               (strlen ($Message->params [0]) > 66) ||
-              (strlen ($Message->params [1]) > 66))
-            return $this->sendMessage ([
+              (strlen ($Message->params [1]) > 66)) {
+            $this->sendMessage ([
               'id' => $Message->id,
               'error' => [
                 24,
@@ -564,16 +554,21 @@
               ],
               'result' => null,
             ]);
+            
+            return;
+          }
           
           // Raise callback for this
           $this->___callback ('stratumHashrate', $Message->params [0], $Message->params [1]);
           
           // Just ACK this
-          return $this->sendMessage ([
+          $this->sendMessage ([
             'id' => $Message->id,
             'error' => null,
             'result' => true,
           ]);
+          
+          return;
         }
         
         // Check if we were nailed to get-work-based protocol
@@ -581,15 +576,17 @@
           $this->bailOut ('>> Unknown method %s', $Message->method);
           var_dump ($Message);
           
-          return parent::processRequest ($Message);
+          parent::processRequest ($Message);
+          
+          return;
         }
       }
       
       // Try to run the method
       if ($Message->method == 'mining.subscribe') {
         // Check if this was done before
-        if ($this->Version !== null)
-          return $this->sendMessage ([
+        if ($this->Version !== null) {
+          $this->sendMessage ([
             'id' => $Message->id,
             'error' => [
               25,
@@ -597,6 +594,9 @@
             ],
             'result' => null,
           ]);
+          
+          return;
+        }
         
         // Treat ethereum special
         if ($isEthereum) {
@@ -616,12 +616,14 @@
           $this->Version = $Message->params [0];
         
         // Raise a callback for this
-        return $this->___callback ('stratumSubscribe', $Message->id, $this->Version, (count ($Message->params) > 1 ? $Message->params [1] : null));
+        $this->___callback ('stratumSubscribe', $Message->id, $this->Version, (count ($Message->params) > 1 ? $Message->params [1] : null));
+        
+        return;
       } elseif ($Message->method == 'mining.authorize') {
         // Check number of parameters
         if (count ($Message->params) < 2)
           // Push back an error
-          return $this->sendMessage ([
+          $this->sendMessage ([
             'id' => $Message->id,
             'error' => [
               24,
@@ -629,9 +631,10 @@
             ],
             'result' => null,
           ]);
+        else
+          $this->___callback ('stratumAuthorize', $Message->id, $Message->params [0], $Message->params [1]);
         
-        // Raise a callback for this
-        return $this->___callback ('stratumAuthorize', $Message->id, $Message->params [0], $Message->params [1]);
+        return;
       } elseif ($Message->method == 'mining.submit') {
         // Check if the job is known
         $JobID = $Message->params [1];
@@ -644,7 +647,7 @@
           $this->___callback ('stratumWorkUnknownJob', $JobID, $Message->params);
           
           // Push back an error
-          return $this->sendMessage ([
+          $this->sendMessage ([
             'id' => $Message->id,
             'error' => [
               21,
@@ -652,6 +655,8 @@
             ],
             'result' => null,
           ]);
+          
+          return;
         }
         
         // Treat ethereum special
@@ -686,7 +691,7 @@
           $this->___callback ('stratumWorkMalformedJob', $this->Jobs [$JobID], $Message->params);
           
           // Push back an error
-          return $this->sendMessage ([
+          $this->sendMessage ([
             'id' => $Message->id,
             'error' => [
               20,
@@ -694,6 +699,8 @@
             ],
             'result' => null,
           ]);
+          
+          return;
         }
         
         // Validate the work
@@ -709,7 +716,7 @@
               $Valid = $Block = null;
           }
         else
-          $Valid = null;
+          $Valid = $Block = null;
         
         // Increase a counter
         if ($Valid !== false)
@@ -718,7 +725,9 @@
           $this->workInvalid++;
         
         // Raise a callback
-        return $this->___callback ('stratumWork', $Message->id, $Valid, $Block, $this->Jobs [$JobID], $Message->params);
+        $this->___callback ('stratumWork', $Message->id, $Valid, $Block, $this->Jobs [$JobID], $Message->params);
+        
+        return;
       // Check for Miner-Configuration (BIP 310)
       } elseif ($Message->method == 'mining.configure') {
         $Params = [ ];
@@ -962,28 +971,28 @@
     /**
      * Callback: Stratum-Client wants to subscribe
      * 
-     * @param int $ID ID of JSON-RPC-Request
+     * @param mixed $messageID ID of JSON-RPC-Request
      * @param string $ClientVersion (optional) Client-Version-Identifier
      * @param string $ExtraNone (optional) ExtraNonce-Session requested by client
      * 
      * @access protected
      * @return void
      **/
-    protected function stratumSubscribe (int $ID, string $ClientVersion = null, string $ExtraNonce = null) : void { }
+    protected function stratumSubscribe ($messageID, string $ClientVersion = null, string $ExtraNonce = null) : void { }
     // }}}
     
     // {{{ stratumAuthorize
     /**
      * Callback: Authorize-Request was received
      * 
-     * @param int $ID Message-ID of the request
+     * @param $messageID Message-ID of the request
      * @param string $Username
      * @param string $Password
      * 
      * @access protected
      * @return void
      **/
-    protected function stratumAuthorize (int $ID, string $Username, string $Password) : void { }
+    protected function stratumAuthorize ($messageID, string $Username, string $Password) : void { }
     // }}}
     
     // {{{ stratumExtraNonceChanged
@@ -1013,7 +1022,7 @@
     /**
      * Callback: Mining-Result was received
      * 
-     * @param int $ID Message-ID of the request
+     * @param mixed $jobID Message-ID of the request
      * @param bool $Valid Validation-Result (NULL if unsure)
      * @param bool $Block A block was found (NULL if unsure)
      * @param Stream\Stratum\Job $Job
@@ -1022,20 +1031,20 @@
      * @access protected
      * @return void
      **/
-    protected function stratumWork (int $ID, bool $Valid, bool $Block, Stream\Stratum\Job $Job, array $Work) : void { }
+    protected function stratumWork ($jobID, bool $Valid = null, bool $Block = null, Stream\Stratum\Job $Job, array $Work) : void { }
     // }}}
     
     // {{{ stratumWorkUnknownJob
     /**
      * Callback: Work for an unknown job was received
      * 
-     * @param int $JobID
+     * @param mixed $JobID
      * @param array $Work
      * 
      * @access protected
      * @return void
      **/
-    protected function stratumWorkUnknownJob (int $JobID, array $Work) : void { }
+    protected function stratumWorkUnknownJob ($JobID, array $Work) : void { }
     // }}}
     
     // {{{ stratumWorkMalformedJob
