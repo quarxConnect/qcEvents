@@ -145,16 +145,11 @@
         'params' => $Parameters,
       ];
       
-      return new Events\Promise (
-        function ($Resolve, $Reject)
-        use ($Message, $Extra) {
-          // Store the callback
-          $this->Requests [$Message ['id']] = array ($Resolve, $Reject);
-          
-          // Send the request
-          return $this->sendMessage ($Message, $Extra);
-        }
-      );
+      $deferedPromise = new Events\Promise\Defered ();
+      $this->Requests [$Message ['id']] = $deferedPromise;
+      $this->sendMessage ($Message, $Extra);
+      
+      return $deferedPromise->getPromise ();
     }
     // }}}
     
@@ -208,12 +203,12 @@
         $Message ['jsonrpc'] = '2.0';
       
       // Push message to the wire
-      if (!$this->Stream || !$this->Stream->isConnected ())
-        return new Events\Promise (
-          function (callable $Resolve, callable $Reject) use ($Message) {
-            $this->Queue [] = array ($Message, $Resolve, $Reject);
-          }
-        );
+      if (!$this->Stream || !$this->Stream->isConnected ()) {
+        $deferedPromise = new Events\Promise\Defered ();
+        $this->Queue [] = [ $Message, $deferedPromise ];
+        
+        return $deferedPromise->getPromise ();
+      }
       
       return $this->Stream->write (json_encode ($Message) . "\n");
     }
@@ -331,14 +326,14 @@
       // Check if there is a request pending
       if (isset ($this->Requests [$Message->id])) {
         // Get the callback
-        $Callbacks = $this->Requests [$Message->id];
+        $deferedPromise = $this->Requests [$Message->id];
         unset ($this->Requests [$Message->id]);
         
         // Run the callback
         if ($Message->error)
-          call_user_func ($Callbacks [1], $Message->error);
+          $deferedPromise->reject ($Message->error [1] ?? $Message->error);
         else
-          call_user_func ($Callbacks [0], $Message->result, $Message);
+          $deferedPromise->resolve ($Message->result, $Message);
         
         return;
       }
@@ -371,8 +366,8 @@
      **/
     public function close () : Events\Promise {
       // Cancel pending requests
-      foreach ($this->Requests as $Callbacks)
-        call_user_func ($Callbacks [1], 'Stream closing');
+      foreach ($this->Requests as $deferedPromise)
+        $deferedPromise->reject ('Stream closing');
       
       $this->Requests = [ ];
       
@@ -416,7 +411,7 @@
             
             // Push queue to the wire
             foreach ($this->Queue as $Q)
-              $this->sendMessage ($Q [0])->then ($Q [1], $Q [2]);
+              $this->sendMessage ($Q [0])->then ([ $Q [1], 'resolve' ], [ $Q [1], 'reject' ]);
                                   
             $this->Queue = [ ];
                         
@@ -452,8 +447,8 @@
       $this->Buffer = '';
       
       // Cancel pending requests
-      foreach ($this->Requests as $Callbacks)
-        call_user_func ($Callbacks [1], 'Removing pipe from consumer');
+      foreach ($this->Requests as $deferedPromise)
+        $deferedPromise->reject ('Removing pipe from consumer');
       
       $this->Requests = [ ];
       

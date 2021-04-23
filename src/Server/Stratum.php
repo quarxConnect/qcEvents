@@ -152,7 +152,7 @@
      * @access public
      * @return string
      **/
-    public function getVersion () : string {
+    public function getVersion () : ?string {
       return $this->Version;
     }
     // }}}

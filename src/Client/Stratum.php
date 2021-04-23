@@ -42,11 +42,14 @@
      * @access public
      * @return Events\Promise
      **/
-    public function subscribe (string $Version = 'qcEvents/Stratum') : Events\Promise {
+    public function subscribe (string $clientVersion = null) : Events\Promise {
+      if ($clientVersion === null)
+        $clientVersion = 'qcEvents/Stratum';
+      
       switch ($this->getProtocolVersion ()) {
         // Ethereum-GetWork does not support this and negotiates version later
         case $this::PROTOCOL_ETH_GETWORK:
-          $this->Version = $Version;
+          $this->Version = $clientVersion;
           
           return Events\Promise::resolve ([ ], null, null);
         // Ethereum-Stratum has empty parameters?!
@@ -56,11 +59,11 @@
           break;
         // Ethereum-Nicehash has protocol-version right after client-version
         case $this::PROTOCOL_ETH_STRATUM_NICEHASH:
-          $Params = [ $Version, 'EthereumStratum/1.0.0' ];
+          $Params = [ $clientVersion, 'EthereumStratum/1.0.0' ];
           
           break;
         default:
-          $Params = [ $Version ];
+          $Params = [ $clientVersion ];
       }
       
       return $this->sendRequest (
@@ -68,13 +71,13 @@
         $Params
       )->then (
         function ($Result)
-        use ($Version) {
+        use ($clientVersion) {
           // Sanatize the result
           if (!$Result || !is_array ($Result) || (count ($Result) <= 2))
             throw new \Exception ('Invalid result received');
           
           // Store the version
-          $this->Version = $Version;
+          $this->Version = $clientVersion;
           
           // Transform the result
           $Result = [
