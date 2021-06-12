@@ -27,7 +27,7 @@
     public static $pipeBlockSize = 40960;
     
     /* Pipe-References */
-    private $Pipes = [ ];
+    private $activePipes = [ ];
     
     // {{{ isPiped
     /**
@@ -37,7 +37,7 @@
      * @return bool
      **/
     public function isPiped () {
-      return (count ($this->Pipes) > 0);
+      return (count ($this->activePipes) > 0);
     }
     // }}}
     
@@ -51,7 +51,7 @@
     public function getPipeConsumers () : array {
       $Result = [ ];
       
-      foreach ($this->Pipes as $Pipe)
+      foreach ($this->activePipes as $Pipe)
         $Result [] = $Pipe [0];
       
       return $Result;
@@ -62,44 +62,36 @@
     /**
      * Forward any data received from this source to another handler
      * 
-     * @param Events\ABI\Consumer $Handler
-     * @param bool $Finish (optional) Raise close on the handler if we are finished (default)
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (Events\ABI\Source $Self, bool $Status, mixed $Private = null) { }
+     * @param Events\ABI\Consumer $dataReceiver
+     * @param bool $forwardClose (optional) Raise close on the handler if we are finished (default)
      * 
      * @access public
-     * @return bool
+     * @return Events\Promise
      **/
-    public function pipe (Events\ABI\Consumer $Handler, $Finish = true, callable $Callback = null, $Private = null) {
+    public function pipe (Events\ABI\Consumer $dataReceiver, bool $forwardClose = true) : Events\Promise {
       // Check if there is already such pipe
-      if (($key = $this->getPipeHandlerKey ($Handler)) !== false) {
-        $this->Pipes [$key][1] = $Finish;
-        $this->___raiseCallback ($Callback, true, $Private);
+      if (($key = $this->getPipeHandlerKey ($dataReceiver)) !== false) {
+        $this->activePipes [$key][1] = $forwardClose;
         
-        return true;
+        return Events\Promise::resolve ();
       }
       
-      // Make sure we are receiving data
-      $this->addHook ('eventReadable', [ $this, '___pipeDo' ]);
-      $this->addHook ('eventClosed', [ $this, '___pipeClose' ]);
-      
-      // Raise an event at the handler
-      if (($rc = $Handler->initConsumer ($this, function (Events\ABI\Consumer $Self, $Status) use ($Callback, $Private) {
-        $this->___raiseCallback ($Callback, $Status, $Private);
-      })) === false)
-        return false;
-      
-      // Make sure we are being informed about changes on the handler itself
-      $Handler->addHook ('eventClosed', [ $this, '___pipeHandlerClose' ]);
-      
-      // Register a new pipe
-      $this->Pipes [] = [ $Handler, $Finish, (is_callable ($rc) ? $rc : null) ];
-      
-      return true;
+      // Try to initialize consumer
+      return $dataReceiver->initConsumer ($this)->then (
+        function (callable $customConsumer = null) use ($dataReceiver, $forwardClose) {
+          // Make sure we are receiving data
+          if (!$this->isPiped ()) {
+            $this->addHook ('eventReadable', [ $this, '___pipeDo' ]);
+            $this->addHook ('eventClosed', [ $this, '___pipeClose' ]);
+          }
+          
+          // Make sure we are being informed about changes on the handler itself
+          $dataReceiver->addHook ('eventClosed', [ $this, '___pipeHandlerClose' ]);
+          
+          // Register a that new pipe
+          $this->activePipes [] = [ $dataReceiver, $forwardClose, $customConsumer ];
+        }
+      );
     }
     // }}}
     
@@ -109,45 +101,36 @@
      * Forward any data received from this source to another handler and
      * allow the handler to write back to this stream
      * 
-     * @param Events\ABI\Consumer $Handler
-     * @param bool $Finish (optional) Raise close on the handler if we are finished (default)
+     * @param Events\ABI\Consumer $dataReceiver
+     * @param bool $forwardClose (optional) Raise close on the handler if we are finished (default)
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function pipeStream (Events\ABI\Stream\Consumer $Handler, $Finish = true) : Events\Promise {
+    public function pipeStream (Events\ABI\Stream\Consumer $dataReceiver, bool $forwardClose = true) : Events\Promise {
       // Check if there is already such pipe
-      if (($key = $this->getPipeHandlerKey ($Handler)) !== false) {
-        $this->Pipes [$key][1] = $Finish;
+      if (($key = $this->getPipeHandlerKey ($dataReceiver)) !== false) {
+        $this->activePipes [$key][1] = $forwardClose;
         
         return Events\Promise::resolve ();
       }
       
-      // Raise an event at the handler
-      $Promise = $Handler->initStreamConsumer ($this)->catch (
-        function () use ($Handler) {
-          // Clean up
-          $this->removeHook ('eventReadable', [ $this, '___pipeDo' ]);
-          $this->removeHook ('eventClosed', [ $this, '___pipeClose' ]);
+      // Try to initialize consumer
+      return $dataReceiver->initStreamConsumer ($this)->then (
+        function (callable $customConsumer = null) use ($dataReceiver, $forwardClose) {
+          // Make sure we are receiving data
+          if (!$this->isPiped ()) {
+            $this->addHook ('eventReadable', [ $this, '___pipeDo' ]);
+            $this->addHook ('eventClosed', [ $this, '___pipeClose' ]);
+          }
           
-          $Handler->removeHook ('eventClosed', [ $this, '___pipeHandlerClose' ]);
+          // Make sure we are being informed about changes on the handler itself
+          $dataReceiver->addHook ('eventClosed', [ $this, '___pipeHandlerClose' ]);
           
-          // Forward the error
-          throw new Events\Promise\Solution (func_get_args ());
+          // Register a that new pipe
+          $this->activePipes [] = [ $dataReceiver, $forwardClose, $customConsumer ];
         }
       );
-      
-      // Make sure we are receiving data
-      $this->addHook ('eventReadable', [ $this, '___pipeDo' ]);
-      $this->addHook ('eventClosed', [ $this, '___pipeClose' ]);
-      
-      // Make sure we are being informed about changes on the handler itself
-      $Handler->addHook ('eventClosed', [ $this, '___pipeHandlerClose' ]);
-      
-      // Register a new pipe
-      $this->Pipes [] = [ $Handler, $Finish, null ];
-      
-      return $Promise;
     }
     // }}}
     
@@ -155,21 +138,21 @@
     /**
      * Remove a handler that is currently being piped
      * 
-     * @param Events\ABI\Consumer\Common $Handler
+     * @param Events\ABI\Consumer\Common $dataReceiver
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function unpipe (Events\ABI\Consumer\Common $Handler) : Events\Promise {
+    public function unpipe (Events\ABI\Consumer\Common $dataReceiver) : Events\Promise {
       // Check if there is already such pipe
-      if (($key = $this->getPipeHandlerKey ($Handler)) === false)
+      if (($key = $this->getPipeHandlerKey ($dataReceiver)) === false)
         return Events\Promise::resolve ();
       
       // Remove the pipe-reference
-      unset ($this->Pipes [$key]);
+      unset ($this->activePipes [$key]);
       
       // Raise an event at the handler
-      return $Handler->deinitConsumer ($this);
+      return $dataReceiver->deinitConsumer ($this);
     }
     // }}}
     
@@ -177,14 +160,14 @@
     /**
      * Search the internal key for a given handler
      * 
-     * @param object $Handler
+     * @param object $dataReceiver
      * 
      * @access private
      * @return int
      **/
-    private function getPipeHandlerKey ($Handler) {
-      foreach ($this->Pipes as $key=>$Pipe)
-        if ($Pipe [0] === $Handler)
+    private function getPipeHandlerKey ($dataReceiver) {
+      foreach ($this->activePipes as $key=>$Pipe)
+        if ($Pipe [0] === $dataReceiver)
           return $key;
       
       return false;
@@ -201,7 +184,7 @@
      **/
     public function ___pipeDo () {
       // Check if there are pipes to process
-      if (count ($this->Pipes) == 0) {
+      if (count ($this->activePipes) == 0) {
         if ($this instanceof Events\ABI\Hookable) {
           $this->removeHook ('eventReadable', [ $this, '___pipeDo' ]);
           $this->removeHook ('eventClosed', [ $this, '___pipeClose' ]);
@@ -215,7 +198,7 @@
         return;
       
       // Process all pipes
-      foreach ($this->Pipes as $Pipe)
+      foreach ($this->activePipes as $Pipe)
         if ($Pipe [2])
           call_user_func ($Pipe [2], $Data, $this);
         else
@@ -232,7 +215,7 @@
      **/
     public function ___pipeClose () {
       // Forward the close to all piped handles
-      foreach ($this->Pipes as $Pipe) {
+      foreach ($this->activePipes as $Pipe) {
         if ($Pipe [1]) {
           if (is_callable ([ $Pipe [0], 'finishConsume' ]))
             $Pipe [0]->finishConsume ();
@@ -245,7 +228,7 @@
       }
       
       // Reset the local register
-      $this->Pipes = [ ];
+      $this->activePipes = [ ];
       
       // Unregister hooks
       $this->removeHook ('eventReadable', [ $this, '___pipeDo' ]);
@@ -257,26 +240,26 @@
     /**
      * Callback: A piped handler was closed
      * 
-     * @param object $Handler
+     * @param object $dataReceiver
      * 
      * @access public
      * @return void
      **/
-    public function ___pipeHandlerClose ($Handler) {
+    public function ___pipeHandlerClose ($dataReceiver) {
       // Make sure the given handler is a consumer
-      if (!($Handler instanceof Events\ABI\Consumer) &&
-          !($Handler instanceof Events\ABI\Stream\Consumer))
+      if (!($dataReceiver instanceof Events\ABI\Consumer) &&
+          !($dataReceiver instanceof Events\ABI\Stream\Consumer))
         return;
       
       // Lookup the handler and remove
-      if (($key = $this->getPipeHandlerKey ($Handler)) !== false) {
-        $Handler->removeHook ('eventClosed', [ $this, '___pipeHandlerClose' ]);
+      if (($key = $this->getPipeHandlerKey ($dataReceiver)) !== false) {
+        $dataReceiver->removeHook ('eventClosed', [ $this, '___pipeHandlerClose' ]);
         
-        unset ($this->Pipes [$key]);
+        unset ($this->activePipes [$key]);
       }
       
       // Check if there are consumers left
-      if ((count ($this->Pipes) == 0) && ($this instanceof Events\ABI\Hookable)) {
+      if ((count ($this->activePipes) == 0) && ($this instanceof Events\ABI\Hookable)) {
         $this->removeHook ('eventReadable', [ $this, '___pipeDo' ]);
         $this->removeHook ('eventClosed', [ $this, '___pipeClose' ]);
       }

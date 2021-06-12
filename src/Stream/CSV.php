@@ -227,24 +227,16 @@
      * Setup ourself to consume data from a source
      * 
      * @param ABI\Source $dataSource
-     * @param callable $initCallback (optional) Callback to raise once the pipe is ready
-     * @param mixed $callbackPrivate (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     *  
-     *   function (ABI\Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
-     * @return callable
+     * @return Events\Promise
      **/
-    public function initConsumer (ABI\Source $dataSource, callable $initCallback = null, $callbackPrivate = null) : ?callable {
+    public function initConsumer (ABI\Source $dataSource) : Events\Promise {
       // Assign the source
       $this->dataSource = $dataSource;
       
       // Run the callback
-      $this->___raiseCallback ($initCallback, true, $callbackPrivate);
-      
-      return null;
+      return Events\Promise::resolve ();
     }
     // }}}
     

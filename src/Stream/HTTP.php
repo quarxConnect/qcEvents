@@ -292,50 +292,38 @@
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param Events\ABI\Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (Events\ABI\Consumer $Self, bool $Status, mixed $Private = null) { }
+     * @param Events\ABI\Source $dataSource
      * 
      * @access public
-     * @return callable
+     * @return Events\Promise
      **/
-    public function initConsumer (Events\ABI\Source $Source, callable $Callback = null, $Private = null) {
+    public function initConsumer (Events\ABI\Source $dataSource) : Events\Promise {
       // Check if this source is already set
-      if ($this->Source === $Source) {
-        $this->___raiseCallback ($Callback, true, $Private);
-        
-        return false;
-      }
+      if ($this->Source === $dataSource)
+        return Events\Promise::resolve ();
       
       // Check if there is an existing source
       if ($this->Source)
-        $Promise = $this->deinitConsumer ($this->Source);
+        $deinitPromise = $this->deinitConsumer ($this->Source)->catch (function () { });
       else
-        $Promise = Events\Promise::resolve ();
+        $deinitPromise = Events\Promise::resolve ();
       
-      $Promise->finally (
-        function () use ($Source, $Callback, $Private) {
+      return $deinitPromise->then (
+        function () use ($dataSource) {
           // Reset ourself
           $this->reset ();
           $this->httpSetState ($this::HTTP_STATE_CONNECTED);
           
           // Set the new source
-          $this->Source = $Source;
+          $this->Source = $dataSource;
           
           // Register hooks there
-          $Source->addHook ('eventClosed', [ $this, 'httpStreamClosed' ]);
+          $dataSource->addHook ('eventClosed', [ $this, 'httpStreamClosed' ]);
           
           // Raise an event for this
-          $this->___raiseCallback ($Callback, true, $Private);
-          $this->___callback ('eventPiped', $Source);
+          $this->___callback ('eventPiped', $dataSource);
         }
       );
-      
-      return true;
     }
     // }}}
     
@@ -373,8 +361,6 @@
           
           // Raise an event for this
           $this->___callback ('eventPipedStream', $Source);
-          
-          return true;
         }
       );
     }

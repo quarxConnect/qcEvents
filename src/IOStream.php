@@ -503,20 +503,15 @@
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param ABI\Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (ABI\Consumer $Self, bool $Status, mixed $Private = null) { }
+     * @param ABI\Source $dataSource
      * 
      * @access public
-     * @return callable
+     * @return Promise
      **/
-    public function initConsumer (ABI\Source $Source, callable $Callback = null, $Private = null) {
-      $this->___raiseCallback ($Callback, true, $Private);
-      $this->___callback ('eventPiped', $Source);
+    public function initConsumer (ABI\Source $dataSource) : Promise {
+      $this->___callback ('eventPiped', $dataSource);
+      
+      return Promise::resolve ();
     }
     // }}}
     

@@ -40,19 +40,13 @@
     /**
      * Forward any data received from this source to another handler
      * 
-     * @param Consumer $Handler
-     * @param bool $Finish (optional) Raise close on the handler if we are finished (default)
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (Source $Self, bool $Status, mixed $Private = null) { }
+     * @param Consumer $dataReceiver
+     * @param bool $forwardClose (optional) Raise close on the handler if we are finished (default)
      * 
      * @access public
-     * @return bool
+     * @return Events\Promise
      **/
-    public function pipe (Consumer $Handler, $Finish = true, callable $Callback = null, $Private = null);
+    public function pipe (Consumer $dataReceiver, bool $forwardClose = true) : Events\Promise;
     // }}}
     
     // {{{ unpipe

@@ -671,31 +671,28 @@
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param Events\ABI\Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (Events\ABI\Consumer $Self, bool $Status, mixed $Private = null) { }
+     * @param Events\ABI\Source $dataSource
      * 
      * @access public
-     * @return callable
+     * @return Events\Promise
      **/
-    public function initConsumer (Events\ABI\Source $Source, callable $Callback = null, $Private = null) {
-      // Make sure the source is a socket and close the connection if it misses to send the first request
-      if (($rc = parent::initConsumer ($Source, $Callback, $Private)) && ($Source instanceof Events\Socket))
-        $this->httpdSetKeepAlive (true);
-      
-      $this->lastEvent = time ();
-      
-      // Register our hooks
-      if ($rc) {
-        $this->addHook ('httpFinished', [ $this, 'httpdRequestReady' ]);
-        $this->addHook ('httpHeaderReady', [ $this, 'httpdHeaderReady' ]);
-      }
-      
-      return $rc;
+    public function initConsumer (Events\ABI\Source $dataSource) : Events\Promise {
+      return parent::initConsumer ($dataSource)->then (
+        function () use ($dataSource) {
+          // Make sure the source is a socket and close the connection if it misses to send the first request
+          if ($dataSource instanceof Events\Socket)
+            $this->httpdSetKeepAlive (true);
+          
+          $this->lastEvent = time ();
+          
+          // Register our hooks
+          $this->addHook ('httpFinished', [ $this, 'httpdRequestReady' ]);
+          $this->addHook ('httpHeaderReady', [ $this, 'httpdHeaderReady' ]);
+          
+          // Just forward the result
+          return new Events\Promise\Solution (func_get_args ());
+        }
+      );
     }
     // }}}
     

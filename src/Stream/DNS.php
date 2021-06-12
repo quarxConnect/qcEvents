@@ -45,7 +45,7 @@
     private $dnsDatagramSize = 1200;
     
     /* Source of our pipe */
-    private $Source = null;
+    private $dataSource = null;
     
     // {{{ getSource
     /**
@@ -55,7 +55,7 @@
      * @return Events\ABI\Source
      **/
     public function getSource () : Events\ABI\Source {
-      return $this->Source;
+      return $this->dataSource;
     }
     // }}}
     
@@ -102,7 +102,7 @@
      **/
     public function dnsStreamSendMessage (DNS\Message $Message) {
       // Make sure we have a source available
-      if (!$this->Source)
+      if (!$this->dataSource)
         return false;
       
       // Check if this is a query
@@ -116,7 +116,7 @@
       $Data = $Message->toString ();
       
       // Handle UDP-Writes
-      if ($this->Source->isUDP ()) {
+      if ($this->dataSource->isUDP ()) {
         // Check the maximum size for datagram-transport
         if (!$Query && isset ($this->dnsQueries [$Message->getID ()]))
           $Size = $this->dnsQueries [$Message->getID ()]->getDatagramSize ();
@@ -136,7 +136,7 @@
         $Data = chr ((strlen ($Data) & 0xFF00) >> 8) . chr (strlen ($Data) & 0xFF) . $Data;
       
       // Add to local storage if it is a query
-      if ($Query && ($this->Source instanceof Events\ABI\Common)) {
+      if ($Query && ($this->dataSource instanceof Events\ABI\Common)) {
         $this->dnsQueries [$Message->getID ()] = $Message;
         $this->dnsAddTimeout ($Message);
         
@@ -144,7 +144,7 @@
       } elseif (!$Query)
         unset ($this->dnsQueries [$Message->getID ()]);
       
-      return $this->Source->write ($Data);
+      return $this->dataSource->write ($Data);
     }
     // }}}
     
@@ -203,7 +203,7 @@
      **/
     private function dnsAddTimeout (DNS\Message $Message) {
       // Check if we can setup timeouts at all
-      if (!$this->Source || !($eventBase = $this->Source->getEventBase ()))
+      if (!$this->dataSource || !($eventBase = $this->dataSource->getEventBase ()))
         return;
       
       $mID = $Message->getID ();
@@ -243,14 +243,14 @@
      **/
     public function consume ($Data, Events\ABI\Source $Source) {
       // Make sure we have a source
-      if (!$this->Source) {
+      if (!$this->dataSource) {
         trigger_error ('consume() without Source assigned');
         
         return;
       }
       
       // Just forward the data in UDP-Mode
-      if ($this->Source->isUDP ())
+      if ($this->dataSource->isUDP ())
         return $this->dnsStreamParse ($Data);
       
       // Append the data to our buffer
@@ -319,42 +319,32 @@
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param Events\ABI\Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     *  
-     *   function (Events\ABI\Consumer $Self, bool $Status, mixed $Private = null) { }
+     * @param Events\ABI\Source $dataSource
      *    
      * @access public
-     * @return callable
+     * @return Events\Promise
      **/
-    public function initConsumer (Events\ABI\Source $Source, callable $Callback = null, $Private = null) {
+    public function initConsumer (Events\ABI\Source $dataSource) : Events\Promise {
       // Check if this source is already set
-      if ($this->Source === $Source) {
-        $this->___raiseCallback ($Callback, true, $Private);
-        
-        return;
-      }
+      if ($this->dataSource === $dataSource)
+        return Events\Promise::resolve ();
       
       // Check if there is an existing source
-      if ($this->Source)
-        $Promise = $this->deinitConsumer ($this->Source);
+      if ($this->dataSource)
+        $deinitPromise = $this->deinitConsumer ($this->dataSource)->catch (function () { });
       else
-        $Promise = Events\Promise::resolve ();
+        $deinitPromise = Events\Promise::resolve ();
       
-      $Promise->finally (
-        function () use ($Source, $Callback, $Private) {
+      return $deinitPromise->then (
+        function () use ($dataSource) {
           // Reset ourself
           $this->reset ();
           
          // Set the new source
-         $this->Source = $Source;
+         $this->dataSource = $dataSource;
          
           // Raise an event for this
-          $this->___raiseCallback ($Callback, true, $Private);
-          $this->___callback ('eventPiped', $Source);
+          $this->___callback ('eventPiped', $dataSource);
         }
       );
     }
@@ -371,12 +361,12 @@
      **/
     public function initStreamConsumer (Events\ABI\Stream $Source) : Events\Promise {
       // Check if this source is already set
-      if ($this->Source === $Source)
+      if ($this->dataSource === $Source)
         return Events\Promise::resolve ();
       
       // Check if there is an existing source
-      if ($this->Source)
-        $Promise = $this->deinitConsumer ($this->Source)->catch (function () { });
+      if ($this->dataSource)
+        $Promise = $this->deinitConsumer ($this->dataSource)->catch (function () { });
       else
         $Promise = Events\Promise::resolve ();
       
@@ -386,12 +376,10 @@
           $this->reset ();
           
           // Set the new source
-          $this->Source = $Source;
+          $this->dataSource = $Source;
           
           // Raise an event for this
           $this->___callback ('eventPipedStream', $Source);
-          
-          return true;
         }
       );
     }
@@ -408,11 +396,11 @@
      **/
     public function deinitConsumer (Events\ABI\Source $Source) : Events\Promise {
       // Check if this is the right source
-      if ($this->Source !== $Source)
+      if ($this->dataSource !== $Source)
         return Events\Promise::reject ('Invalid source');
       
       // Unset the source
-      $this->Source = null;
+      $this->dataSource = null;
       
       // Raise an event for this
       $this->___callback ('eventUnpiped', $Source);

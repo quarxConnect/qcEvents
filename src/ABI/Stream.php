@@ -30,24 +30,24 @@
      * Forward any data received from this source to another handler and
      * allow the handler to write back to this stream
      * 
-     * @param Stream\Consumer $Handler
-     * @param bool $Finish (optional) Raise close on the handler if we are finished (default)
+     * @param Stream\Consumer $dataReceiver
+     * @param bool $forwardClose (optional) Raise close on the handler if we are finished (default)
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function pipeStream (Stream\Consumer $Handler, $Finish = true) : Events\Promise;
+    public function pipeStream (Stream\Consumer $dataReceiver, bool $forwardClose = true) : Events\Promise;
     // }}}
     
     // {{{ unpipe
     /**
      * Remove a handler that is currently being piped
      * 
-     * @param Consumer\Common $Handler
+     * @param Consumer\Common $dataReceiver
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function unpipe (Consumer\Common $Handler) : Events\Promise;
+    public function unpipe (Consumer\Common $dataReceiver) : Events\Promise;
     // }}}
   }

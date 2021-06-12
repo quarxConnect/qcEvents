@@ -573,6 +573,8 @@
       // Inherit to our parent
       return parent::initStreamConsumer ($Source)->then (
         function () use ($Source) {
+          $parentResult = func_get_args ();
+          
           // Make sure source-socket is connected
           if (($Source instanceof Events\Socket) &&
               !$Source->isConnected ())
@@ -585,13 +587,19 @@
               ),
               $Source->once ('socketDisconnected')->then (
                 function () {
-                  throw new exception ('Source-Socket was disconnected');
+                  throw new \Exception ('Source-Socket was disconnected');
                 }
               )
-            ]);
+            ])->then (
+              function () use ($parentResult) {
+                return new Events\Promise\Solution ($parentResult);
+              }
+            );
           
           // Write out the request
           $this->httpHeaderWrite ($this);
+          
+          return new Events\Promise\Solution ($parentResult);
         }
       );
     }
@@ -601,32 +609,35 @@
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param Events\ABI\Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     * 
-     *   function (Events\ABI\Consumer $Self, bool $Status, mixed $Private = null) { }
+     * @param Events\ABI\Source $dataSource
      * 
      * @access public
-     * @return callable
+     * @return Events\Promise
      **/
-    public function initConsumer (Events\ABI\Source $Source, callable $Callback = null, $Private = null) {
+    public function initConsumer (Events\ABI\Source $dataSource) : Events\Promise {
       // Inherit to our parent
-      if (($rc = parent::initConsumer ($Source, $Callback, $Private)) && ($Source instanceof Events\Socket)) {
-        # TODO: This is Sockets-API!
-        if (!$Source->isConnected ())
-          return $Source->addHook ('socketConnected', function ($Socket) {
-            // Write out the request
-            $this->httpHeaderWrite ($this);
-          }, null, true);
-        
-        // Write out the request
-        $this->httpHeaderWrite ($this);
-      }
-      
-      return $rc;
+      return parent::initConsumer ($dataSource)->then (
+        function () use ($dataSource) {
+          if ($dataSource instanceof Events\Socket) {
+            # TODO: This is Sockets-API!
+            if (!$dataSource->isConnected ())
+              $dataSource->addHook (
+                'socketConnected',
+                function ($Socket) {
+                  // Write out the request
+                  $this->httpHeaderWrite ($this);
+                },
+                null,
+                true
+              );
+            else
+              // Write out the request
+              $this->httpHeaderWrite ($this);
+          }
+          
+          return new Events\Promise\Solution (func_get_args ());
+        }
+      );
     }
     // }}}
     

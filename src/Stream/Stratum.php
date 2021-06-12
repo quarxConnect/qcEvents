@@ -414,9 +414,6 @@
               $this->sendMessage ($Q [0])->then ([ $Q [1], 'resolve' ], [ $Q [1], 'reject' ]);
                                   
             $this->Queue = [ ];
-                        
-            // Forward success
-            return true;
           }
         );
       

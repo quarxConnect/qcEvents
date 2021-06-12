@@ -21,24 +21,19 @@
   declare (strict_types=1);
 
   namespace quarxConnect\Events\ABI;
+  use \quarxConnect\Events;
   
   interface Consumer extends Consumer\Common {
     // {{{ initConsumer
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
-     * 
-     * The callback will be raised in the form of
-     *  
-     *   function (Consumer $Self, bool $Status, mixed $Private = null) { }
+     * @param Source $dataSource
      * 
      * @access public
-     * @return callable
+     * @return Events\Promise
      **/
-    public function initConsumer (Source $Source, callable $Callback = null, $Private = null);
+    public function initConsumer (Source $dataSource) : Events\Promise;
     // }}}
     
     
