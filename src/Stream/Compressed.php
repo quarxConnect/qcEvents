@@ -399,7 +399,6 @@
       $availableBits = $this->getAvailableBits ();
       
       while ($availableBits) {
-        echo $this->compressionState, ' ', $availableBits, "\n";
         switch ($this->compressionState) {
           // Read header of compressed block
           case self::COMPRESSION_STATE_HEADER:

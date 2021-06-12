@@ -76,20 +76,24 @@
         return Events\Promise::resolve ();
       }
       
+      // Make sure we are receiving data
+      if (!$this->isPiped ()) {
+        $this->addHook ('eventReadable', [ $this, '___pipeDo' ]);
+        $this->addHook ('eventClosed', [ $this, '___pipeClose' ]);
+      }
+      
+      // Make sure we are being informed about changes on the handler itself
+      $dataReceiver->addHook ('eventClosed', [ $this, '___pipeHandlerClose' ]);
+      
+      // Register a that new pipe
+      $this->activePipes [] = [ $dataReceiver, $forwardClose, null ];
+      
       // Try to initialize consumer
       return $dataReceiver->initConsumer ($this)->then (
-        function (callable $customConsumer = null) use ($dataReceiver, $forwardClose) {
-          // Make sure we are receiving data
-          if (!$this->isPiped ()) {
-            $this->addHook ('eventReadable', [ $this, '___pipeDo' ]);
-            $this->addHook ('eventClosed', [ $this, '___pipeClose' ]);
-          }
-          
-          // Make sure we are being informed about changes on the handler itself
-          $dataReceiver->addHook ('eventClosed', [ $this, '___pipeHandlerClose' ]);
-          
+        function (callable $customConsumer = null) use ($dataReceiver) {
           // Register a that new pipe
-          $this->activePipes [] = [ $dataReceiver, $forwardClose, $customConsumer ];
+          if ($customConsumer)
+            $this->activePipes [$this->getPipeHandlerKey ($dataReceiver)][2] = $customConsumer;
         }
       );
     }
@@ -115,20 +119,24 @@
         return Events\Promise::resolve ();
       }
       
+      // Make sure we are receiving data
+      if (!$this->isPiped ()) {
+        $this->addHook ('eventReadable', [ $this, '___pipeDo' ]);
+        $this->addHook ('eventClosed', [ $this, '___pipeClose' ]);
+      }
+      
+      // Make sure we are being informed about changes on the handler itself
+      $dataReceiver->addHook ('eventClosed', [ $this, '___pipeHandlerClose' ]);
+          
+      // Register a that new pipe
+      $this->activePipes [] = [ $dataReceiver, $forwardClose, null ];
+      
       // Try to initialize consumer
       return $dataReceiver->initStreamConsumer ($this)->then (
-        function (callable $customConsumer = null) use ($dataReceiver, $forwardClose) {
-          // Make sure we are receiving data
-          if (!$this->isPiped ()) {
-            $this->addHook ('eventReadable', [ $this, '___pipeDo' ]);
-            $this->addHook ('eventClosed', [ $this, '___pipeClose' ]);
-          }
-          
-          // Make sure we are being informed about changes on the handler itself
-          $dataReceiver->addHook ('eventClosed', [ $this, '___pipeHandlerClose' ]);
-          
+        function (callable $customConsumer = null) use ($dataReceiver) {
           // Register a that new pipe
-          $this->activePipes [] = [ $dataReceiver, $forwardClose, $customConsumer ];
+          if ($customConsumer)
+            $this->activePipes [$this->getPipeHandlerKey ($dataReceiver)][2] = $customConsumer;
         }
       );
     }

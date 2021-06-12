@@ -684,12 +684,11 @@
       // Check if there is another promise
       $result = array_values ($result);
       
-      foreach ($result as $p)
-        if ($p instanceof Promise)
-          return $this::all ($result)->then (
-            function ($results) { $this->finish ($this::STATUS_FULLFILLED, $results); },
-            function () { $this->finish ($this::STATUS_REJECTED, func_get_args ()); }
-          );
+      if ((count ($result) == 1) && ($result [0] instanceof Promise))
+        return $result [0]->then (
+          function () { $this->finish ($this::STATUS_FULLFILLED, func_get_args ()); },
+          function () { $this->finish ($this::STATUS_REJECTED,   func_get_args ()); }
+        );
       
       // Make sure first parameter is an exception or error on rejection
       $promiseStatus = ($promiseStatus & 0x0F);

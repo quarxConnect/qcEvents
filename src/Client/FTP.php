@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
    * qcEvents - FTP-Client
-   * Copyright (C) 2019-2020 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,14 +18,15 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Hookable.php');
-  require_once ('qcEvents/Socket.php');
-  require_once ('qcEvents/Stream/FTP/Client.php');
-  require_once ('qcEvents/Promise.php');
+  declare (strict_types=1);
   
-  class qcEvents_Client_FTP extends qcEvents_Hookable {
-    /* The eventbase we are assigned to */
-    private $eventBase = null;
+  namespace quarxConnect\Events\Client;
+  use \quarxConnect\Events;
+  use \quarxConnect\Events\ABI;
+  use \quarxConnect\Events\Stream;
+  
+  class FTP extends Events\Hookable {
+    use Events\Feature\Based;
     
     /* Number of parallel FTP-Streams to use */
     private $maxStreams = 5;
@@ -39,22 +40,22 @@
     private $Ready = false;
     
     /* Cached Streams */
-    private $pendingStreams = array ();
-    private $availableStreams = array ();
-    private $blockedStreams = array ();
+    private $pendingStreams = [ ];
+    private $availableStreams = [ ];
+    private $blockedStreams = [ ];
     
     // {{{ __construct
     /**
      * Create a new FTP-Client
      * 
-     * @param qcEvents_Base $eventBase
+     * @param Events\Base $eventBase
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Base $eventBase) {
+    function __construct (Events\Base $eventBase) {
       // Assign our event-base
-      $this->eventBase = $eventBase;
+      $this->setEventBase ($eventBase);
     }
     // }}}
     
@@ -69,12 +70,12 @@
      * @param int $Port (optional) FTP-Port to use
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function connect ($Hostname, $Username, $Password, $Account = null, $Port = null) : qcEvents_Promise {
+    public function connect (string $Hostname, string $Username, string $Password, string $Account = null, int $Port = null) : Events\Promise {
       // Internally store the data
       $this->Hostname = $Hostname;
-      $this->Port = ($Port !== null ? intval ($Port) : 21);
+      $this->Port = $Port ?? 21;
       $this->Username = $Username;
       $this->Password = $Password;
       $this->Account = $Account;
@@ -82,7 +83,7 @@
       
       // Try to acquire a new stream
       return $this->requestStream ()->then (
-        function (qcEvents_Stream_FTP_Client $ftpStream) use ($Hostname, $Username, $Account) {
+        function (Stream\FTP\Client $ftpStream) use ($Hostname, $Username, $Account) {
           // Release the stream again
           $this->releaseStream ($ftpStream);
           
@@ -93,7 +94,7 @@
           $this->Hostname = $this->Username = $this->Password = '';
           $this->Account = null;
           
-          throw new qcEvents_Promise_Solution (func_get_args ());
+          throw new Events\Promise\Solution (func_get_args ());
         }
       );
     }
@@ -103,17 +104,17 @@
     /**
      * Retrive all filenames existant at a given path or the current one
      * 
-     * @param string $Path (optional) The path to use, if NULL the current one will be used
+     * @param string $onDirectory (optional) The path to use, if NULL the current one will be used
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function getFilenames ($Path = null) : qcEvents_Promise {
+    public function getFilenames (string $onDirectory = null) : Events\Promise {
       // Acquire an FTP-Stream
       return $this->requestStream ()->then (
-        function (qcEvents_Stream_FTP_Client $ftpStream) use ($Path) {
+        function (Stream\FTP\Client $ftpStream) use ($onDirectory) {
           // Forward the request
-          return $ftpStream->getFilenames ($Path)->finally (
+          return $ftpStream->getFilenames ($onDirectory)->finally (
             function () use ($ftpStream) {
               $this->releaseStream ($ftpStream);
             }
@@ -127,15 +128,15 @@
     /**
      * Download a file from the server, return a stream-handle for further processing
      * 
-     * @param string $Filename Path of the file to download
+     * @param string $fileName Path of the file to download
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function retriveFileStream ($Filename) : qcEvents_Promise {
+    public function retriveFileStream ($fileName) : Events\Promise {
       return $this->requestStream ()->then (
-        function (qcEvents_Stream_FTP_Client $ftpStream = null) use ($Filename) {
-          return $ftpStream->retriveFileStream ($Filename)->finally (
+        function (Stream\FTP\Client $ftpStream) use ($fileName) {
+          return $ftpStream->retriveFileStream ($fileName)->finally (
             function () use ($ftpStream) {
               $this->releaseStream ($ftpStream);
             }
@@ -152,11 +153,11 @@
      * @param string $remotePath Path of file to retrive
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function downloadFileBuffered ($remotePath) : qcEvents_Promise {
+    public function downloadFileBuffered (string $remotePath) : Events\Promise {
       return $this->requestStream ()->then (
-        function (qcEvents_Stream_FTP_Client $ftpStream) use ($remotePath) {
+        function (Stream\FTP\Client $ftpStream) use ($remotePath) {
           return $Stream->downloadFileBuffered ($remotePath)->finally (
             function () use ($ftpStream) {
               $this->releaseStream ($ftpStream);
@@ -172,23 +173,23 @@
      * Close all connections from this FTP-Client
      * 
      * @access public
-     * @return void
+     * @return Events\Promise
      **/
-    public function close () : qcEvents_Promise {
+    public function close () : Events\Promise {
       // Collect all active streams
       $Streams = array_merge ($this->pendingStreams, $this->availableStreams, $this->blockedStreams);
       
       // Reset all streams
-      $this->pendingStreams = $this->availableStreams = $this->blockedStreams = array ();
+      $this->pendingStreams = $this->availableStreams = $this->blockedStreams = [ ];
       $this->Ready = false;
       
       // Enqueue close
-      $Promises = array ();
+      $Promises = [ ];
       
       foreach ($Streams as $Stream)
-        $Promises [] = $Stream->close ();
+        $Promises [] = $Stream->close ()->catch (function () { });
       
-      return qcEvents_Promise::all ($Promises)->then (function () { });
+      return Events\Promise::all ($Promises)->then (function () { });
     }
     // }}}
     
@@ -197,32 +198,32 @@
      * Acquire a free ftp-stream
      * 
      * @access private
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    private function requestStream () : qcEvents_Promise {
+    private function requestStream () : Events\Promise {
       // Check if we are ready
       if ((!$this->Ready && (count ($this->pendingStreams) != 0)) ||
           (count ($this->pendingStreams) + count ($this->availableStreams) + count ($this->blockedStreams) >= $this->maxStreams))
-        return qcEvents_Promise::reject ('No stream available');
+        return Events\Promise::reject ('No stream available');
       
       // Check if there is already one stream available
       if (count ($this->availableStreams) > 0) {
         $this->blockedStreams [] = $Stream = array_shift ($this->availableStreams);
         
-        return qcEvents_Promise::resolve ($Stream);
+        return Events\Promise::resolve ($Stream);
       }
       
       // Try to acquire a new stream
-      $this->pendingStreams [] = $Stream = new qcEvents_Stream_FTP_Client;
+      $this->pendingStreams [] = $Stream = new Stream\FTP\Client ();
       $Key = array_search ($Stream, $this->pendingStreams, true);
       
       // Create and connect socket
-      $Socket = new qcEvents_Socket ($this->eventBase);
+      $ftpSocket = new Events\Socket ($this->getEventBase ());
       
-      return $Socket->connect ($this->Hostname, $this->Port, $Socket::TYPE_TCP)->then (
-        function () use ($Socket, $Key, $Stream) {
+      return $ftpSocket->connect ($this->Hostname, $this->Port, $ftpSocket::TYPE_TCP)->then (
+        function () use ($ftpSocket, $Key, $Stream) {
           // Connect Stream with socket
-          return $Socket->pipeStream ($Stream, true);
+          return $ftpSocket->pipeStream ($Stream, true);
         }
       )->then (
         // FTP-Connection was established
@@ -232,7 +233,7 @@
         }
       )->then (
         // FTP-Connection was authenticated
-        function () use ($Stream, $Key, $Socket) {
+        function () use ($Stream, $Key) {
           // Clearify that we are ready
           $this->Ready = true;
           
@@ -243,12 +244,12 @@
           // Install event-hooks
           $Stream->addHook (
             'eventClosed',
-            function (qcEvents_Stream_FTP_Client $Stream) {
-              if (($Key = array_search ($Stream, $this->availableStreams, true)) !== false)
+            function (Stream\FTP\Client $ftpStream) {
+              if (($Key = array_search ($ftpStream, $this->availableStreams, true)) !== false)
                 unset ($this->availableStreams [$Key]);
-              elseif (($Key = array_search ($Stream, $this->blockedStreams, true)) !== false)
+              elseif (($Key = array_search ($ftpStream, $this->blockedStreams, true)) !== false)
                 unset ($this->blockedStreams [$Key]);
-              elseif (($Key = array_search ($Stream, $this->pendingStreams, true)) !== false)
+              elseif (($Key = array_search ($ftpStream, $this->pendingStreams, true)) !== false)
                 unset ($this->pendingStreams [$Key]);
             }
           );
@@ -256,12 +257,12 @@
           // Forward the stream
           return $Stream;
         },
-        function () use ($Socket, $Key) {
-          $Socket->close ();
+        function () use ($ftpSocket, $Key) {
+          $ftpSocket->close ();
           
           unset ($this->pendingStreams [$Key]);
           
-          throw new qcEvents_Promise_Solution (func_get_args ());
+          throw new Events\Promise\Solution (func_get_args ());
         }
       );
     }
@@ -271,24 +272,22 @@
     /**
      * Release a stream after it was acquired
      * 
-     * @param qcEvents_Stream_FTP_Client $Stream
+     * @param Stream\FTP\Client $ftpStream
      * 
      * @access private
      * @return void
      **/
-    private function releaseStream (qcEvents_Stream_FTP_Client $Stream) {
+    private function releaseStream (Stream\FTP\Client $ftpStream) : void {
       // Try to find the stream
-      if (($Key = array_search ($Stream, $this->blockedStreams, true)) === false)
+      if (($streamIndex = array_search ($ftpStream, $this->blockedStreams, true)) === false)
         return;
       
       // Move to available
-      unset ($this->blockedStreams [$Key]);
-      $this->availableStreams [] = $Stream;
+      unset ($this->blockedStreams [$streamIndex]);
+      $this->availableStreams [] = $ftpStream;
     }
     // }}}
     
     
-    protected function ftpConnected ($Hostname, $Username, $Account) { }
+    protected function ftpConnected (string $ftpHostname, string $userName, string $userAccount = null) : void { }
   }
-
-?>
