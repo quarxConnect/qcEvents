@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
    * qcEvents - CSV-Stream
-   * Copyright (C) 2016 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2016-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,21 +18,24 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Interface/Consumer.php');
-  require_once ('qcEvents/Interface/Stream/Consumer.php');
-  require_once ('qcEvents/Hookable.php');
-  require_once ('qcEvents/Promise.php');
+  declare (strict_types=1);
+  
+  namespace quarxConnect\Events\Stream;
+  use \quarxConnect\Events;
+  use \quarxConnect\Events\ABI;
   
   /**
    * CSV-Stream
    * ----------
    * Read Comma-Separated Values from a stream and/or write them back
    * 
-   * @class qcEvents_Stream_CSV
+   * @class quarxConnect\Events\Stream\CSV
    * @package qcEvents
    * @revision 01
    **/
-  class qcEvents_Stream_CSV extends qcEvents_Hookable implements qcEvents_Interface_Consumer, qcEvents_Interface_Stream_Consumer {
+  class CSV extends Events\Hookable implements ABI\Consumer, ABI\Stream\Consumer {
+    private $dataSource = null;
+    
     /* Separator of fields on CSV-Stream */
     private $csvSeparator = ',';
     
@@ -50,28 +53,28 @@
     private $csvBufferLength = 0;
     
     /* Currently parsed record */
-    private $csvRecord = array ();
+    private $csvRecord = [ ];
     
     // {{{ __construct
     /**
      * Create a new CSV-stream
      * 
-     * @param string $Separator (optional) Separator-Character on stream
-     * @param string $Enclosure (optional) Enclosure-Character on stream
-     * @param string $LineEnd (optional) Line-Ending-Character on stream
+     * @param string $columnSeparator (optional) Separator-Character on stream
+     * @param string $valueEnclosure (optional) Enclosure-Character on stream
+     * @param string $lineEnd (optional) Line-Ending-Character on stream
      * 
      * @access friendly
      * @return void
      **/
-    function __construct ($Separator = null, $Enclosure = null, $LineEnd = null) {
-      if ($Separator !== null)
-        $this->csvSeparator = $Separator;
+    function __construct (string $columnSeparator = null, string $valueEnclosure = null, string $lineEnd = null) {
+      if ($columnSeparator !== null)
+        $this->csvSeparator = $columnSeparator;
       
-      if ($Enclosure !== null)
-        $this->csvEnclosure = $Enclosure;
+      if ($valueEnclosure !== null)
+        $this->csvEnclosure = $valueEnclosure;
       
-      if ($LineEnd !== null)
-        $this->csvLineEnding = $LineEnd;
+      if ($lineEnd !== null)
+        $this->csvLineEnding = $lineEnd;
     }
     // }}}
     
@@ -79,17 +82,17 @@
     /**
      * Consume a set of data
      * 
-     * @param mixed $Data
-     * @param qcEvents_Interface_Source $Source
+     * @param mixed $sourceData
+     * @param ABI\Source $dataSource
      * 
      * @access public
      * @return void
      **/
-    public function consume ($Data, qcEvents_Interface_Source $Source) {
+    public function consume ($sourceData, ABI\Source $dataSource) : void {
       // Append to internal buffer
-      $this->csvBuffer .= $Data;
-      $this->csvBufferLength += strlen ($Data);
-      unset ($Data);
+      $this->csvBuffer .= $sourceData;
+      $this->csvBufferLength += strlen ($sourceData);
+      unset ($sourceData);
       
       $csvOffset = 0;
       $csvSeparatorLength = strlen ($this->csvSeparator);
@@ -179,40 +182,43 @@
      * @access private
      * @return void
      **/
-    private function csvPushRecord () {
+    private function csvPushRecord ()  : void {
       // Peek the record and reset
-      $Record = $this->csvRecord; 
-      $this->csvRecord = array ();
+      $csvRecord = $this->csvRecord; 
+      $this->csvRecord = [ ];
       
       // Ignore empty records
-      if (($Length = count ($Record)) == 0)
+      if (($recordLength = count ($csvRecord)) == 0)
         return;
       
       // Check wheter to use this as a header
-      if ($this->csvHeader === true)
-        return $this->___callback ('csvHeaderRecevied', $this->csvHeader = $Record);
+      if ($this->csvHeader === true) {
+        $this->___callback ('csvHeaderRecevied', $this->csvHeader = $csvRecord);
+        
+        return;
+      }
       
       // Check wheter to apply a header
       if ($this->csvHeader !== false) {
-        $hLength = count ($this->csvHeader);
+        $headerLength = count ($this->csvHeader);
         
         // Add empty columns to record
-        if ($Length < $hLength) {
-          for (; $Length < $hLength; $Length++)
-            $Record [] = null;
+        if ($recordLength < $headerLength) {
+          for (; $recordLength < $headerLength; $recordLength++)
+            $csvRecord [] = null;
         
         // Truncate columns from record
-        } elseif ($Length > $hLength) {
+        } elseif ($recordLength > $headerLength) {
           trigger_error ('Truncating record to match headers length');
           
-          $Record = array_slice ($Record, 0, $hLength);
+          $csvRecord = array_slice ($csvRecord, 0, $headerLength);
         }
         
-        $Record = array_combine ($this->csvHeader, $Record);
+        $csvRecord = array_combine ($this->csvHeader, $csvRecord);
       }
       
       // Run the callback
-      $this->___callback ('csvRecordReceived', $Record);
+      $this->___callback ('csvRecordReceived', $csvRecord);
     }
     // }}}
     
@@ -220,23 +226,25 @@
     /**
      * Setup ourself to consume data from a source
      * 
-     * @param qcEvents_Interface_Source $Source
-     * @param callable $Callback (optional) Callback to raise once the pipe is ready
-     * @param mixed $Private (optional) Any private data to pass to the callback
+     * @param ABI\Source $dataSource
+     * @param callable $initCallback (optional) Callback to raise once the pipe is ready
+     * @param mixed $callbackPrivate (optional) Any private data to pass to the callback
      * 
      * The callback will be raised in the form of
      *  
-     *   function (qcEvents_Interface_Consumer $Self, bool $Status, mixed $Private = null) { }
+     *   function (ABI\Consumer $Self, bool $Status, mixed $Private = null) { }
      * 
      * @access public
      * @return callable
      **/
-    public function initConsumer (qcEvents_Interface_Source $Source, callable $Callback = null, $Private = null) {
+    public function initConsumer (ABI\Source $dataSource, callable $initCallback = null, $callbackPrivate = null) : ?callable {
       // Assign the source
-      $this->Source = $Source;
+      $this->dataSource = $dataSource;
       
       // Run the callback
-      $this->___raiseCallback ($Callback, true, $Private);
+      $this->___raiseCallback ($initCallback, true, $callbackPrivate);
+      
+      return null;
     }
     // }}}
     
@@ -244,17 +252,17 @@
     /** 
      * Setup ourself to consume data from a stream
      *    
-     * @param qcEvents_Interface_Source $Source
+     * @param ABI\Stream $dataSource
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function initStreamConsumer (qcEvents_Interface_Stream $Source) : qcEvents_Promise {
+    public function initStreamConsumer (ABI\Stream $dataSource) : Events\Promise {
       // Assign the source
-      $this->Source = $Source;
+      $this->dataSource = $dataSource;
       
       // Return solved promise
-      return qcEvents_Promise::resolve ();
+      return Events\Promise::resolve ();
     }
     // }}}
     
@@ -262,16 +270,16 @@
     /**
      * Callback: A source was removed from this consumer
      * 
-     * @param qcEvents_Interface_Source $Source
+     * @param ABI\Source $dataSource
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function deinitConsumer (qcEvents_Interface_Source $Source) : qcEvents_Promise {
+    public function deinitConsumer (ABI\Source $dataSource) : Events\Promise {
       // Remove the source
-      $this->Source = null;
+      $this->dataSource = null;
       
-      $this->csvRecord = array ();
+      $this->csvRecord = [ ];
       $this->csvBuffer = '';
       $this->csvBufferLength = 0;
       
@@ -279,7 +287,7 @@
         $this->csvHeader = true;
       
       // Run the callback
-      return qcEvents_Promise::resolve ();
+      return Events\Promise::resolve ();
     }
     // }}}
     
@@ -288,15 +296,15 @@
      * Close this event-interface
      * 
      * @access public
-     * @return qcEvents_Promise
-     **/  
-    public function close () : qcEvents_Promise {
+     * @return Events\Promise
+     **/
+    public function close () : Events\Promise {
       if ($this->csvBufferLength > 0)
-        $this->consume ($this->csvLineEnding, $this->Source);
+        $this->consume ($this->csvLineEnding, $this->dataSource);
       
       $this->___callback ('eventClosed');
       
-      return qcEvents_Promise::resolve ();
+      return Events\Promise::resolve ();
     }
     // }}}
     
@@ -308,32 +316,30 @@
      * @access protected
      * @return void
      **/
-    protected function eventClosed () { }
+    protected function eventClosed () : void { }
     // }}}
     
     // {{{ csvHeaderRecevied
     /**
      * The header (first record) of a csv was received from stream
      * 
-     * @param array $Header Indexed array with header
+     * @param array $csvHeader Indexed array with header
      * 
      * @access protected
      *  @return void
      **/
-    protected function csvHeaderRecevied (array $Header) { }
+    protected function csvHeaderRecevied (array $csvHeader) : void { }
     // }}}
     
     // {{{ csvRecordReceived
     /**
      * A record was received from stream
      * 
-     * @param array $Record Associative array with csv-values
+     * @param array $csvRecord Associative array with csv-values
      * 
      * @access protected
      * @return void
      **/
-    protected function csvRecordReceived (array $Record) { }
+    protected function csvRecordReceived (array $csvRecord) : void { }
     // }}}
   }
-
-?>
