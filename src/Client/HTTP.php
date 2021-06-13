@@ -37,6 +37,9 @@
     /* Session-Cookies (if enabled) */
     private $sessionCookies = null;
     
+    /* Path to save session-cookies at */
+    private $sessionPath = null;
+    
     // {{{ __construct
     /**
      * Create a new HTTP-Client Pool
@@ -76,6 +79,30 @@
     }
     // }}}
     
+    // {{{ useSessionCookies
+    /**
+     * Get/Set wheter to use session-cookies
+     * 
+     * @param bool $setState (optional)
+     * 
+     * @access public
+     * @return bool
+     **/
+    public function useSessionCookies (bool $setState = null) : bool {
+      // Check wheter to return current state
+      if ($setState === null)
+        return ($this->sessionCookies !== null);
+      
+      // Check wheter to remove all session-cookies
+      if ($setState === false)
+        $this->sessionCookies = null;
+      elseif ($this->sessionCookies === null)
+        $this->sessionCookies = [ ];
+      
+      return true;
+    }
+    // }}}
+    
     // {{{ getSessionCookies
     /**
      * Retrive all session-cookies from this client
@@ -85,7 +112,7 @@
      **/
     public function getSessionCookies () : array {
       if ($this->sessionCookies === null)
-        return [ ];
+        throw new \Exception ('Session-Cookies were not enabled');
       
       return $this->sessionCookies;
     }
@@ -95,37 +122,116 @@
     /**
      * Overwrite all session-cookies
      *  
-     * @param array $Cookies
+     * @param array $sessionCookies
      * 
      * @access public
      * @return void
      **/
-    public function setSessionCookies (array $Cookies) {
-      $this->sessionCookies = $Cookies;
+    public function setSessionCookies (array $sessionCookies) : void {
+      if ($this->sessionCookies === null)
+        throw new \Exception ('Session-Cookies were not enabled');
+      
+      # TODO: Sanatize cookies
+      
+      $this->sessionCookies = $sessionCookies;
+      
+      if ($this->sessionPath)
+        $this->saveSessionCookies ();
     }
     // }}}
     
-    // {{{ useSessionCookies
+    // {{{ setSessionPath
     /**
-     * Get/Set wheter to use session-cookies
+     * Set a path to store session-cookies at
      * 
-     * @param bool $Toggle (optional)
+     * @param string $sessionPath
      * 
      * @access public
-     * @return bool
+     * @return Events\Promise
      **/
-    public function useSessionCookies ($Toggle = null) {
-      // Check wheter to return current state
-      if ($Toggle === null)
-        return ($this->sessionCookies !== null);
+    public function setSessionPath (string $sessionPath) : Events\Promise {
+      if ($this->sessionCookies === null)
+        return Events\Promise::reject ('Session-Cookies were not enabled');
       
-      // Check wheter to remove all session-cookies
-      if ($Toggle === false)
-        $this->sessionCookies = null;
-      elseif (($Toggle === true) && ($this->sessionCookies === null))
-        $this->sessionCookies = [ ];
+      if (is_dir ($sessionPath))
+        return Events\Promise::reject ('Destination is a directory');
       
-      return is_bool ($Toggle);
+      if (!is_file ($sessionPath) && !is_writable (dirname ($sessionPath)))
+        return Events\Promise::reject ('Destination is not writable');
+      
+      if (!is_file ($sessionPath)) {
+        $this->sessionPath = $sessionPath;
+        
+        if (count ($this->sessionCookies) == 0)
+          return Events\Promise::resolve ();
+        
+        // Push new cookies to disk
+        return Events\File::writeFileContents (
+          $this->getEventBase (),
+          $this->sessionPath . '.tmp',
+          serialize ($this->sessionCookies)
+        )->then (
+          function () {
+            if (rename ($this->sessionPath . '.tmp', $this->sessionPath))
+              return;
+            
+            unlink ($this->sessionPath . '.tmp');
+            
+            throw new \Exception ('Failed to store session-cookies at destination');
+          }
+        )->catch (
+          function () {
+            $this->sessionPath = null;
+            
+            throw new Events\Promise\Solution (func_get_args ());
+          }
+        );
+      }
+      
+      return Events\File::readFileContents (
+        $this->getEventBase (),
+        $sessionPath
+      )->then (
+        function (string $fileContents) use ($sessionPath) {
+          if (!is_array ($storedCookies = unserialize ($fileContents)))
+            throw new \Exception ('Session-Path does not contain stored cookies');
+          
+          $haveCookies = (count ($this->sessionCookies) > 0);
+          $cookiesChanged = false;
+          
+          $this->sessionPath = $sessionPath;
+          $this->sessionCookies = $this->mergeSessionCookies (
+            $storedCookies,
+            $this->sessionCookies,
+            $cookiesChanged
+          );
+          
+          if (!$cookiesChanged || !$haveCookies)
+            return;
+          
+          // Push new cookies to disk
+          return Events\File::writeFileContents (
+            $this->getEventBase (),
+            $this->sessionPath . '.tmp',
+            serialize ($this->sessionCookies)
+          )->then (
+            function () {
+              if (rename ($this->sessionPath . '.tmp', $this->sessionPath))
+                return;
+              
+              unlink ($this->sessionPath . '.tmp');
+              
+              throw new \Exception ('Failed to store session-cookies at destination');
+            }
+          )->catch (
+            function () {
+              $this->sessionPath = null;
+              
+              throw new Events\Promise\Solution (func_get_args ());
+            }
+          );
+        }
+      );
     }
     // }}}
     
@@ -630,6 +736,9 @@
       }
       
       // Process all newly set cookies
+      $cookiesChanged = false;
+      $responseCookies = [ ];
+      
       foreach ($Header->getField ('Set-Cookie', true) as $setCookie) {
         // Prepare cookie
         $Cookie = [
@@ -718,30 +827,83 @@
           $Cookie [$Name] = $Value;
         }
         
+        $responseCookies [] = $Cookie;
+      }
+      
+      $this->sessionCookies = $this->mergeSessionCookies ($this->sessionCookies, $responseCookies, $cookiesChanged);
+      
+      // Check wheter to store changes
+      if ($this->sessionPath && $cookiesChanged)
+        Events\File::writeFileContents (
+          $this->getEventBase (),
+          $this->sessionPath . '.tmp',
+          serialize ($this->sessionCookies)
+        )->then (
+          function () {
+            if (rename ($this->sessionPath . '.tmp', $this->sessionPath))
+              return;
+            
+            unlink ($this->sessionPath . '.tmp');
+            
+            throw new \Exception ('Failed to store session-cookies at destination');
+          }
+        )->catch (
+          function () {
+            $this->sessionPath = null;
+            
+            throw new Events\Promise\Solution (func_get_args ());
+          }
+        );
+    }
+    // }}}
+    
+    // {{{ mergeSessionCookies
+    /**
+     * Merge two sets of session-cookies
+     * 
+     * @param array $initialCookies
+     * @param array $newCookies
+     * @param bool $cookiesChanged
+     * 
+     * @access private
+     * @return array
+     **/
+    private function mergeSessionCookies (array $initialCookies, array $newCookies, bool &$cookiesChanged = null) : array {
+      $cookiesChanged = false;
+      
+      foreach ($newCookies as $newCookie) {
         // Inject into our collection
-        foreach ($this->sessionCookies as $Index=>$sCookie) {
+        foreach ($initialCookies as $cookieIndex=>$initialCookie) {
           // Compare the name
-          if (strcmp ($sCookie ['name'], $Cookie ['name']) != 0)
+          if (strcmp ($initialCookie ['name'], $newCookie ['name']) != 0)
             continue;
           
           // Compare the path
-          if (strcmp ($sCookie ['path'], $Cookie ['path']) != 0)
+          if (strcmp ($initialCookie ['path'], $newCookie ['path']) != 0)
             continue;
           
           // Compare domain
-          if ((strcasecmp ($sCookie ['domain'], $Cookie ['domain']) != 0) ||
-              ($sCookie ['origin'] != $Cookie ['origin']))
+          if ((strcasecmp ($initialCookie ['domain'], $newCookie ['domain']) != 0) ||
+              ($initialCookie ['origin'] != $newCookie ['origin']))
             continue;
           
           // Replace the cookie
-          $this->sessionCookies [$Index] = $Cookie;
+          if (($initialCookie ['value'] != $newCookie ['value']) ||
+              ($initialCookie ['secure'] != $newCookie ['secure']) ||
+              ($initialCookie ['expires'] != $newCookie ['expires']))
+            $cookiesChanged = true;
+          
+          $initialCookies [$cookieIndex] = $newCookie;
           
           continue (2);
         }
         
         // Push as new cookie to session
-        $this->sessionCookies [] = $Cookie;
+        $cookiesChanged = true;
+        $initialCookies [] = $newCookie;
       }
+      
+      return $initialCookies;
     }
     // }}}
     
