@@ -390,7 +390,9 @@
           
           // Check wheter to process cookies
           if (($this->sessionCookies !== null) && $Header->hasField ('Set-Cookie'))
-            $this->updateSessionCookies ($Request, $Header);
+            $cookiePromise = $this->updateSessionCookies ($Request, $Header)->catch (function () { });
+          else
+            $cookiePromise = Events\Promise::resolve ();
           
           // Check for authentication
           if ($authenticationPreflight &&
@@ -405,7 +407,11 @@
             $Request->setCredentials ($Username, $Password);
             
             // Re-enqueue the request
-            return $this->requestInternal ($socketSession, $Request, false);
+            return $cookiePromise->then (
+              function () use ($socketSession, $Request) {
+                return $this->requestInternal ($socketSession, $Request, false);
+              }
+            );
           }
           
           // Check for redirects
@@ -463,13 +469,21 @@
             }
             
             // Re-Enqueue the request
-            return $this->requestInternal ($socketSession, $Request, true);
+            return $cookiePromise->then (
+              function () use ($socketSession, $Request) {
+                return $this->requestInternal ($socketSession, $Request, true);
+              }
+            );
           }
           
           // Fire the callbacks
           $this->___callback ('httpRequestResult', $Request, $Header, $Body);
           
-          return new Events\Promise\Solution ([ $Body, $Header, $Request ]);
+          return $cookiePromise->then (
+            function () use ($Body, $Header, $Request) {
+              return new Events\Promise\Solution ([ $Body, $Header, $Request ]);
+            }
+          );
         }
       );
     }
@@ -714,12 +728,12 @@
      * @param Stream\HTTP\Header $Header
      * 
      * @access private
-     * @return void
+     * @return Events\Promise
      **/
-    private function updateSessionCookies (Stream\HTTP\Request $Request, Stream\HTTP\Header $Header) {
+    private function updateSessionCookies (Stream\HTTP\Request $Request, Stream\HTTP\Header $Header) : Events\Promise {
       // Make sure we store session-cookies at all
       if ($this->sessionCookies === null)
-        return;
+        return Events\Promise::resolve ();
       
       // Prepare the origin
       $Origin = $Request->getHostname ();
@@ -833,27 +847,29 @@
       $this->sessionCookies = $this->mergeSessionCookies ($this->sessionCookies, $responseCookies, $cookiesChanged);
       
       // Check wheter to store changes
-      if ($this->sessionPath && $cookiesChanged)
-        Events\File::writeFileContents (
-          $this->getEventBase (),
-          $this->sessionPath . '.tmp',
-          serialize ($this->sessionCookies)
-        )->then (
-          function () {
-            if (rename ($this->sessionPath . '.tmp', $this->sessionPath))
-              return;
-            
-            unlink ($this->sessionPath . '.tmp');
-            
-            throw new \Exception ('Failed to store session-cookies at destination');
-          }
-        )->catch (
-          function () {
-            $this->sessionPath = null;
-            
-            throw new Events\Promise\Solution (func_get_args ());
-          }
-        );
+      if (!$this->sessionPath || !$cookiesChanged)
+        return Events\Promise::resolve ();
+      
+      return Events\File::writeFileContents (
+        $this->getEventBase (),
+        $this->sessionPath . '.tmp',
+        serialize ($this->sessionCookies)
+      )->then (
+        function () {
+          if (rename ($this->sessionPath . '.tmp', $this->sessionPath))
+            return;
+          
+          unlink ($this->sessionPath . '.tmp');
+          
+          throw new \Exception ('Failed to store session-cookies at destination');
+        }
+      )->catch (
+        function () {
+          $this->sessionPath = null;
+          
+          throw new Events\Promise\Solution (func_get_args ());
+        }
+      );
     }
     // }}}
     
