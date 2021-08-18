@@ -445,24 +445,21 @@
     /**
      * Enter the event-loop
      * 
-     * @param bool $Single (optional) Just process all pending events once
+     * @param bool $loopSingle (optional) Just process all pending events once
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function loop ($Single = false) {
+    public function loop (bool $loopSingle = false) : void {
       // Don't enter the loop twice
       $onLoop = ($this->loopState != self::LOOP_STATE_IDLE);
       
-      if ($onLoop && !$Single) {
-        trigger_error ('Do not enter the loop twice');
-        
-        return false;
-      }
+      if ($onLoop && !$loopSingle)
+        throw new \Exception ('Do not enter the loop twice');
       
       // Reset the loop-state
-      if (!($doubleState = ($onLoop && $Single)))
-        $this->loopState = ($Single ? self::LOOP_STATE_ONCE : self::LOOP_STATE_ACTIVE);
+      if (!($doubleState = ($onLoop && $loopSingle)))
+        $this->loopState = ($loopSingle ? self::LOOP_STATE_ONCE : self::LOOP_STATE_ACTIVE);
       
       // Main-Loop
       do {
@@ -479,7 +476,7 @@
         
         // Check if there are queued event-handlers
         if ((count ($this->fdOwner) == 0) && (count ($this->Timers) == 0)) {
-          if (count ($this->forcedEvents) > 0)
+          if (!$loopSingle && (count ($this->forcedEvents) > 0))
             continue;
           
           break;
@@ -491,7 +488,7 @@
         $errorFDs = $this->errorFDs;
         
         // Check if there are events forced 
-        if (count ($this->forcedEvents) > 0) {
+        if ($loopSingle || (count ($this->forcedEvents) > 0)) {
           $usecs = 1;
         
         // Check if there is a timer queued
@@ -506,7 +503,7 @@
         
         // Check wheter to select or just wait
         if ((count ($readFDs) == 0) && (count ($writeFDs) == 0) && (count ($errorFDs) == 0)) {
-          $Count = 0;
+          $eventCount = 0;
           
           // Check if there are timers enqueued
           if ($this->TimerNext === null)
@@ -519,7 +516,7 @@
           $secs = (int)floor ($usecs / 1000000);
           $usecs -= $secs * 1000000;
           
-          $Count = stream_select ($readFDs, $writeFDs, $errorFDs, $secs, $usecs);
+          $eventCount = stream_select ($readFDs, $writeFDs, $errorFDs, $secs, $usecs);
         }
         
         // Check for pending signals
@@ -527,8 +524,12 @@
           $this->runTimers ();
         
         // Stop here if there are no events pending
-        if ($Count == 0)
+        if ($eventCount == 0) {
+          if ($loopSingle)
+            break;
+          
           continue;
+        }
         
         foreach ($readFDs as $readFD) {
           if (isset ($this->fdOwner [(int)$readFD]))
@@ -557,9 +558,6 @@
       
       // Reset the loop-state
       $this->loopState = ($doubleState ? self::LOOP_STATE_ACTIVE : self::LOOP_STATE_IDLE);
-      
-      // Indicate success
-      return true;
     }
     // }}}
     
