@@ -766,26 +766,26 @@
         ];
         
         // Parse the cookie
-        foreach (explode (';', $setCookie) as $i=>$Value) {
+        foreach (explode (';', $setCookie) as $i=>$cookieValue) {
           // Get name and value of current pair
-          if (($p = strpos ($Value, '=')) === false) {
+          if (($p = strpos ($cookieValue, '=')) === false) {
             if ($i == 0)
               continue (2);
             
-            $Name = trim ($Value);
-            $Value = true;
+            $Name = trim ($cookieValue);
+            $cookieValue = true;
           } else {
-            $Name = ltrim (substr ($Value, 0, $p));
-            $Value = substr ($Value, $p + 1);
+            $Name = ltrim (substr ($cookieValue, 0, $p));
+            $cookieValue = substr ($cookieValue, $p + 1);
             
-            if ($Value [0] == '"')
-              $Value = substr ($Value, 1, -1);
+            if ($cookieValue [0] == '"')
+              $cookieValue = substr ($cookieValue, 1, -1);
           }
           
           // First pair is name and value of the cookie itself
           if ($i == 0) {
             $Cookie ['name'] = $Name;
-            $Cookie ['value'] = $Value;
+            $Cookie ['value'] = urldecode ($cookieValue);
             
             continue;
           }
@@ -796,16 +796,20 @@
           // Sanatize attributes
           if ($Name == 'max-age') {
             // Make sure the age is valid
-            if ((strval ((int)$Value) != $Value) || ((int)$Value == 0))
+            if ((strval ((int)$cookieValue) != $cookieValue) || ((int)$cookieValue == 0))
               continue;
             
             // Rewrite to expires-cookie
             $Name = 'expires';
-            $Value = time () + (int)$Value;
+            $cookieValue = time () + (int)$cookieValue;
           
           } elseif ($Name == 'domain') {
+            // Trim leading empty label if neccessary
+            if (substr ($cookieValue, 0, 1) == '.')
+              $cookieValue = substr ($cookieValue, 1);
+            
             // Make sure the value is on scope of origin
-            $Domain = array_reverse (explode ('.', $Value));
+            $Domain = array_reverse (explode ('.', $cookieValue));
             $Length = count ($Domain);
             
             if (($Length > $OriginL) || ($Length < 2))
@@ -820,25 +824,25 @@
             
           } elseif ($Name == 'expires') {
             // Make sure the value is a valid timestamp
-            if (($Value = strtotime ($Value)) === false)
+            if (($cookieValue = strtotime ($cookieValue)) === false)
               continue;
           
           } elseif ($Name == 'secure') {
             // Make sure the value is a boolean
-            if (!is_bool ($Value))
+            if (!is_bool ($cookieValue))
               continue;
           
           } elseif ($Name == 'path') {
             // BUGFIX: 1und1.de has urlencoded paths
-            $Value = urldecode ($Value);
+            $cookieValue = urldecode ($cookieValue);
             
-            if (substr ($Value, -1, 1) != '/')
-              $Value .= '/';
+            if (substr ($cookieValue, -1, 1) != '/')
+              $cookieValue .= '/';
             
           } else
             continue;
           
-          $Cookie [$Name] = $Value;
+          $Cookie [$Name] = $cookieValue;
         }
         
         $responseCookies [] = $Cookie;
