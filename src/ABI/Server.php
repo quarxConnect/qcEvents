@@ -41,14 +41,14 @@
     /**
      * Register a hook for new children
      * 
-     * @param string $Hook
-     * @param callable $Callback
-     * @param mixed $Private (optional)
+     * @param string $hookName
+     * @param callable $eventCallback
+     * @param bool $onlyOnce (optional)
      * 
      * @access public
      * @return void
      **/
-    public function addChildHook (string $Name, callable $Callback, $Private = null) : void;
+    public function addChildHook (string $hookName, callable $eventCallback, bool $onlyOnce = false) : void;
     // }}}
     
     // {{{ getLocalName

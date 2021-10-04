@@ -627,7 +627,6 @@
                   // Write out the request
                   $this->httpHeaderWrite ($this);
                 },
-                null,
                 true
               );
             else

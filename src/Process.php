@@ -251,7 +251,6 @@
         function () {
           $this->closeWriter ();
         },
-        null,
         true
       );
     }

@@ -28,27 +28,26 @@
     /**
      * Retrive registered hooks from this class
      * 
-     * @param string $Name (optional) Name of the hook
+     * @param string $hookName (optional) Name of the hook
      * 
      * @access public
      * @return array
      **/
-    public static function getRegisteredHooks ($Name = null);
+    public static function getRegisteredHooks (string $hookName = null) : array;
     // }}}
     
     // {{{ registerHook
     /**
      * Register a new hook for this class
      * 
-     * @param string $Name Name of the hook to bind to
-     * @param callable $Hook Callback-Function to register
-     * @param mixed $Private (optional) Any private data to pass to the hook
-     * @param bool $Once (optional) Just raise this hook once for each instance of this class
+     * @param string $hookName Name of the hook to bind to
+     * @param callable $eventCallback Callback-Function to register
+     * @param bool $onlyOnce (optional) Just raise this hook once for each instance of this class
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public static function registerHook ($Name, callable $Hook, $Private = null, $Once = false);
+    public static function registerHook (string $hookName, callable $eventCallback, bool $onlyOnce = false) : void;
     // }}}
     
     // {{{ unregisterHook
@@ -56,13 +55,13 @@
      * Remove a registered hook from this class
      * @remark If the hook has already been forwarded to an instance of this class, it won't be removed there
      * 
-     * @param string $Name Name of the hook to unregister
-     * @param callable $Hook Callback-Function to unregister
+     * @param string $hookName Name of the hook to unregister
+     * @param callable $eventCallback Callback-Function to unregister
      * 
      * @access public
      * @return void
      **/
-    public static function unregisterHook ($Name, callable $Hook);
+    public static function unregisterHook (string $hookName, callable $eventCallback) : void;
     // }}}
     
     
@@ -70,40 +69,39 @@
     /**
      * Retrive all registered hooks for a given callback-function
      * 
-     * @param string $Name Name of the hookable function
+     * @param string $hookName Name of the hookable function
      * 
      * @access public
      * @return array
      **/
-    public function getHooks ($Name);
+    public function getHooks (string $hookName) : array;
     // }}}
     
     // {{{ addHook
     /**
      * Register a hook for a callback-function
      * 
-     * @param string $Name Name of the hookable function
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * @param bool $Once (optional) Use the hook only once
+     * @param string $hookName Name of the hookable function
+     * @param callable $eventCallback
+     * @param bool $onlyOnce (optional) Use the hook only once
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function addHook ($Name, callable $Callback, $Private = null, $Once = false);
+    public function addHook (string $hookName, callable $eventCallback, bool $onlyOnce = false) : void;
     // }}}
     
     // {{{ removeHook
     /**
      * Remove a hook for a callback-function
      * 
-     * @param string $Name Name of the hookable function
-     * @param callable $Callback
+     * @param string $hookName Name of the hookable function
+     * @param callable $eventCallback
      * 
      * @access public
      * @return void
      **/
-    public function removeHook ($Name, callable $Callback);
+    public function removeHook (string $hookName, callable $eventCallback) : void;
     // }}}
     
     // {{{ once
@@ -115,6 +113,6 @@
      * @access public
      * @return Events\Promise
      **/
-    public function once ($Name) : Events\Promise;
+    public function once (string $hookName) : Events\Promise;
     // }}}
   }

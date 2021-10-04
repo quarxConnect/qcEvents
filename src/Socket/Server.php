@@ -200,19 +200,19 @@
     /**
      * Register a hook for new children
      * 
-     * @param string $Hook
-     * @param callable $Callback
-     * @param mixed $Private (optional)
+     * @param string $hookName
+     * @param callable $eventCallback
+     * @param bool $onlyOnce (optional)
      * 
      * @access public
      * @return void
      **/
-    public function addChildHook (string $Name, callable $Callback, $Private = null) : void {
+    public function addChildHook (string $hookName, callable $eventCallback, bool $onlyOnce = false) : void {
       // Register the hook
-      if (!isset ($this->childHooks [$Name]))
-        $this->childHooks [$Name] = [ [ $Callback, $Private ] ];
+      if (!isset ($this->childHooks [$hookName]))
+        $this->childHooks [$hookName] = [ [ $eventCallback, $onlyOnce ] ];
       else
-        $this->childHooks [$Name][] = [ $Callback, $Private ];
+        $this->childHooks [$hookName][] = [ $eventCallback, $onlyOnce ];
     }
     // }}}
     
@@ -544,12 +544,20 @@
         $Client = $Socket = new $this->childClass ($this->getEventBase ());
       
       // Register hooks at the child
-      foreach ($this->childHooks as $Hook=>$Hooks)
-        foreach ($Hooks as $Info) {
-          @$Client->addHook ($Hook, $Info [0], $Info [1]);
+      foreach ($this->childHooks as $hookName=>$childHooks)
+        foreach ($childHooks as $hookInfo) {
+          try {
+            $Client->addHook ($hookName, $hookInfo [0], $hookInfo [1]);
+          } catch (\Throwable $error) {
+            // No Op
+          }
           
-          if ($Client !== $Socket)
-            @$Socket->addHook ($Hook, $Info [0], $Info [1]);
+          try {
+            if ($Client !== $Socket)
+              $Socket->addHook ($hookName, $hookInfo [0], $hookInfo [1]);
+          } catch (\Throwable $error) {
+            // No Op
+          }
         }
       
       // Check wheter to enable TLS

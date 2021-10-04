@@ -74,7 +74,6 @@
           $this->Code = (ord ($Payload [0]) << 8) | ord ($Payload [1]);
           $this->Reason = substr ($Payload, 2);
         },
-        null,
         true
       );
     }

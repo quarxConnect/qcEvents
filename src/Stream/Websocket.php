@@ -473,7 +473,6 @@
           // Check if there are pending messages
           $this->sendPendingMessage ();
         },
-        null,
         true
       );
       

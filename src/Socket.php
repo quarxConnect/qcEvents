@@ -642,7 +642,7 @@
       
       // Set our connection-state
       if ($this->socketAddress [3] !== (self::TYPE_UDP ? true : null)) {
-        $this->addHook ('eventWritable', [ $this, 'socketHandleConnected' ], null, true);
+        $this->addHook ('eventWritable', [ $this, 'socketHandleConnected' ], true);
         $this->socketSetupConnectionTimeout ();
       } else
         $this->socketHandleConnected ();

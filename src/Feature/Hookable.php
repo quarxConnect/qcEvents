@@ -31,7 +31,7 @@
     private static $classHooks = [ ];
     
     /* Registered hooks for the implementing object */
-    private $Hooks = [ ];
+    private $registeredHooks = [ ];
     
     /* Have hooks from class-scope been adapted? */
     private $hooksAdapted = [ ];
@@ -40,18 +40,18 @@
     /**
      * Retrive registered hooks from this class
      * 
-     * @param string $Name (optional) Name of the hook
+     * @param string $hookName (optional) Name of the hook
      * 
      * @access public
      * @return array
      **/
-    public static function getRegisteredHooks ($Name = null) : array {
+    public static function getRegisteredHooks (string $hookName = null) : array {
       // Initialize Result
       $Result = [ ];
       
       // Make sure the hook-name is lower case
-      if ($Name !== null)
-        $Name = strtolower ($Name);
+      if ($hookName !== null)
+        $hookName = strtolower ($hookName);
       
       // Determine the called class
       $Class = get_called_class ();
@@ -66,13 +66,13 @@
           continue;
         
         // Check wheter to return hooks by a given name
-        if ($Name !== null) {
+        if ($hookName !== null) {
           // Check if there are such hooks
-          if (!isset (self::$classHooks [$Class][$Name]))
+          if (!isset (self::$classHooks [$Class][$hookName]))
             continue;
           
           // Append hooks to result
-          $Result = array_merge ($Result, self::$classHooks [$Class][$Name]);
+          $Result = array_merge ($Result, self::$classHooks [$Class][$hookName]);
         
         // Return all hooks for this class
         } else
@@ -94,48 +94,42 @@
     /**
      * Register a new hook for this class
      * 
-     * @param string $Name Name of the hook to bind to
-     * @param callable $Hook Callback-Function to register
-     * @param mixed $Private (optional) Any private data to pass to the hook
-     * @param bool $Once (optional) Just raise this hook once for each instance of this class
+     * @param string $hookName Name of the hook to bind to
+     * @param callable $eventCallback Callback-Function to register
+     * @param bool $onlyOnce (optional) Just raise this hook once for each instance of this class
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public static function registerHook ($Name, callable $Hook, $Private = null, $Once = false) {
+    public static function registerHook (string $hookName, callable $eventCallback, bool $onlyOnce = false) : void {
       // Retrive the called class
       $Class = get_called_class ();
       
       // Check if the named hook exists
-      if (!method_exists ($Class, $Name)) {
-        trigger_error ('Invalid Hook "' . $Name . '" on ' . $Class);
-        
-        return false;
-      }
+      if (!method_exists ($Class, $hookName))
+        throw new \Exception ('Invalid Hook "' . $hookName . '" on ' . $Class);
       
       // Treat all hooks lower-case to prevent dupes
       $Class = strtolower ($Class);
-      $Name = strtolower ($Name);
+      $hookName = strtolower ($hookName);
        
       // Register the hook
-      if (isset (self::$classHooks [$Class][$Name])) {
+      if (isset (self::$classHooks [$Class][$hookName])) {
         // Check if the callback is already registered
-        foreach (self::$classHooks [$Class][$Name] as $ID=>$Callback)
-          if (($Callback [0] === $Hook) && ($Callback [1] === $Private)) {
+        foreach (self::$classHooks [$Class][$hookName] as $hookID=>$hookInfo)
+          if ($hookInfo [0] === $eventCallback) {
             // Just handle the once-bit
-            if (!$Once)
-              self::$classHooks [$Class][$Name][$ID][2] = false;
+            if (!$onlyOnce)
+              self::$classHooks [$Class][$hookName][$hookID][1] = false;
             
-            return true;
+            return;
           }
          
-        self::$classHooks [$Class][$Name][] = [ $Hook, $Private, $Once ];
+        self::$classHooks [$Class][$hookName][] = [ $eventCallback, $onlyOnce ];
       } elseif (isset (self::$classHooks [$Class]))
-        self::$classHooks [$Class][$Name] = [ [ $Hook, $Private, $Once ] ];
+        self::$classHooks [$Class][$hookName] = [ [ $eventCallback, $onlyOnce ] ];
       else
-        self::$classHooks [$Class] = [ $Name => [ [ $Hook, $Private, $Once ] ] ];
-      
-      return true;
+        self::$classHooks [$Class] = [ $hookName => [ [ $eventCallback, $onlyOnce ] ] ];
     }
     // }}}
     
@@ -144,25 +138,25 @@
      * Remove a registered hook from this class
      * @remark If the hook has already been forwarded to an instance of this class, it won't be removed there
      * 
-     * @param string $Name Name of the hook to unregister
-     * @param callable $Hook Callback-Function to unregister
+     * @param string $hookName Name of the hook to unregister
+     * @param callable $eventCallback Callback-Function to unregister
      * 
      * @access public
      * @return void
      **/
-    public static function unregisterHook ($Name, callable $Hook) {
+    public static function unregisterHook (string $hookName, callable $eventCallback) : void {
       // Treat all hooks lower-case to prevent dupes
       $Class = strtolower (get_called_class ());
-      $Name = strtolower ($Name);
+      $hookName = strtolower ($hookName);
       
       // Check if there is such hook known
-      if (!isset (self::$classHooks [$Class][$Name]))
+      if (!isset (self::$classHooks [$Class][$hookName]))
         return;
     
       // Search for the callback
-      foreach (self::$classHooks [$Class][$Name] as $ID=>$Callback)
-        if ($Callback [0] === $Hook)
-          unset (self::$classHooks [$Class][$Name][$ID]);
+      foreach (self::$classHooks [$Class][$hookName] as $hookID=>$hookInfo)
+        if ($hookInfo [0] === $eventCallback)
+          unset (self::$classHooks [$Class][$hookName][$hookID]);
     }
     // }}}
     
@@ -176,28 +170,28 @@
      * @access public
      * @return array
      **/
-    public function getHooks ($Name) : array {
+    public function getHooks (string $hookName) : array {
       // Treat all hooks lower-case to prevent dupes
-      $Name = strtolower ($Name);
+      $hookName = strtolower ($hookName);
       
       // Check wheter to adapt hooks from class-scopes
-      if (!isset ($this->hooksAdapted [$Name])) {
+      if (!isset ($this->hooksAdapted [$hookName])) {
         // Retrive all hooks for this instance
-        $Hooks = $this::getRegisteredHooks ($Name);
+        $Hooks = $this::getRegisteredHooks ($hookName);
         
         // Merge into local hooks
-        if (isset ($this->Hooks [$Name]))
-          $this->Hooks [$Name] = array_merge ($this->Hooks [$Name], $Hooks);
+        if (isset ($this->registeredHooks [$hookName]))
+          $this->registeredHooks [$hookName] = array_merge ($this->registeredHooks [$hookName], $Hooks);
         else
-          $this->Hooks [$Name] = $Hooks;
+          $this->registeredHooks [$hookName] = $Hooks;
         
         // Indicate that all hooks have been merged
-        $this->hooksAdapted [$Name] = true;
+        $this->hooksAdapted [$hookName] = true;
       }
       
       // Check if there are hooks registered
-      if (isset ($this->Hooks [$Name]))
-        return $this->Hooks [$Name];
+      if (isset ($this->registeredHooks [$hookName]))
+        return $this->registeredHooks [$hookName];
       
       return [ ];
     }
@@ -207,42 +201,36 @@
     /**
      * Register a hook for a callback-function
      * 
-     * @param string $Name Name of the hookable function
-     * @param callable $Callback
-     * @param mixed $Private (optional)
-     * @param bool $Once (optional) Use the hook only once
+     * @param string $hookName Name of the hookable function
+     * @param callable $eventCallback
+     * @param bool $onlyOnce (optional) Use the hook only once
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function addHook ($Name, callable $Callback, $Private = null, $Once = false) {
+    public function addHook (string $hookName, callable $eventCallback, bool $onlyOnce = false) : void {
       // Treat all hooks lower-case to prevent dupes
-      $Name = strtolower ($Name);
+      $hookName = strtolower ($hookName);
       
       // Check if the named hook exists
-      if (!is_callable ([ $this, $Name ])) {
-        trigger_error ('Invalid Hook "' . $Name . '" on ' . get_class ($this));
-        
-        return false;
-      }
+      if (!is_callable ([ $this, $hookName ]))
+        throw new \Exception ('Invalid Hook "' . $hookName . '" on ' . get_class ($this));
       
       // Register the hook
-      if (isset ($this->Hooks [$Name])) {
+      if (isset ($this->registeredHooks [$hookName])) {
         // Check if the callback is already registered
-        foreach ($this->Hooks [$Name] as $ID=>$Hook)
-          if (($Hook [0] === $Callback) && ($Hook [1] === $Private)) {
+        foreach ($this->registeredHooks [$hookName] as $hookID=>$hookInfo)
+          if ($hookInfo [0] === $eventCallback) {
             // Just handle the once-bit
-            if (!$Once)
-              $this->Hooks [$Name][$ID][2] = false;
+            if (!$onlyOnce)
+              $this->registeredHooks [$hookName][$hookID][1] = false;
             
-            return true;
+            return;
           }
         
-        $this->Hooks [$Name][] = [ $Callback, $Private, $Once ];
+        $this->registeredHooks [$hookName][] = [ $eventCallback, $onlyOnce ];
       } else
-        $this->Hooks [$Name] = [ [ $Callback, $Private, $Once ] ];
-      
-      return true;
+        $this->registeredHooks [$hookName] = [ [ $eventCallback, $onlyOnce ] ];
     }
     // }}}
     
@@ -250,24 +238,24 @@
     /**
      * Remove an registered hook again
      * 
-     * @param string $Name Name of the hookable function
-     * @param callable $Callback
+     * @param string $hookName Name of the hookable function
+     * @param callable $eventCallback
      * 
      * @access public
      * @return void
      **/
-    public function removeHook ($Name, callable $Callback) {
+    public function removeHook (string $hookName, callable $eventCallback) : void {
       // Treat all hooks lower-case to prevent dupes
-      $Name = strtolower ($Name);
+      $hookName = strtolower ($hookName);
       
       // Check if there is such hook known
-      if (!isset ($this->Hooks [$Name]))
+      if (!isset ($this->registeredHooks [$hookName]))
         return;
       
       // Search for the callback
-      foreach ($this->Hooks [$Name] as $ID=>$Hook)
-        if ($Hook [0] === $Callback)
-          unset ($this->Hooks [$Name][$ID]);
+      foreach ($this->registeredHooks [$hookName] as $hookID=>$hookInfo)
+        if ($hookInfo [0] === $eventCallback)
+          unset ($this->registeredHooks [$hookName][$hookID]);
     }
     // }}}
     
@@ -275,16 +263,16 @@
     /**
      * Remove registered hooks
      * 
-     * @param string $Name (optional) Name of hook to remove callbacks for
+     * @param string $hookName (optional) Name of hook to remove callbacks for
      * 
      * @access public
      * @return void
      **/
-    public function removeHooks ($Name = null) {
-      if ($Name === null)
-        $this->Hooks = [ ];
+    public function removeHooks (string $hookName = null) : void {
+      if ($hookName === null)
+        $this->registeredHooks = [ ];
       else
-        unset ($this->Hooks [strtolower ($Name)]);
+        unset ($this->registeredHooks [strtolower ($hookName)]);
     }
     // }}}
     
@@ -292,20 +280,28 @@
     /**
      * Register a hook that is triggered once when a given event raises for the first time
      * 
-     * @param string $Name Name of the hookable function
+     * @param string $hookName Name of the hookable function
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function once ($Name) : Events\Promise {
+    public function once (string $hookName) : Events\Promise {
       return new Events\Promise (
-        function ($resolve, $reject) use ($Name) {
-          $Callback = function () use ($resolve) {
-            call_user_func_array ($resolve, array_slice (func_get_args (), 1, -1));
-          };
-          
-          if (!$this->addHook ($Name, $Callback, null, true))
-            $reject ('Could not register hook');
+        function ($resolve, $reject) use ($hookName) {
+          try {
+            $this->addHook (
+              $hookName,
+              function () use ($resolve, $hookName) {
+                call_user_func_array (
+                  $resolve,
+                  array_slice (func_get_args (), 1)
+                );
+              },
+              true
+            );
+          } catch (\Throwable $error) {
+            $reject ($error);
+          }
         }
       );
     }
@@ -315,55 +311,49 @@
     /**
      * Fire a callback
      * 
-     * @param string $Callback Name of the callback
+     * @param string $hookName Name of the callback
      * @param ...
      * 
      * @access protected
      * @return mixed
      **/
-    protected function ___callback ($Name) {
+    protected function ___callback (string $hookName) {
       // Output debug-info
       if (defined ('QCEVENTS_DEBUG_HOOKS') || self::$debugHooks)
-        echo substr (number_format (microtime (true), 4, '.', ''), -8, 8), ' Callback: ', $Name, ' on ', get_class ($this), "\n";
+        echo substr (number_format (microtime (true), 4, '.', ''), -8, 8), ' Callback: ', $hookName, ' on ', get_class ($this), "\n";
       
       // We are treating hooks in lower-case
-      $Name = strtolower ($Name);
+      $hookName = strtolower ($hookName);
       
       // Make sure we have all registered hooks
-      if (!isset ($this->hooksAdapted [$Name]))
-        $this->getHooks ($Name);
+      if (!isset ($this->hooksAdapted [$hookName]))
+        $this->getHooks ($hookName);
       
       // Retrive all given parameters
-      $Args = func_get_args ();
+      $localArguments = func_get_args ();
       
       // Prepare arguements for external callbacks
-      $eArgs = $Args;
-      $eArgs [0] = $this;
-      $eArgs [] = null;
-      $ePrivate = count ($eArgs) - 1;
+      $externalArguments = $localArguments;
+      $externalArguments [0] = $this;
       
       // Prepare arguements for internal callbacks
-      array_shift ($Args);
-      
-      $lArgs = $Args;
-      $lArgs [] = null;
-      $lPrivate = count ($lArgs) - 1;
+      array_shift ($localArguments);
       
       // Check hooks
-      if (isset ($this->Hooks [$Name]))
-        foreach ($this->Hooks [$Name] as $ID=>$Callback) {
-          // Prepare arguements
-          $lArgs [$lPrivate] = $eArgs [$ePrivate] = $Callback [1];
-          
+      if (isset ($this->registeredHooks [$hookName]))
+        foreach ($this->registeredHooks [$hookName] as $hookID=>$hookInfo) {
           // Call the hook
-          if (!is_array ($Callback [0]) || ($Callback [0][0] !== $this))
-            $rc = call_user_func_array ($Callback [0], $eArgs);
+          if (
+            !is_array ($hookInfo [0]) ||
+            ($hookInfo [0][0] !== $this)
+          )
+            $rc = call_user_func_array ($hookInfo [0], $externalArguments);
           else
-            $rc = call_user_func_array ($Callback [0], $lArgs);
+            $rc = call_user_func_array ($hookInfo [0], $localArguments);
           
           // Remove the hook if it should only be called once
-          if ($Callback [2])
-            unset ($this->Hooks [$Name][$ID]);
+          if ($hookInfo [1])
+            unset ($this->registeredHooks [$hookName][$hookID]);
           
           // Exit the loop if the hook failed
           if ($rc === false)
@@ -371,14 +361,14 @@
         }
          
       // Check if the callback is available
-      $Callback = [ $this, $Name ];
+      $Callback = [ $this, $hookName ];
       
       // Issue the callback
       if ($rc = is_callable ($Callback))
-        $rc = call_user_func_array ($Callback, $Args);
+        $rc = call_user_func_array ($Callback, $localArguments);
       
       if (defined ('QCEVENTS_DEBUG_HOOKS') || self::$debugHooks)
-        echo substr (number_format (microtime (true), 4, '.', ''), -8, 8), ' Done:     ', $Name, ' on ', get_class ($this), "\n";
+        echo substr (number_format (microtime (true), 4, '.', ''), -8, 8), ' Done:     ', $hookName, ' on ', get_class ($this), "\n";
       
       return $rc;
     }
