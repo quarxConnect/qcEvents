@@ -304,7 +304,7 @@
       } elseif ($Opcode == $this::OPCODE_CONTINUE) {
         $Message = $this->readMessage;
         
-        if ($Finish)
+        if ($Finished)
           $this->readMessage = null;
       
       // Check for fragmented new message

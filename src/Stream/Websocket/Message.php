@@ -74,7 +74,7 @@
      **/
     function __construct (Stream\Websocket $Stream, int $Opcode = null, string $Payload = null) {
       # $this->Stream = $Stream;
-      $this->Opcode = $Opcode ?? self::MESSAGE_OPCODE;
+      $this->Opcode = $Opcode ?? $this::MESSAGE_OPCODE;
       
       // Collect all pending data on close
       $this->once ('eventClosed')->then (
