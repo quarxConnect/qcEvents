@@ -60,7 +60,7 @@
      * @access public
      * @return bool
      **/
-    public function offsetExists ($Index) {
+    public function offsetExists ($Index) : bool {
       return isset ($this->dnsRecords [$Index]);
     }
     // }}}
@@ -74,6 +74,7 @@
      * @access public
      * @return Record
      **/
+    #[\ReturnTypeWillChange]
     public function offsetGet ($Index) {
       if (isset ($this->dnsRecords [$Index]))
         return $this->dnsRecords [$Index];
@@ -90,7 +91,7 @@
      * @access public
      * @return void
      **/
-    public function offsetSet ($Index, $Record) {
+    public function offsetSet ($Index, $Record) : void {
       if (!($Record instanceof Record))
         return;
       
@@ -110,7 +111,7 @@
      * @access public
      * @return void
      **/
-    public function offsetUnset ($Index) {
+    public function offsetUnset ($Index) : void {
       unset ($this->dnsRecords [$Index]);
     }
     // }}}
@@ -122,7 +123,7 @@
      * @access public
      * @return int
      **/
-    public function count () {
+    public function count () : int {
       return count ($this->dnsRecords);
     }
     // }}}
@@ -162,7 +163,7 @@
      * @access public
      * @return void
      **/
-    public function removeRecord (Record $dnsRecord) {
+    public function removeRecord (Record $dnsRecord) : void {
       foreach (array_keys ($this->dnsRecords, $dnsRecord, true) as $recordIndex)
         unset ($this->dnsRecords [$recordIndex]);
     }
@@ -300,7 +301,7 @@ EOF;
      * @access public
      * @return void
      **/
-    public function orderCanonical () {
+    public function orderCanonical () : void {
       usort (
         $this->dnsRecords,
         function (Record $Left, Record $Right) {
@@ -352,7 +353,7 @@ EOF;
      * @access public
      * @return void
      **/
-    public function unshift () {
+    public function unshift () : void {
       $dnsRecords = [ $this->dnsRecords ];
       
       foreach (func_get_args () as $dnsRecord)
@@ -371,7 +372,7 @@ EOF;
      * @access public
      * @return void
      **/
-    public function clear () {
+    public function clear () : void {
       $this->dnsRecords = [ ];
     }
     // }}}

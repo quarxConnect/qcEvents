@@ -49,6 +49,7 @@
      * @access public
      * @return string NULL if Index is out of bounds
      **/
+    #[\ReturnTypeWillChange]
     public function offsetGet ($Index) {
       if (isset ($this->labelParts [$Index]))
         return $this->labelParts [$Index];
@@ -65,7 +66,7 @@
      * @access public
      * @return void
      **/
-    public function offsetSet ($Index, $Value) {
+    public function offsetSet ($Index, $Value) : void {
       # TODO: Validate the label
       
       if ($Index !== null)
@@ -84,7 +85,7 @@
      * @access public
      * @return int
      **/
-    public function offsetExists ($Index) {
+    public function offsetExists ($Index) : bool {
       return isset ($this->labelParts [$Index]);
     }
     // }}}
@@ -98,7 +99,7 @@
      * @access public
      * @return void
      **/
-    public function offsetUnset ($Index) {
+    public function offsetUnset ($Index) : void {
       unset ($this->labelParts [$Index]);
     }
     // }}}
@@ -122,7 +123,7 @@
      * @access public
      * @return int
      **/
-    public function count () {
+    public function count () : int {
       return count ($this->labelParts);
     }
     // }}}

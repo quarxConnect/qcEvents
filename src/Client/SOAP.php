@@ -177,7 +177,7 @@
          * @access public
          * @return string
          **/
-        public function __doRequest ($soapRequest, $soapLocation, $soapAction, $soapVersion, $soapOneWay = false) {
+        public function __doRequest ($soapRequest, $soapLocation, $soapAction, $soapVersion, $soapOneWay = false) : ?string {
           // Store last used headers
           $this->lastRequestHeaders = [
             'Content-Type: text/xml; charset=utf-8',
@@ -231,7 +231,7 @@
          * @access public
          * @return string
          **/
-        public function __getLastRequestHeaders () {
+        public function __getLastRequestHeaders () : ?string {
           return implode ("\n", $this->lastRequestHeaders) . "\n";
         }
         // }}}

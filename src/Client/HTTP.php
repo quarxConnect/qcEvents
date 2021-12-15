@@ -778,7 +778,10 @@
             $Name = ltrim (substr ($cookieValue, 0, $p));
             $cookieValue = substr ($cookieValue, $p + 1);
             
-            if ($cookieValue [0] == '"')
+            if (
+              (strlen ($cookieValue) > 0) &&
+              ($cookieValue [0] == '"')
+            )
               $cookieValue = substr ($cookieValue, 1, -1);
           }
           
