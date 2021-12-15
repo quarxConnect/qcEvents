@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
    * qcEvents - Representation of an ACME Authorization
-   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,10 +18,12 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Promise.php');
-  require_once ('qcEvents/Vendor/ACME/Authorization/Challenge.php');
+  declare (strict_types=1);
   
-  class qcEvents_Vendor_ACME_Authorization {
+  namespace quarxConnect\Events\Vendor\ACME;
+  use \quarxConnect\Events;
+  
+  class Authorization {
     /* Instance of our ACME-Client */
     private $ACME = null;
     
@@ -32,20 +34,20 @@
     private $Identifier = null;
     
     /* Status of this authorization */
-    const STATUS_PENDING = 'pending';
-    const STATUS_VALID = 'valid';
-    const STATUS_INVALID = 'invalid';
-    const STATUS_DEACTIVATED = 'deactivated';
-    const STATUS_EXPIRED = 'expired';
-    const STATUS_REVOKED = 'revoked';
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_VALID = 'valid';
+    public const STATUS_INVALID = 'invalid';
+    public const STATUS_DEACTIVATED = 'deactivated';
+    public const STATUS_EXPIRED = 'expired';
+    public const STATUS_REVOKED = 'revoked';
     
-    private $Status = qcEvents_Vendor_ACME_Authorization::STATUS_PENDING;
+    private $Status = Authorization::STATUS_PENDING;
     
     /* Timestamp when the authorization expires */
     private $Expires = null;
     
     /* List of possible challenges */
-    private $Challenges = array ();
+    private $Challenges = [ ];
     
     /* Wildcard-Indicator */
     private $Wildcard = null;
@@ -54,22 +56,22 @@
     /**
      * Create/Restore an authorization-instance from JSON
      * 
-     * @param qcEvents_Vendor_ACME $ACME
+     * @param Events\Vendor\ACME $ACME
      * @param string $URI
      * @param object $JSON
      * 
      * @access public
-     * @return qcEvents_Vendor_ACME_Authorization
+     * @return Authorization
      **/
-    public static function fromJSON (qcEvents_Vendor_ACME $ACME, $URI, $JSON) {
+    public static function fromJSON (Events\Vendor\ACME $ACME, string $URI, object $JSON) : Authorization {
       $Instance = new static ($ACME, $URI);
       $Instance->Identifier = $JSON->identifier;
       $Instance->Status = $JSON->status;
       
-      $Instance->Challenges = array ();
+      $Instance->Challenges = [ ];
       
       foreach ($JSON->challenges as $Challenge)
-        $Instance->Challenges [] = qcEvents_Vendor_ACME_Authorization_Challenge::fromJSON ($ACME, $Challenge);
+        $Instance->Challenges [] = Authorization\Challenge::fromJSON ($ACME, $Challenge);
       
       if (isset ($JSON->expires))
         $Instance->Expires = strtotime ($JSON->expires);
@@ -85,13 +87,13 @@
     /**
      * Create a new ACME-Authorization-Instance
      * 
-     * @param qcEvents_Vendor_ACME $ACME
+     * @param Events\Vendor\ACME $ACME
      * @param string $URI
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Vendor_ACME $ACME, $URI) {
+    function __construct (Events\Vendor\ACME $ACME, $URI) {
       $this->ACME = $ACME;
       $this->URI = $URI;
     }
@@ -104,14 +106,14 @@
      * @access friendly
      * @return array
      **/
-    function __debugInfo () {
-      return array (
+    function __debugInfo () : array {
+      return [
         'Identifier' => $this->Identifier,
         'Status' => $this->Status,
         'Challenges' => $this->Challenges,
         'Expires' => $this->Expires,
         'Wildcard' => $this->Wildcard,
-      );
+      ];
     }
     // }}}
     
@@ -122,10 +124,8 @@
      * @access public
      * @return array
      **/
-    public function getChallenges () {
+    public function getChallenges () : array {
       return $this->Challenges;
     }
     // }}}
   }
-
-?>

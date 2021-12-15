@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
    * qcEvents - Single Challenge of an ACME Authorization
-   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,9 +18,12 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Promise.php');
+  declare (strict_types=1);
   
-  class qcEvents_Vendor_ACME_Authorization_Challenge {
+  namespace quarxConnect\Events\Vendor\ACME\Authorization;
+  use \quarxConnect\Events;
+  
+  class Challenge {
     /* Instance of our ACME-Client */
     private $ACME = null;
     
@@ -28,19 +31,19 @@
     private $URI = null;
     
     /* Type of this challenge */
-    const TYPE_TLS_ALPN = 'tls-alpn-01';
-    const TYPE_HTTP = 'http-01';
-    const TYPE_DNS = 'dns-01';
+    public const TYPE_TLS_ALPN = 'tls-alpn-01';
+    public const TYPE_HTTP = 'http-01';
+    public const TYPE_DNS = 'dns-01';
     
     private $Type = null;
     
     /* Status of this challenge */
-    const STATUS_PENDING = 'pending';
-    const STATUS_PROCESSING = 'processing';
-    const STATUS_VALID = 'valid';
-    const STATUS_INVALID = 'invalid';
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_PROCESSING = 'processing';
+    public const STATUS_VALID = 'valid';
+    public const STATUS_INVALID = 'invalid';
     
-    private $Status = qcEvents_Vendor_ACME_Authorization_Challenge::STATUS_PENDING;
+    private $Status = Challenge::STATUS_PENDING;
     
     /* Challenge was validated */
     private $Validated = null;
@@ -55,13 +58,13 @@
     /**
      * Create/Restore a challenge from JSON
      * 
-     * @param qcEvents_Vendor_ACME $ACME
+     * @param Events\Vendor\ACME $ACME
      * @param object $JSON
      * 
      * @access public
-     * @return qcEvents_Vendor_ACME_Authorization_Challenge
+     * @return Challenge
      **/
-    public static function fromJSON (qcEvents_Vendor_ACME $ACME, $JSON) {
+    public static function fromJSON (Events\Vendor\ACME $ACME, object $JSON) : Challenge {
       $Instance = new static ($ACME, $JSON->url);
       $Instance->Type = $JSON->type;
       $Instance->Status = $JSON->status;
@@ -83,13 +86,13 @@
     /**
      * Create a new instance of an authorization-challenge
      * 
-     * @param qcEvents_Vendor_ACME $ACME
+     * @param Events\Vendor\ACME $ACME
      * @param string $URI
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Vendor_ACME $ACME, $URI) {
+    function __construct (Events\Vendor\ACME $ACME, string $URI) {
       $this->ACME = $ACME;
       $this->URI = $URI;
     }
@@ -102,15 +105,15 @@
      * @access friendly
      * @return array
      **/
-    function __debugInfo () {
-      return array (
+    function __debugInfo () : array {
+      return [
         'URI' => $this->URI,
         'Type' => $this->Type,
         'Status' => $this->Status,
         'Token' => $this->Token,
         'Validated' => $this->Validated,
         'Error' => $this->Error,
-      );
+      ];
     }
     // }}}
     
@@ -118,12 +121,12 @@
     /**
      * Check if this challenge is of a given type
      * 
-     * @param string $Type
+     * @param string $challengeType
      * 
      * @access public
      * @return bool
      **/
-    public function isType ($Type) {
+    public function isType (string $challengeType) : bool {
       return (strcasecmp ($this->Type, $Type) == 0);
     }
     // }}}
@@ -135,7 +138,7 @@
      * @access public
      * @return string
      **/
-    public function getToken () {
+    public function getToken () : string {
       return $this->Token;
     }
     // }}}
@@ -147,7 +150,7 @@
      * @access public
      * @return string
      **/
-    public function getKeyAuthorization () {
+    public function getKeyAuthorization () : string {
       return $this->ACME->getKeyAuthorization ($this->Token);
     }
     // }}}
@@ -157,9 +160,9 @@
      * Try to activate this challenge
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function activate () : qcEvents_Promise {
+    public function activate () : Events\Promise {
       return $this->ACME->request ($this->URI, true)->then (
         function () {
           // Response contains our JSON
@@ -169,5 +172,3 @@
     }
     // }}}
   }
-
-?>

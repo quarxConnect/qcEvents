@@ -1,8 +1,8 @@
-<?PHP
+<?php
 
   /**
    * qcEvents - Representation of an ACME Order
-   * Copyright (C) 2019 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,10 +18,10 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Promise.php');
-  require_once ('qcEvents/Vendor/ACME/Authorization.php');
+  namespace quarxConnect\Events\Vendor\ACME;
+  use \quarxConnect\Events;
   
-  class qcEvents_Vendor_ACME_Order {
+  class Order {
     /* ACME-Instance for this order */
     private $ACME = null;
     
@@ -29,19 +29,19 @@
     private $URI = null;
     
     /* Status of this order */
-    const STATUS_PENDING = 'pending'; // Order was newly created
-    const STATUS_READY = 'ready'; // Order was authorized and is ready for processing
-    const STATUS_PROCESSING = 'processing'; // Order is being processed
-    const STATUS_VALID = 'valid'; // Order was authorized and processed successfully
-    const STATUS_INVALID = 'invalid'; // Order could not be authorized or processed
+    public const STATUS_PENDING = 'pending'; // Order was newly created
+    public const STATUS_READY = 'ready'; // Order was authorized and is ready for processing
+    public const STATUS_PROCESSING = 'processing'; // Order is being processed
+    public const STATUS_VALID = 'valid'; // Order was authorized and processed successfully
+    public const STATUS_INVALID = 'invalid'; // Order could not be authorized or processed
     
-    private $Status = qcEvents_Vendor_ACME_Order::STATUS_INVALID;
+    private $Status = Order::STATUS_INVALID;
     
     /* Timestamp when this order expires */
     private $Expires = null;
     
     /* Identifiers for this order */
-    private $Identifiers = array ();
+    private $Identifiers = [ ];
     
     /* Requested notBefore-Timestamp */
     private $notBefore = null;
@@ -50,7 +50,7 @@
     private $notAfter = null;
     
     /* Authorizations for this order */
-    private $Authorizations = array ();
+    private $Authorizations = [ ];
     
     /* Finalize-URI for this order */
     private $finalizeURI = null;
@@ -66,18 +66,18 @@
     /**
      * Create/Restore an ACME-Order from JSON
      * 
-     * @param qcEvents_Vendor_ACME $ACME
+     * @param Events\Vendor\ACME $ACME
      * @param string $URI
      * @param object $JSON
      * 
      * @access public
-     * @return qcEvents_Vendor_ACME_Order
+     * @return Order
      **/
-    public static function fromJSON (qcEvents_Vendor_ACME $ACME, $URI, $JSON) {
-      $Instance = new static ($ACME, $URI);
-      $Instance->updateFromJSON ($JSON);
+    public static function fromJSON (Events\Vendor\ACME $ACME, string $URI, object $JSON) : Order {
+      $orderInstance = new static ($ACME, $URI);
+      $orderInstance->updateFromJSON ($JSON);
       
-      return $Instance;
+      return $orderInstance;
     }
     // }}}
     
@@ -85,13 +85,13 @@
     /**
      * Create a new ACME-Order-Instance
      * 
-     * @param qcEvents_Vendor_ACME $ACME
+     * @param Events\Vendor\ACME $ACME
      * @param string $URI
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (qcEvents_Vendor_ACME $ACME, $URI) {
+    function __construct (Events\Vendor\ACME $ACME, string $URI) {
       $this->ACME = $ACME;
       $this->URI = $URI;
     }
@@ -104,19 +104,24 @@
      * @access friendly
      * @return array
      **/
-    function __debugInfo () {
-      return array (
+    function __debugInfo () : array {
+      return [
         'URI' => $this->URI,
         'Status' => $this->Status,
         'Expires' => $this->Expires,
         'notBefore' => $this->notBefore,
         'notAfter' => $this->notAfter,
-        'Identifiers' => array_map (function ($e) { return strtoupper ($e->type) . ':' . $e->value; }, $this->Identifiers),
+        'Identifiers' => array_map (
+          function ($orderIdentifier) {
+            return strtoupper ($orderIdentifier->type) . ':' . $orderIdentifier->value;
+          },
+          $this->Identifiers
+        ),
         'Authorizations' => $this->Authorizations,
         'finalizeURI' => $this->finalizeURI,
         'certificateURI' => $this->certificateURI,
         'Error' => $this->Error,
-      );
+      ];
     }
     // }}}
     
@@ -127,8 +132,8 @@
      * @access public
      * @return bool
      **/
-    public function isPending () {
-      return ($this->Status == $this::STATUS_PENDING);
+    public function isPending () : bool {
+      return ($this->Status == self::STATUS_PENDING);
     }
     // }}}
     
@@ -139,8 +144,8 @@
      * @access public
      * @return bool
      **/
-    public function isReady () {
-      return ($this->Status == $this::STATUS_READY);
+    public function isReady () : bool {
+      return ($this->Status == self::STATUS_READY);
     }
     // }}}
     
@@ -151,8 +156,8 @@
      * @access public
      * @return bool
      **/
-    public function isProcessing () {
-      return ($this->Status == $this::STATUS_PROCESSING);
+    public function isProcessing () : bool {
+      return ($this->Status == self::STATUS_PROCESSING);
     }
     // }}}
     
@@ -163,8 +168,8 @@
      * @access public
      * @return bool
      **/
-    public function isValid () {
-      return ($this->Status == $this::STATUS_VALID);
+    public function isValid () : bool {
+      return ($this->Status == self::STATUS_VALID);
     }
     // }}}
     
@@ -187,7 +192,7 @@
      * @access public
      * @return array
      **/
-    public function getIdentifiers () {
+    public function getIdentifiers () : array {
       return $this->Identifiers;
     }
     // }}}
@@ -197,22 +202,22 @@
      * Retrive all authorizations for this order
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function getAuthorizations () : qcEvents_Promise {
-      $Result = array ();
+    public function getAuthorizations () : Events\Promise {
+      $Result = [ ];
       
       foreach ($this->Authorizations as $Key=>$Value)
         if (is_string ($Value))
           $Result [] = $this->Authorizations [$Key] = $this->ACME->request ($Value, false)->then (
             function ($Result) use ($Key, $Value) {
-              return $this->Authorizations [$Key] = qcEvents_Vendor_ACME_Authorization::fromJSON ($this->ACME, $Value, $Result);
+              return $this->Authorizations [$Key] = Authorization::fromJSON ($this->ACME, $Value, $Result);
             }
           );
         else
           $Result [] = $Value;
       
-      return qcEvents_Promise::all ($Result);
+      return Events\Promise::all ($Result);
     }
     // }}}
     
@@ -221,13 +226,13 @@
      * Retrive the issued certificate
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function getCertificate () : qcEvents_Promise {
+    public function getCertificate () : Events\Promise {
       // Retrive the full chain
       return $this->getCertificateChain (true)->then (
-        function (array $Chain) {
-          return array_shift ($Chain);
+        function (array $certificateChain) {
+          return array_shift ($certificateChain);
         }
       );
     }
@@ -237,36 +242,36 @@
     /**
      * Retrive the chain of the issued certfiicate
      * 
-     * @param bool $Full (optional) Include the end-entity-certificate itself as well
+     * @param bool $fullChain (optional) Include the end-entity-certificate itself as well
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function getCertificateChain ($Full = false) : qcEvents_Promise {
+    public function getCertificateChain (bool $fullChain = false) : Events\Promise {
       // Check our state first
       if (!$this->isValid ())
-        return qcEvents_Promise::reject ('Order is not in valid state');
+        return Events\Promise::reject ('Order is not in valid state');
       
       // Make sure we have a certificate-URI
       if ($this->certificateURI === null)
-        return qcEvents_Promise::reject ('Missing certificate-URI');
+        return Events\Promise::reject ('Missing certificate-URI');
       
       // Issue the request
       return $this->ACME->request ($this->certificateURI, true, false)->then (
-        function ($Response, qcEvents_Stream_HTTP_Header $Header) use ($Full) {
+        function ($responseBody, Events\Stream\HTTP\Header $responseHeader) use ($fullChain) {
           // Check content-type of response
-          if ($Header->getField ('Content-Type') != 'application/pem-certificate-chain')
-            throw new exception ('Invalid content-type on response');
+          if ($responseHeader->getField ('Content-Type') != 'application/pem-certificate-chain')
+            throw new \Exception ('Invalid content-type on response');
           
           // Explode the chain
-          $Chain = explode ("\n\n", trim ($Response));
+          $certificateChain = explode ("\n\n", trim ($responseBody));
           
           // Check wheter to remove our own certificate from chain
-          if (!$Full)
-            array_shift ($Chain);
+          if (!$fullChain)
+            array_shift ($certificateChain);
           
           // Forward the result
-          return $Chain;
+          return $certificateChain;
         }
       );
     }
@@ -276,34 +281,28 @@
     /**
      * Create a private key for a certificate
      * 
-     * @param int $Size (optional)
+     * @param int $keySize (optional)
      * 
      * @access public
-     * @return stirng
+     * @return string
      **/
-    public function createKey ($Size = 2048) {
+    public function createKey (int $keySize = 2048) : string {
       // Check size of the key
-      if ($Size % 1024 != 0) {
-        trigger_error ('Size must be a multiple of 1024');
-        
-        return false;
-      }
+      if ($keySize % 1024 != 0)
+        throw new \Exception ('Size must be a multiple of 1024');
       
-      if ($Size < 2048) {
-        trigger_error ('Size is too small (must be at least 2048)');
-        
-        return false;
-      }
+      if ($keySize < 2048)
+        throw new \Exception ('Size is too small (must be at least 2048)');
       
       // Create the key
-      $Key = openssl_pkey_new (array (
-        'private_key_bits' => $Size,
-        'private_key_type' => OPENSSL_KEYTYPE_RSA,
-      ));
+      $newKey = openssl_pkey_new ([
+        'private_key_bits' => $keySize,
+        'private_key_type' => \OPENSSL_KEYTYPE_RSA,
+      ]);
       
       // Export key to string
-      if (!openssl_pkey_export ($Key, $pemKey))
-        return false;
+      if (!openssl_pkey_export ($newKey, $pemKey))
+        throw new \Exception ('Failed to export new key');
       
       return $pemKey;
     }
@@ -313,17 +312,17 @@
     /**
      * Create a Certificate-Signing-Request for this order
      * 
-     * @param mixed $Key
-     * @param array $Subject (optional)
+     * @param mixed $requestKey
+     * @param array $requestSubject (optional)
      * 
      * @access public
      * @return string
      **/
-    public function createCSR ($Key, array $Subject = array ()) {
+    public function createCSR ($requestKey, array $requestSubject = [ ]) : string {
       // Make sure there is a commonName on the subject
-      if (!isset ($Subject ['commonName']))
+      if (!isset ($requestSubject ['commonName']))
         foreach ($this->Identifiers as $ID) {
-          $Subject ['commonName'] = $ID->value;
+          $requestSubject ['commonName'] = $ID->value;
           
           break;
         }
@@ -338,26 +337,34 @@
         '[v3_req]' . "\n" .
         '[v3_ca]' . "\n" .
         '[san]' . "\n" .
-        'subjectAltName=' . implode (',', array_map (function ($e) { return strtoupper ($e->type) . ':' . $e->value; }, $this->Identifiers)) . "\n"
+        'subjectAltName=' . implode (
+          ',',
+          array_map (
+            function ($requestIdentifier) {
+              return strtoupper ($requestIdentifier->type) . ':' . $requestIdentifier->value;
+            },
+            $this->Identifiers
+          )
+        ) . "\n"
       );
       
       // Generate the CSR
-      $Request = openssl_csr_new (
-        $Subject,
-        $Key,
-        array (
+      $certificateRequest = openssl_csr_new (
+        $requestSubject,
+        $requestKey,
+        [
           'digest_alg' => 'sha256',
           'config' => $tmpConfig,
           'req_extensions' => 'san',
-        )
+        ]
       );
       
       // Remove temporary configuration again
       unlink ($tmpConfig);
       
       // Convert CSR to string
-      if (!openssl_csr_export ($Request, $pemRequest))
-        return false;
+      if (!openssl_csr_export ($certificateRequest, $pemRequest))
+        throw new \Exception ('Failed to export certificate request');
       
       return $pemRequest;
     }
@@ -368,13 +375,13 @@
      * Fetch this order from server
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function fetch () : qcEvents_Promise {
+    public function fetch () : Events\Promise {
       return $this->ACME->request ($this->URI, false)->then (
-        function ($Response) {
+        function ($responseBody) {
           // Push response to our attributes
-          $this->updateFromJSON ($Response);
+          $this->updateFromJSON ($responseBody);
           
           // Return ourself
           return $this;
@@ -387,31 +394,31 @@
     /**
      * Try to finalize this order
      * 
-     * @param mixed $CSR
+     * @param mixed $signingReqeust
      * 
      * @access public
-     * @return qcEvents_Promise
+     * @return Events\Promise
      **/
-    public function finalize ($CSR) : qcEvents_Promise {
+    public function finalize ($signingRequest) : Events\Promise {
       // Check our state first
       if (!$this->isReady ())
-        return qcEvents_Promise::reject ('Order must be in ready-state');
+        return Events\Promise::reject ('Order must be in ready-state');
       
       if ($this->finalizeURI === null)
-        return qcEvents_Promise::reject ('No finalizeURI assigned');
+        return Events\Promise::reject ('No finalizeURI assigned');
       
       // Make sure the CSR is in the right format
-      if (is_resource ($CSR) && !openssl_csr_export ($CSR, $CSR))
-        return qcEvents_Promise::reject ('Failed to export CSR from OpenSSL');
+      if (is_resource ($signingRequest) && !openssl_csr_export ($signingRequest, $signingRequest))
+        return Events\Promise::reject ('Failed to export CSR from OpenSSL');
       
-      if (substr ($CSR, 0, 2) == '--')
-        $CSR = base64_decode (substr ($CSR, strpos ($CSR, "\n") + 1, strpos ($CSR, "\n--") - strpos ($CSR, "\n")));
+      if (substr ($signingRequest, 0, 2) == '--')
+        $signingRequest = base64_decode (substr ($signingRequest, strpos ($signingRequest, "\n") + 1, strpos ($signingRequest, "\n--") - strpos ($signingRequest, "\n")));
       
       // Run the request
-      return $this->ACME->request ($this->finalizeURI, true, array ('csr' => $this->ACME::base64u ($CSR)))->then (
-        function ($JSON) {
+      return $this->ACME->request ($this->finalizeURI, true, [ 'csr' => $this->ACME::base64u ($signingRequest) ])->then (
+        function ($responseJSON) {
           // Push the lastest JSON to our self
-          $this->updateFromJSON ($JSON);
+          $this->updateFromJSON ($responseJSON);
           
           // Indicate success
           return true;
@@ -429,7 +436,7 @@
      * @access private
      * @return void
      **/
-    private function updateFromJSON ($JSON) {
+    private function updateFromJSON (object $JSON) : void {
       $this->Status = $JSON->status;
       $this->Identifiers = $JSON->identifiers;
       $this->Authorizations = $JSON->authorizations;
@@ -452,5 +459,3 @@
     }
     // }}}
   }
-
-?>
