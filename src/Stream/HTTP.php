@@ -717,25 +717,25 @@
     /**
      * Callback: Single HTTP-Request/Response was finished
      * 
-     * @param HTTP\Header $Header
-     * @param string $Body
+     * @param HTTP\Header $responseHeader
+     * @param string $responseBody (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected function httpFinished (HTTP\Header $Header, $Body) { }
+    protected function httpFinished (HTTP\Header $responseHeader, string $responseBody = null) : void { }
     // }}}
     
     // {{{ httpFailed
     /**
      * Callback: Sinlge HTTP-Request/Response was not finished properly
      * 
-     * @param HTTP\Header $Header (optional)
-     * @param string $Body (optional)
+     * @param HTTP\Header $responseHeader (optional)
+     * @param string $responseBody (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected function httpFailed (HTTP\Header $Header = null, $Body = null) { }
+    protected function httpFailed (HTTP\Header $responseHeader = null, string $responseBody = null) : void { }
     // }}}
   }

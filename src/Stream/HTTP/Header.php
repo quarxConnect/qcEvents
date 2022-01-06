@@ -353,14 +353,14 @@
     /**
      * Store HTTP-Credentials
      * 
-     * @param string $Username
-     * @param string $Password
+     * @param string $authUsername
+     * @param string $authPassword
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function setCredentials ($Username, $Password) {
-      return $this->setField ('Authorization', 'Basic ' . base64_encode ($Username . ':' . $Password));
+    public function setCredentials (string $authUsername, string $authPassword) : void {
+      $this->setField ('Authorization', 'Basic ' . base64_encode ($authUsername . ':' . $authPassword));
     }
     // }}}
     

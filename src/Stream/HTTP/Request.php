@@ -35,17 +35,17 @@
     
     private $authenticationMethods = [ ];
     
-    private $Username = null;
-    private $Password = null;
+    private $authUsername = null;
+    private $authPassword = null;
     
     /* Values to upload with this request */
-    private $Values = [ ];
+    private $requestValues = [ ];
     
     /* Files to upload with this request */
-    private $Files = [ ];
+    private $requestFiles = [ ];
     
     /* User-defined body for this request */
-    private $Body = null;
+    private $requestBody = null;
     
     /* Maximum number of redirects */
     private $maxRedirects = 20;
@@ -54,27 +54,27 @@
     /**
      * Create a new HTTP-Request
      * 
-     * @param mixed $Parameter (optional) Initialize the request with this headers or URL
+     * @param mixed $requestParameter (optional) Initialize the request with this headers or URL
      * 
      * @access friendly
      * @return void
      **/
-    function __construct ($Parameter = null) {
+    function __construct ($requestParameter = null) {
       // Handle the parameter
-      $Header = [ 'GET / HTTP/1.0', 'Connection: keep-alive' ];
-      $URL = null;
+      $requestHeader = [ 'GET / HTTP/1.0', 'Connection: keep-alive' ];
+      $requestURL = null;
       
-      if (is_array ($Parameter))
-        $Header = $Parameter;
-      elseif (is_string ($Parameter))
-        $URL = $Parameter;
+      if (is_array ($requestParameter))
+        $requestHeader = $requestParameter;
+      elseif (is_string ($requestParameter))
+        $requestURL = $requestParameter;
       
       // Setup the header using a dummy
-      parent::__construct ($Header);
+      parent::__construct ($requestHeader);
       
       // Store the requested URL
-      if ($URL !== null)
-        $this->setURL ($URL);
+      if ($requestURL !== null)
+        $this->setURL ($requestURL);
     }
     // }}}
     
@@ -94,67 +94,67 @@
     /**
      * Convert the header into a string
      * 
-     * @param bool $Human (optional) Generate human readable output
+     * @param bool $humanReadable (optional) Generate human readable output
      * 
      * @access public
      * @return string
      **/
-    public function toString ($Human = false) {
+    public function toString (bool $humanReadable = false) : string {
       // Make sure that files and values are transfered properly
-      $haveFiles = (count ($this->Files) > 0);
-      $haveValues = (count ($this->Values) > 0);
-      $Body = null;
+      $haveFiles = (count ($this->requestFiles) > 0);
+      $haveValues = (count ($this->requestValues) > 0);
+      $requestBody = null;
       
       if ($haveFiles || $haveValues) {
         // Generate a boundary for formdata
-        $Boundary = '----qcEvents-' . md5 (time ());
+        $bodyBoundary = '----qcEvents-' . md5 (time ());
         
         // Always transfer files and values using POST
         $this->setMethod ('POST');
-        $this->setField ('Content-Type', 'multipart/form-data; boundary="' . $Boundary . '"');
+        $this->setField ('Content-Type', 'multipart/form-data; boundary="' . $bodyBoundary . '"');
         
         // Generate body of request
-        $Body = '';
+        $requestBody = '';
         
-        foreach ($this->Values as $Name=>$Value)
-           $Body .=
-             '--' . $Boundary . "\r\n" .
-             'Content-Disposition: form-data; name="' . $Name . '"' . "\r\n" .
-             ($Value [1] !== null ? 'Content-Type: ' . $Value [1] . "\r\n" : '') .
+        foreach ($this->requestValues as $valueName=>$valueData)
+           $requestBody .=
+             '--' . $bodyBoundary . "\r\n" .
+             'Content-Disposition: form-data; name="' . $valueName . '"' . "\r\n" .
+             ($valueData [1] !== null ? 'Content-Type: ' . $valueData [1] . "\r\n" : '') .
              'Content-Transfer-Encoding: binary' . "\r\n\r\n" .
-             $Value [0] . "\r\n";
+             $valueData [0] . "\r\n";
         
-        foreach ($this->Files as $Name=>$Fileinfo)
-          $Body .=
-            '--' . $Boundary . "\r\n" .
-            'Content-Disposition: form-data; name="' . $Name . '"; filename="' . $Fileinfo [1] . '"' . "\r\n" .
-            'Content-Type: ' . $Fileinfo [2] . "\r\n" .
+        foreach ($this->requestFiles as $fileName=>$fileInfo)
+          $requestBody .=
+            '--' . $bodyBoundary . "\r\n" .
+            'Content-Disposition: form-data; name="' . $fileName . '"; filename="' . $fileInfo [1] . '"' . "\r\n" .
+            'Content-Type: ' . $fileInfo [2] . "\r\n" .
             'Content-Transfer-Encoding: binary' . "\r\n\r\n" .
-            ($Human ? '[' . filesize ($Fileinfo [0]) . ' binary octets]' : file_get_contents ($Fileinfo [0])) . "\r\n";
+            ($humanReadable ? '[' . filesize ($fileInfo [0]) . ' binary octets]' : file_get_contents ($fileInfo [0])) . "\r\n";
         
-        $Body .= '--' . $Boundary . '--' . "\r\n";
+        $requestBody .= '--' . $bodyBoundary . '--' . "\r\n";
         
         // Store length of body
-        $this->setField ('Content-Length', strlen ($Body));
+        $this->setField ('Content-Length', strlen ($requestBody));
         
       // Use a user-defined body
-      } elseif ($this->Body !== null) {
+      } elseif ($this->requestBody !== null) {
         # $this->setMethod ('POST');
         
-        $Body =& $this->Body;
+        $requestBody =& $this->requestBody;
       
       // Make sure we are not in POST-Mode if no body is present
       } elseif ($this->getMethod () == 'POST')
         $this->setMethod ('GET');
       
       // Let our parent create the header
-      $buf = parent::__toString ();
+      $httpRequest = parent::__toString ();
       
       // Append the body
-      if ($Body !== null)
-        $buf .= $Body . "\r\n";
+      if ($requestBody !== null)
+        $httpRequest .= $requestBody . "\r\n";
       
-      return $buf;
+      return $httpRequest;
     }
     // }}}
     
@@ -165,23 +165,23 @@
      * @access public
      * @return string
      **/
-    public function getHostname () {
+    public function getHostname () : ?string {
       // Retrive the hostname from headers
-      if (($Host = $this->getField ('Host')) === null)
-        return $Host;
+      if (($targetHostname = $this->getField ('Host')) === null)
+        return $targetHostname;
       
       // Check if there is a port
-      if (($p = strrpos ($Host, ':')) === false)
-        return $Host;
+      if (($p = strrpos ($targetHostname, ':')) === false)
+        return $targetHostname;
       
       // Truncate the port
-      $Host = substr ($Host, 0, $p);
+      $targetHostname = substr ($targetHostname, 0, $p);
       
       // Check for IPv6
-      if (($Host [0] == '[') && ($Host [strlen ($Host) - 1] == ']'))
-        $Host = substr ($Host, 1, -1);
+      if (($targetHostname [0] == '[') && ($targetHostname [strlen ($targetHostname) - 1] == ']'))
+        $targetHostname = substr ($targetHostname, 1, -1);
       
-      return $Host;
+      return $targetHostname;
     }
     // }}}
     
@@ -192,10 +192,10 @@
      * @access public
      * @return int
      **/
-    public function getPort () {
+    public function getPort () : int {
       // Check if there is a port given on header
-      if (($Host = $this->getField ('Host')) && (($p = strrpos ($Host, ':')) !== false))
-        return intval (substr ($Host, $p + 1));
+      if (($targetHostname = $this->getField ('Host')) && (($p = strrpos ($targetHostname, ':')) !== false))
+        return (int)substr ($targetHostname, $p + 1);
       
       // Return port based on TLS-Status
       return ($this->useTLS () ? 443 : 80);
@@ -209,7 +209,7 @@
      * @access public
      * @return bool
      **/
-    public function useTLS () {
+    public function useTLS () : bool {
       return $this->useTLS;
     }
     // }}}
@@ -221,7 +221,7 @@
      * @access public
      * @return string
      **/
-    public function getURL () {
+    public function getURL () : string {
       return 'http' . ($this->useTLS ? 's' : '') . '://' . $this->getField ('Host') . $this->getURI ();
     }
     // }}}
@@ -230,21 +230,21 @@
     /**
      * Set a URL for this request
      * 
-     * @param string $URL
+     * @param string|array $URL
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function setURL ($URL) {
+    public function setURL ($requestURL) : void {
       // Make sure we have a parsed URL
-      if (!is_array ($URL) && !($URL = parse_url ($URL)))
-        return false;
+      if (!is_array ($requestURL) && !($requestURL = parse_url ($requestURL)))
+        throw new \Exception ('Malformed URL');
       
       // Store the TLS-Status
-      $this->useTLS = (isset ($URL ['scheme']) && ($URL ['scheme'] == 'https'));
+      $this->useTLS = (isset ($requestURL ['scheme']) && ($requestURL ['scheme'] == 'https'));
       
       // Forward to our parent
-      return parent::setURL ($URL);
+      parent::setURL ($requestURL);
     }
     // }}}
     
@@ -255,8 +255,8 @@
      * @access public
      * @return bool
      **/
-    public function hasCredentials () {
-      return (($this->Username !== null) || ($this->Password !== null));
+    public function hasCredentials () : bool {
+      return (($this->authUsername !== null) || ($this->authPassword !== null));
     }
     // }}}
     
@@ -264,16 +264,16 @@
     /**
      * Store HTTP-Credentials
      * 
-     * @param string $Username
-     * @param string $Password
+     * @param string $authUsername
+     * @param string $authPassword
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function setCredentials ($Username, $Password) {
+    public function setCredentials (string $authUsername, string $authPassword) : void {
       // Store the new credentials
-      $this->Username = $Username;
-      $this->Password = $Password;
+      $this->authUsername = $authUsername;
+      $this->authPassword = $authPassword;
       
       // Try to apply credentials to this request
       $this->applyCredentials ();
@@ -284,15 +284,15 @@
     /**
      * Register a server-supported authentication-method
      * 
-     * @param string $Method
-     * @param array $Parameters (optional)
+     * @param string $authMethod
+     * @param array $authParameters (optional)
      * 
      * @access public
      * @return void
      **/
-    public function addAuthenticationMethod ($Method, array $Parameters = null) {
+    public function addAuthenticationMethod (string $authMethod, array $authParameters = null) : void {
       // Register the method
-      $this->authenticationMethods [$Method] = $Parameters;
+      $this->authenticationMethods [$authMethod] = $authParameters;
       
       // Try to apply credentials to this request
       $this->applyCredentials ();
@@ -306,8 +306,8 @@
      * @access public
      * @return string
      **/
-    public function getUsername () {
-      return $this->Username;
+    public function getUsername () : ?string {
+      return $this->authUsername;
     }
     // }}}
     
@@ -318,8 +318,8 @@
      * @access public
      * @return string
      **/
-    public function getPassword () {
-      return $this->Password;
+    public function getPassword () : ?string {
+      return $this->authPassword;
     }
     // }}}
     
@@ -330,20 +330,23 @@
      * @access private
      * @return void
      **/
-    private function applyCredentials () {
+    private function applyCredentials () : void {
       // Check wheter to remove an authentication-information
-      if (($this->Username === null) && ($this->Password === null))
-        return $this->unsetField ('Authorization');
+      if (($this->authUsername === null) && ($this->authPassword === null)) {
+        $this->unsetField ('Authorization');
+        
+        return;
+      }
       
       // Try supported authentication-methods in prefered order
-      foreach ($this::$preferedAuthenticationMethods as $Method)
-        if (array_key_exists ($Method, $this->authenticationMethods))
-          switch ($Method) {
+      foreach ($this::$preferedAuthenticationMethods as $authMethod)
+        if (array_key_exists ($authMethod, $this->authenticationMethods))
+          switch ($authMethod) {
             // Digest requires parameters and is therefore processed by ourself
             case 'Digest':
               $P = $this->authenticationMethods ['Digest'];
               
-              $A1 = $this->Username . ':' . $P ['realm'] . ':' . $this->Password;
+              $A1 = $this->authUsername . ':' . $P ['realm'] . ':' . $this->authPassword;
               $A2 = $this->getMethod () . ':' . $this->getURI ();
               $NC = sprintf ('%06d', (isset ($P ['nc']) ? $P ['nc'] : 0) + 1);
               $CNonce = sprintf ('%08x%08x', time (), rand (0, 0xFFFFFFFF));
@@ -357,10 +360,10 @@
                 md5 ($A2)
               );
               
-              return $this->setField (
+              $this->setField (
                 'Authorization',
                 'Digest ' .
-                  'username="' . $this->Username . '",' .
+                  'username="' . $this->authUsername . '",' .
                   'realm="' . $P ['realm'] . '",' .
                   'uri="' . $this->getURI () . '",' .
                   'algorithm=MD5,' .
@@ -372,9 +375,14 @@
                   'opaque="' . $P ['opaque'] . '",' .
                   'userhash=false'
               );
+              
+              return;
+            
             // Basic-Authentication is processed by our parent
             case 'Basic':
-              return parent::setCredentials ($this->Username, $this->Password);
+              parent::setCredentials ($this->authUsername, $this->authPassword);
+              
+              return;
           }
     }
     // }}}
@@ -386,8 +394,8 @@
      * @access public
      * @return bool
      **/
-    public function hasBody () {
-      return ((strlen ($this->Body ?? '') > 0) || parent::hasBody ());
+    public function hasBody () : bool {
+      return ((strlen ($this->requestBody ?? '') > 0) || parent::hasBody ());
     }
     // }}}
     
@@ -395,34 +403,32 @@
     /**
      * Store a body for this request
      * 
-     * @param string $Body
-     * @param string $Mime (optional)
+     * @param string $requestBody
+     * @param string $mimeType (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function setBody ($Body, $Mime = null) {
+    public function setBody (string $requestBody = null, string $mimeType = null) : void {
       // Check wheter to remove the body from request
-      if ($Body === null) {
+      if ($requestBody === null) {
         $this->unsetField ('Content-Length');
         $this->unsetField ('Content-Type');
-        $this->Body = null;
+        $this->requestBody = null;
         
-        return true;
+        return;
       }
       
       // Set the body
-      $this->Body = strval ($Body);
+      $this->requestBody = $requestBody;
       
       // Set headers
-      $this->setField ('Content-Length', strlen ($this->Body));
+      $this->setField ('Content-Length', strlen ($this->requestBody));
       
-      if ($Mime !== null)
-        $this->setField ('Content-Type', $Mime);
+      if ($mimeType !== null)
+        $this->setField ('Content-Type', $mimeType);
       elseif (!$this->hasField ('Content-Type'))
         $this->setField ('Content-Type', 'application/octet-stream');
-      
-      return true;
     }
     // }}}
     
@@ -433,7 +439,7 @@
      * @access public
      * @return int
      **/
-    public function getMaxRedirects () {
+    public function getMaxRedirects () : int {
       return $this->maxRedirects;
     }
     // }}}
@@ -442,13 +448,16 @@
     /**
      * Set the maximum number of redirects
      * 
-     * @param int $Redirects
+     * @param int $maxRedirects
      * 
      * @access public
      * @return void
      **/
-    public function setMaxRedirects ($Redirects) {
-      $this->maxRedirects = max (0, (int)$Redirects);
+    public function setMaxRedirects (int $maxRedirects) : void {
+      if ($maxRedirects < 0)
+        throw new \Exception ('Maximum redirects must not be less than zero');
+      
+      $this->maxRedirects = $maxRedirects;
     }
     // }}}
     
@@ -456,22 +465,20 @@
     /**
      * Attach a simple value to this request
      * 
-     * @param string $Name
-     * @param string $Value
-     * @param string $Mime (optional) MIME-Type to send to the server
+     * @param string $valueName
+     * @param string $valueData
+     * @param string $mimeType (optional) MIME-Type to send to the server
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function attachValue ($Name, $Value, $Mime = null) {
+    public function attachValue (string $valeName, string $valueData, string $mimeType = null) : void {
       // Check if there is already a file by this name
-      if (isset ($this->Files [$Name]))
-        return false;
+      if (isset ($this->requestFiles [$valueName]))
+        throw new \Exception ('Name already taken by a file');
       
       // Attach the value
-      $this->Values [$Name] = [ $Value, $Mime ];
-      
-      return true;
+      $this->requestValues [$valueName] = [ $valueData, $mimeType ];
     }
     // }}}
     
@@ -479,64 +486,61 @@
     /**
      * Attach a file to this request
      * 
-     * @param string $Path Path to file
-     * @param string $Name (optional) Name of the file
-     * @param string $Filename (optional) Filename to send to the server
-     * @param string $Mime (optional) MIME-Type to send to the server
+     * @param string $sourcePath Path to file
+     * @param string $fielTitle (optional) Name of the file
+     * @param string $fileName (optional) Filename to send to the server
+     * @param string $mimeType (optional) MIME-Type to send to the server
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function attachFile ($Path, $Name = null, $Filename = null, $Mime = null) {
+    public function attachFile (string $sourcePath, string $fileTitle = null, string $fileName = null, string $mimeType = null) : void {
       // Make sure the file exists
-      if (!is_file ($Path))
-        return false;
+      if (!is_file ($sourcePath))
+        throw new \Exception ('File does not exist');
       
       // Bail out a warning if there is a body
-      if ($this->Body !== null)
+      if ($this->requestBody !== null)
         trigger_error ('Uploading a file will override any user-defined body of the request', E_USER_WARNING);
       
       // Retrive the basename of the file
-      $Basename = basename ($Path);
+      $originalName = basename ($sourcePath);
       
       // Check which name to use
-      if ($Name === null)
-        $Name = $Basename;
+      if ($fileTitle === null)
+        $fileTitle = $originalName;
       
-      if ($Filename === null)
-        $Filename = $Basename;
+      if ($fileName === null)
+        $fileName = $originalName;
       
       // Check if there is a mime-type given
-      if ($Mime === null)
+      if ($mimeType === null)
         # TODO: Auto-detect?
-        $Mime = 'application/octet-stream';
+        $mimeType = 'application/octet-stream';
       
       // Enqueue the file
-      $this->Files [$Name] = [ $Path, $Filename, $Mime ];
-      unset ($this->Values [$Name]);
-      
-      return true;
+      $this->requestFiles [$fileTitle] = [ $sourcePath, $fileName, $mimeType ];
+      unset ($this->requestValues [$fileTitle]);
     }
     // }}}
-    
     
     // {{{ httpFinished
     /**
      * Internal Callback: Single HTTP-Request/Response was finished
      * 
-     * @param Header $Header
-     * @param string $Body
+     * @param Header $responseHeader
+     * @param string $responseBody (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected final function httpFinished (Header $Header, $Body) {
+    protected final function httpFinished (Header $responseHeader, string $responseBody = null) : void {
       // Make sure the header is a response
-      if ($Header->getType () != Header::TYPE_RESPONSE)
+      if ($responseHeader->getType () != Header::TYPE_RESPONSE)
         return;
      
       // Raise the callback
-      $this->___callback ('httpRequestResult', $Header, $Body);
+      $this->___callback ('httpRequestResult', $responseHeader, $responseBody);
     }
     // }}}
     
@@ -544,19 +548,19 @@
     /**
      * Internal Callback: Sinlge HTTP-Request/Response was not finished properly
      * 
-     * @param Header $Header (optional)
-     * @param string $Body (optional)
+     * @param Header $responseHeader (optional)
+     * @param string $responseBody (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected final function httpFailed (Header $Header = null, $Body = null) {
+    protected final function httpFailed (Header $responseHeader = null, string $responseBody = null) : void {
       // Make sure the header is a response
-      if ($Header && ($Header->getType () != Header::TYPE_RESPONSE))
+      if ($responseHeader && ($responseHeader->getType () != Header::TYPE_RESPONSE))
         return;
       
       // Raise the callback
-      $this->___callback ('httpRequestResult', $Header, $Body);
+      $this->___callback ('httpRequestResult', $responseHeader, $responseBody);
     }
     // }}}
     
@@ -564,28 +568,30 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param Events\ABI\Source $Source
+     * @param Events\ABI\Source $streamSource
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function initStreamConsumer (Events\ABI\Stream $Source) : Events\Promise {
+    public function initStreamConsumer (Events\ABI\Stream $streamSource) : Events\Promise {
       // Inherit to our parent
-      return parent::initStreamConsumer ($Source)->then (
-        function () use ($Source) {
+      return parent::initStreamConsumer ($streamSource)->then (
+        function () use ($streamSource) {
           $parentResult = func_get_args ();
           
           // Make sure source-socket is connected
-          if (($Source instanceof Events\Socket) &&
-              !$Source->isConnected ())
+          if (
+            ($streamSource instanceof Events\Socket) &&
+            !$streamSource->isConnected ()
+          )
             return Events\Promise::race ([
-              $Source->once ('socketConnected')->then (
+              $streamSource->once ('socketConnected')->then (
                 function () {
                   // Write out the request
                   $this->httpHeaderWrite ($this);
                 }
               ),
-              $Source->once ('socketDisconnected')->then (
+              $streamSource->once ('socketDisconnected')->then (
                 function () {
                   throw new \Exception ('Source-Socket was disconnected');
                 }
@@ -640,17 +646,16 @@
     }
     // }}}
     
-    
     // {{{ httpRequestResult
     /**
      * Callback: HTTP-Request is finished
      *    
-     * @param Header $Header (optional)
-     * @param string $Body (optional)
+     * @param Header $responseHeader (optional)
+     * @param string $responseBody (optional)
      * 
      * @access protected
      * @return void
      **/
-    protected function httpRequestResult (Header $Header = null, $Body = null) { }
+    protected function httpRequestResult (Header $responseHeader = null, $responseBody = null) : void { }
     // }}}
   }
