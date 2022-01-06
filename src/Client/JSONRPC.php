@@ -117,12 +117,9 @@
             404 => JSONRPC\Error::CODE_RESPONSE_METHOD_NOT_FOUND,
           ];
           
-          if ($responseHeader->isError ())
-            throw new JSONRPC\Error ($statusCodeMap [$responseHeader->getStatus ()] ?? JSONRPC\Error::CODE_RESPONSE_SERVER_ERROR);
-          
           // Make sure the response is JSON
           if ($responseHeader->getField ('Content-Type') !== 'application/json')
-            throw new JSONRPC\Error (JSONRPC\Error::CODE_RESPONSE_INVALID_CONTENT);
+            throw new JSONRPC\Error ($responseHeader->isError () ? JSONRPC\Error::CODE_RESPONSE_SERVER_ERROR : JSONRPC\Error::CODE_RESPONSE_INVALID_CONTENT);
           
           // Try to decode the response
           $responseJSON = json_decode ($responseBody);
@@ -154,12 +151,14 @@
           // Check for an error on the result
           if (isset ($responseJSON->error) && ($responseJSON->error !== null))
             throw new JSONRPC\Error ($responseJSON->error->code, $responseJSON->error->message, (isset ($responseJSON->error->data) ? $responseJSON->error->data : null));
+          elseif ($responseHeader->isError ())
+            throw new JSONRPC\Error ($statusCodeMap [$responseHeader->getStatus ()] ?? JSONRPC\Error::CODE_RESPONSE_SERVER_ERROR, 'Unknown server-error');
           
           // Forward the result
           return $responseJSON->result;
         },
-        function () {
-          throw new JSONRPC\Error (JSONRPC\Error::CODE_RESPONSE_SERVER_ERROR);
+        function (\Throwable $httpError) {
+          throw new JSONRPC\Error (JSONRPC\Error::CODE_RESPONSE_SERVER_ERROR, $httpError->getMessage ());
         }
       );
     }
