@@ -673,8 +673,10 @@
         return [ ];
       
       // Prepare search-attributes
+      if (($targetHostname = $Request->getHostname ()) === null)
+        return [ ];
+      
       $Time = time ();
-      $Hostname = $Request->getHostname ();
       $Path = $Request->getURI ();
       $Secure = $Request->useTLS ();
       
@@ -696,8 +698,15 @@
         }
         
         // Compare domain
-        if ((!$Cookie ['origin'] && (strcasecmp (substr ($Hostname, -strlen ($Cookie ['domain']), strlen ($Cookie ['domain'])), $Cookie ['domain']) != 0)) ||
-            ($Cookie ['origin'] && (strcasecmp ($Cookie ['domain'], $Hostname) != 0)))
+        if (
+          (
+            !$Cookie ['origin'] &&
+            (strcasecmp (substr ($targetHostname, -strlen ($Cookie ['domain']), strlen ($Cookie ['domain'])), $Cookie ['domain']) != 0)
+          ) || (
+            $Cookie ['origin'] &&
+            (strcasecmp ($Cookie ['domain'], $targetHostname) != 0)
+          )
+        )
           continue;
         
         // Compare path
