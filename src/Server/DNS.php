@@ -96,7 +96,7 @@
       unset ($this->IDs [$ID]);
       
       // Write out the reply
-      return $this->dnsStreamSendMessage ($Message);
+      $this->dnsStreamSendMessage ($Message);
     }
     // }}}
     
