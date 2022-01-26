@@ -88,6 +88,32 @@
     }
     // }}}
     
+    // {{{ getEventBase
+    /**
+     * Retrive assigned event-base
+     * 
+     * @access public
+     * @return Events\Base
+     **/
+    public function getEventBase () : Events\Base {
+      return $this->eventBase;
+    }
+    // }}}
+    
+    // {{{ setEventBase
+    /**
+     * Change assigned event-base
+     * 
+     * @param Events\Base $eventBase
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setEventBase (Events\Base $eventBase) : void {
+      $this->eventBase = $eventBase;
+    }
+    // }}}
+    
     // {{{ setMaximumSockets
     /**
      * Set the maximum amounts of open sockets on the pool

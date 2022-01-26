@@ -25,9 +25,6 @@
   use quarxConnect\Events;
   
   class HTTP extends Events\Hookable {
-    /* Our parented event-handler */
-    private $eventBase = null;
-    
     /* All queued HTTP-Requests */
     private $httpRequests = [ ];
     
@@ -50,7 +47,6 @@
      * @return void
      **/
     function __construct (Events\Base $eventBase) {
-      $this->eventBase = $eventBase;
       $this->socketPool = new Events\Socket\Pool ($eventBase);
     }
     // }}}
@@ -63,7 +59,19 @@
      * @return Events\Base May be NULL if none is assigned
      **/
     public function getEventBase () : ?Events\Base {
-      return $this->eventBase;
+      return $this->socketPool->getEventBase ();
+    }
+    // }}}
+    
+    // {{{ setEventBase
+    /**
+     * Change assigned event-base
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setEventBase (Events\Base $eventBase) : void {
+      $this->socketPool->setEventBase ($eventBase);
     }
     // }}}
     
@@ -605,7 +613,7 @@
             return;
           
           // Create a new file-stream
-          $File = new Events\File ($this->eventBase, $Destination, false, true, true);
+          $File = new Events\File ($this->getEventBase (), $Destination, false, true, true);
           
           if (is_file ($Destination . '.etag'))
             unlink ($Destination . '.etag');   
