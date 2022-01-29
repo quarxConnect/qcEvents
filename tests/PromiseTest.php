@@ -296,4 +296,60 @@
       unset ($rejectedPromise);
       gc_collect_cycles ();
     }
+    
+    public function testMultipleExceptions () : void {
+      $eventBase = Events\Base::singleton ();
+      
+      $eventPromise = new Events\Promise (
+        function (callable $resolveFunction, callable $rejectFunction) {
+          $rejectFunction ('REJECTED');
+        },
+        $eventBase
+      );
+      
+      $firstFullfillment = false;
+      $firstRejection = false;
+      $secondRejection = false;
+      
+      Events\Synchronizer::do (
+        $eventBase,
+        $eventPromise->then (
+          function () use (&$firstFullfillment) {
+            $firstFullfillment = true;
+          },
+          function (\Throwable $error) use (&$firstRejection) {
+            $firstRejection = true;
+            throw $error;
+          }
+        )->catch (
+          function (\Throwable $error) use (&$secondRejection) {
+            $secondRejection = true;
+          }
+        )
+      );
+      
+      $this->assertFalse ($firstFullfillment);
+      $this->assertTrue ($firstRejection);
+      $this->assertTrue ($secondRejection);
+    }
+    
+    public function testAllSettled () : void {
+      $eventBase = Events\Base::singleton ();
+      
+      $settledPromises = Events\Synchronizer::do (
+        $eventBase,
+        Events\Promise::allSettled ([
+          Events\Promise::resolve (42),
+          Events\Promise::reject ('Rejected'),
+        ])
+      );
+      
+      $this->assertCount (2, $settledPromises);
+      
+      $this->assertEquals ('fulfilled', $settledPromises [0]->status);
+      $this->assertEquals (42, $settledPromises [0]->value);
+      
+      $this->assertEquals ('rejected', $settledPromises [1]->status);
+      $this->assertInstanceOf (\Exception::class, $settledPromises [1]->reason);
+    }
   }

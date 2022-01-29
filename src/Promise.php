@@ -255,7 +255,7 @@
                 // Forward the result
                 call_user_func ($resolveFunction, $resultValues);
               },
-              function (Throwable $errorReason)
+              function (\Throwable $errorReason)
               use (&$resultValues, &$promisePending, $promiseIndex, $resolveFunction) {
                 // Push to results
                 $resultValues [$promiseIndex]->status = 'rejected';
@@ -267,7 +267,7 @@
                   return;
                 
                 // Forward the result
-                call_user_func_array ($resolveFunction, func_get_args ());
+                call_user_func ($resolveFunction, $resultValues);
               }
             );
         },
