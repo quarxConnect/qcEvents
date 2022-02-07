@@ -39,15 +39,49 @@
     /**
      * @dataProvider missingRecordsProvider
      **/
-    public function testResolverWithMissing ($dnsDomain, $dnsType) {
+    public function testResolverWithMissing ($dnsDomain, $dnsType) : void {
       $eventBase = Events\Base::singleton ();
       $dnsClient = new Events\Client\DNS ($eventBase);
       
-      $this->expectException (Exception::class);
+      $this->expectException (\Exception::class);
       
       $dnsRecordset = Events\Synchronizer::do (
         $eventBase,
         $dnsClient->resolve ($dnsDomain, $dnsType)
+      );
+    }
+    
+    public function testUnreachableResolver () : void {
+      $eventBase = Events\Base::singleton ();
+      $dnsClient = new Events\Client\DNS ($eventBase);
+      $dnsClient->useSystemNameserver ();
+      
+      // Insert non-sense nameserver
+      $dnsNameservers = $dnsClient->getNameservers ();
+      
+      array_unshift (
+        $dnsNameservers,
+        [ 'ip' => '127.255.255.254' ]
+      );
+      
+      array_unshift (
+        $dnsNameservers,
+        [ 'ip' => '1fff::53' ]
+      );
+      
+      $dnsClient->setNameservers ($dnsNameservers);
+      
+      // Try to resolve an existing record
+      $this->assertIsObject (
+        $dnsRecordset = Events\Synchronizer::do (
+          $eventBase,
+          $dnsClient->resolve ('microsoft.com', DNS\Message::TYPE_A)
+        )
+      );
+      
+      $this->assertGreaterThan (
+        0,
+        count ($dnsRecordset)
       );
     }
     
