@@ -46,10 +46,10 @@
     private $eventBase = null;
     
     /* Our registered nameservers */
-    private $Nameservers = [ ];
+    private $dnsNameservers = [ ];
     
     /* Our active queries */
-    private $Queries = [ ];
+    private $dnsQueries = [ ];
     
     /* Our active queries */
     private $queriesActive = [ ];
@@ -71,25 +71,81 @@
     }
     // }}}
     
+    // {{{ getNameservers
+    /**
+     * Retrive configured nameservers for this client
+     * 
+     * @access public
+     * @return array
+     **/
+    public function getNameservers () : array {
+      return $this->dnsNameservers;
+    }
+    // }}}
+    
     // {{{ setNameserver
     /**
      * Set the nameserver we should use
      * 
-     * @param string $IP
-     * @param int $Port (optional)
-     * @param enum $Proto (optional)
+     * @param string $serverIP
+     * @param int $serverPort (optional)
+     * @param enum $serverProto (optional)
      * 
      * @access public
      * @return void
      **/
-    public function setNameserver ($IP, $Port = null, $Proto = null) {
-      if ($Port === null)
-        $Port = 53;
+    public function setNameserver (string $serverIP, int $serverPort = null, int $serverProto = null) : void {
+      if (
+        !Events\Socket::isIPv4 ($serverIP) &&
+        !Events\Socket::isIPv6 ($serverIP)
+      )
+        throw new \Error ('Invalid DNS-Server IP-address');
       
-      if ($Proto === null)
-        $Proto = Events\Socket::TYPE_UDP;
+      $this->dnsNameservers = [
+        [
+          'ip' => $serverIP,
+          'port' => $serverPort ?? 53,
+          'proto' => $serverProto ?? Events\Socket::TYPE_UDP,
+        ]
+      ];
+    }
+    // }}}
+    
+    // {{{ setNameservers
+    /**
+     * Set a new set of nameservers
+     * 
+     * @param iterable $dnsNameservers
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setNameservers (iterable $dnsNameservers) : void {
+      $newServers = [ ];
       
-      $this->Nameservers = [ [ $IP, $Port, $Proto ] ];
+      foreach ($dnsNameservers as $dnsNameserver) {
+        $newServer = [
+          'ip' => $dnsNameserver ['ip'] ?? 'x',
+          'port' => $dnsNameserver ['port'] ?? 53,
+          'proto' => $dnsNameserver ['proto'] ?? Events\Socket::TYPE_UDP,
+        ];
+        
+        if (
+          !Events\Socket::isIPv4 ($newServer ['ip']) &&
+          !Events\Socket::isIPv6 ($newServer ['ip'])
+        )
+          throw new \Error ('Invalid DNS-Server IP-address');
+        
+        if (!is_int ($newServer ['port']))
+          throw new \Error ('Invalid server-port');
+        
+        if (!is_int ($newServer ['proto']))
+          throw new \Error ('Invalid server-protocol');
+        
+        $newServers [] = $newServer;
+      }
+      
+      $this->dnsNameservers = $newServers;
     }
     // }}}
     
@@ -98,31 +154,49 @@
      * Load nameservers from /etc/resolv.conf
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function useSystemNameserver () {
+    public function useSystemNameserver () : void {
       // Check if the registry exists
       if (!is_file ('/etc/resolv.conf'))
-        return false;
+        throw new \Exception ('Missing /etc/resolv.conf');
       
       // Try to load it into an array
-      if (!is_array ($Lines = @file ('/etc/resolv.conf')))
-        return false;
+      if (!is_array ($confLines = @file ('/etc/resolv.conf')))
+        throw new \Exception ('Failed to read /etc/resolv.conf');
       
       // Extract nameservers
-      $Nameservers = [ ];
+      $dnsNameservers = [ ];
       
-      foreach ($Lines as $Line)
-        if (substr ($Line, 0, 11) == 'nameserver ')
-          $Nameservers [] = [ trim (substr ($Line, 11)), 53, Events\Socket::TYPE_UDP ];
+      foreach ($confLines as $confLine) {
+        // Check for nameserver-line
+        if (substr ($confLine, 0, 11) != 'nameserver ')
+          continue;
+        
+        // Extract IP-Address
+        $serverIP = trim (substr ($confLine, 11));
+        
+        // Sanatize IP-Address
+        if (
+          !Events\Socket::isIPv4 ($serverIP) &&
+          !Events\Socket::isIPv6 ($serverIP)
+        )
+          continue;
+        
+        // Push to available nameservers
+        $dnsNameservers [] = [
+          'ip' => trim (substr ($confLine, 11)),
+          'port' => 53,
+          'proto' => Events\Socket::TYPE_UDP,
+        ];
+      }
       
-      if (count ($Nameservers) == 0)
-        return false;
+      // Check if any valid nameserver was read from configuration
+      if (count ($dnsNameservers) == 0)
+        throw new \Exception ('No nameservers read from /etc/resolv.conf');
       
       // Set the nameservers
-      $this->Nameservers = $Nameservers;
-      
-      return true;
+      $this->dnsNameservers = $dnsNameservers;
     }
     // }}}
     
@@ -202,95 +276,163 @@
     /**
      * Enqueue a prepared dns-message for submission
      * 
-     * @param Stream\DNS\Message $Message
+     * @param Stream\DNS\Message $dnsQuery
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function enqueueQuery (Stream\DNS\Message $Message) : Events\Promise {
-      // Make sure we have nameservers registered
-      if ((count ($this->Nameservers) == 0) && !$this->useSystemNameserver ())
-        return Events\Promise::reject ('No nameservers known', $this->getEventBase ());
+    public function enqueueQuery (Stream\DNS\Message $dnsQuery) : Events\Promise {
+      try {
+        // Make sure we have nameservers registered
+        if (count ($this->dnsNameservers) == 0)
+          $this->useSystemNameserver ();
+        
+        // Make sure the message is a question
+        if (!$dnsQuery->isQuestion ())
+          throw new \Error ('Message must be a question');
+      } catch (\Throwable $error) {
+        return Events\Promise::reject ($error, $this->getEventBase ());
+      }
       
-      // Make sure the message is a question
-      elseif (!$Message->isQuestion ())
-        return Events\Promise::reject ('Message must be a question', $this->getEventBase ());
+      // Prepare everything
+      $dnsPromise = new Events\Promise\Defered ($this->getEventBase ());
+      $dnsTimer = $this->getEventBase ()->addTimeout (2, true);
+      $nameserverIndex = 0;
       
+      $startQuery = function (int $nextIndex) use ($dnsPromise, $dnsQuery, $dnsTimer, &$nameserverIndex) {
+        $this->askNameserver ($this->dnsNameservers [$nextIndex], clone $dnsQuery)->then (
+          function () use ($dnsPromise, $dnsTimer) {
+            // Cancel the timer
+            $dnsTimer->cancel ();
+            
+            // Forward the result
+            call_user_func_array ([ $dnsPromise, 'resolve' ], func_get_args ());
+          },
+          function () use ($dnsPromise, $dnsTimer, $nextIndex, &$nameserverIndex) {
+            // Check if there are other nameservers remaining
+            if ($nextIndex < count ($this->dnsNameservers) - 1) {
+              // Check wheter to query next nameserver
+              if ($nextIndex == $nameserverIndex)
+                $dnsTimer->run ();
+              
+              return;
+            }
+            
+            // Forward the rejection
+            call_user_func_array ([ $dnsPromise, 'reject' ], func_get_args ());
+          }
+        );
+      };
+      
+      $dnsTimer->then (
+        function () use (&$nameserverIndex, $startQuery, $dnsTimer) {
+          // Check if there are nameservers available
+          if (!isset ($this->dnsNameservers [++$nameserverIndex])) {
+            $dnsTimer->cancel ();
+            
+            return;
+          }
+          
+          // Start query on next nameserver
+          call_user_func ($startQuery, $nameserverIndex);
+        }
+      );
+      
+      // Start query on first nameserver
+      call_user_func ($startQuery, $nameserverIndex);
+      
+      return $dnsPromise->getPromise ();
+    }
+    // }}}
+    
+    // {{{ askNameserver
+    /**
+     * Push a dns-question to a given nameserver
+     * 
+     * @param array $dnsNameserver
+     * @param Stream\DNS\Message $dnsQuery
+     * 
+     * @access private
+     * @return Events\Promise
+     **/
+    private function askNameserver (array $dnsNameserver, Stream\DNS\Message $dnsQuery) : Events\Promise {
       // Create a socket and a stream for this query
-      $Socket = new Events\Socket ($this->getEventBase ());
-      $Socket->useInternalResolver (false);
-      
-      return $Socket->connect (
-        $this->Nameservers [0][0],
-        $this->Nameservers [0][1],
-        $this->Nameservers [0][2]
+      $dnsSocket = new Events\Socket ($this->getEventBase ());
+      $dnsSocket->useInternalResolver (false);
+    
+      return $dnsSocket->connect (
+        $dnsNameserver ['ip'],
+        $dnsNameserver ['port'],
+        $dnsNameserver ['proto']
       )->then (
-        function () use ($Socket, $Message) {
+        function () use ($dnsSocket, $dnsQuery) {
           // Create a DNS-Stream
-          $Stream = new Stream\DNS ();
-          $Socket->pipe ($Stream);
+          $dnsStream = new Stream\DNS ();
+          $dnsSocket->pipe ($dnsStream);
           
           // Pick a free message-id
-          if (!($ID = $Message->getID ()) || isset ($this->Queries [$ID]) || isset ($this->queriesActive [$ID]))
-            while ($ID = $Message->setRandomID ())
-              if (!isset ($this->Queries [$ID]) && !isset ($this->queriesActive [$ID]))
+          if (
+            !($queryID = $dnsQuery->getID ()) ||
+            isset ($this->dnsQueries [$queryID]) ||
+            isset ($this->queriesActive [$queryID])
+          )
+            while ($queryID = $dnsQuery->setRandomID ())
+              if (!isset ($this->dnsQueries [$queryID]) && !isset ($this->queriesActive [$queryID]))
                 break;
           
           // Enqueue the query
-          $this->Queries [$ID] = $Message;
+          $this->dnsQueries [$queryID] = $dnsQuery;
           
           // Write out the message
-          $Stream->dnsStreamSendMessage ($Message);
+          $dnsStream->dnsStreamSendMessage ($dnsQuery);
           
-          return Events\Promise::race (
-            [
-              $Stream->once (
-                'dnsResponseReceived'
-              )->then (
-                function (Stream\DNS\Message $dnsResponse)
-                use ($Message) {
-                  // Check if an error was received
-                  if (($errorCode = $dnsResponse->getError ()) != $dnsResponse::ERROR_NONE)
-                    throw new \exception ('Error-Code recevied: ' . $errorCode); # , $dnsResponse);
-                  
-                  // Post-process answers
-                  $Answers = $dnsResponse->getAnswers ();
-                  
-                  if ($this::$DNS64_Prefix !== null)
-                    foreach ($Answers as $Answer)
-                      if ($Answer instanceof Stream\DNS\Record\A) {
-                        $Answers [] = $AAAA = new Stream\DNS\Record\AAAA ($Answer->getLabel (), $Answer->getTTL (), null, $Answer->getClass ());
-                        $Addr = dechex (ip2long ($Answer->getAddress ()));
-                        $AAAA->setAddress ('[' . $this::$DNS64_Prefix . (strlen ($Addr) > 4 ? substr ($Addr, 0, -4) . ':' : '') . substr ($Addr, -4, 4) . ']');
-                      }
-                  
-                  // Fire callbacks
-                  $Hostname = $Message->getQuestions ();
-                  
-                  if (count ($Hostname) > 0) {
-                    $Hostname = array_shift ($Hostname);
-                    $Hostname->getLabel ();
-                  } else
-                    $Hostname = null;
-                  
-                  $this->___callback ('dnsResult', $Hostname, $Answers, $dnsResponse->getAuthorities (), $dnsResponse->getAdditionals (), $dnsResponse);
-                  
-                  return new Events\Promise\Solution ([ $Answers, $dnsResponse->getAuthorities (), $dnsResponse->getAdditionals (), $dnsResponse ]);
-                }
-              ),
-              $Stream->once (
-                'dnsQuestionTimeout'
-              )->then (
-                function () {
-                  // Forward the error
-                  throw new \exception ('Query timed out');
-                }
-              )
-            ]
-          )->catch (
-            function (\Throwable $error) use ($Message) {
+          return Events\Promise::race ([
+            $dnsStream->once (
+              'dnsResponseReceived'
+            )->then (
+              function (Stream\DNS\Message $dnsResponse)
+              use ($dnsQuery) {
+                // Check if an error was received
+                if (($errorCode = $dnsResponse->getError ()) != $dnsResponse::ERROR_NONE)
+                  throw new \exception ('Error-Code recevied: ' . $errorCode); # , $dnsResponse);
+                
+                // Post-process answers
+                $Answers = $dnsResponse->getAnswers ();
+                
+                if ($this::$DNS64_Prefix !== null)
+                  foreach ($Answers as $Answer)
+                    if ($Answer instanceof Stream\DNS\Record\A) {
+                      $Answers [] = $AAAA = new Stream\DNS\Record\AAAA ($Answer->getLabel (), $Answer->getTTL (), null, $Answer->getClass ());
+                      $Addr = dechex (ip2long ($Answer->getAddress ()));
+                      $AAAA->setAddress ('[' . $this::$DNS64_Prefix . (strlen ($Addr) > 4 ? substr ($Addr, 0, -4) . ':' : '') . substr ($Addr, -4, 4) . ']');
+                    }
+                
+                // Fire callbacks
+                $Hostname = $dnsQuery->getQuestions ();
+                
+                if (count ($Hostname) > 0) {
+                  $Hostname = array_shift ($Hostname);
+                  $Hostname->getLabel ();
+                } else
+                  $Hostname = null;
+                
+                $this->___callback ('dnsResult', $Hostname, $Answers, $dnsResponse->getAuthorities (), $dnsResponse->getAdditionals (), $dnsResponse);
+                
+                return new Events\Promise\Solution ([ $Answers, $dnsResponse->getAuthorities (), $dnsResponse->getAdditionals (), $dnsResponse ]);
+              }
+            ),
+            $dnsStream->once (
+              'dnsQuestionTimeout'
+            )->then (
+              function () {
+                // Forward the error
+                throw new \exception ('Query timed out');
+              }
+            )
+          ])->catch (
+            function (\Throwable $error) use ($dnsQuery) {
               // Fire callbacks
-              $Hostname = $Message->getQuestions ();
+              $Hostname = $dnsQuery->getQuestions ();
               
               if (count ($Hostname) > 0) {
                 $Hostname = array_shift ($Hostname);
@@ -304,21 +446,21 @@
               throw new Events\Promise\Solution (func_get_args ());
             }
           )->finally (
-            function () use ($Socket, $Stream, $Message) {
+            function () use ($dnsSocket, $dnsStream, $dnsQuery) {
               // Retrive the ID of that message
-              $ID = $Message->getID ();
+              $queryID = $dnsQuery->getID ();
               
               // Remove the active query
-              unset ($this->Queries [$ID]);
+              unset ($this->dnsQueries [$queryID]);
               
               // Close the stream
-              $Stream->removeHooks ();
-              $Stream->close ();
+              $dnsStream->removeHooks ();
+              $dnsStream->close ();
               
               // Close the socket
-              $Socket->removeHooks ();
-              $Socket->unpipe ($Stream);
-              $Socket->close ();
+              $dnsSocket->removeHooks ();
+              $dnsSocket->unpipe ($dnsStream);
+              $dnsSocket->close ();
             }
           );
         }
@@ -334,7 +476,7 @@
      * @return bool
      **/
     public function isActive () {
-      return (count ($this->Queries) > 0);
+      return (count ($this->dnsQueries) > 0);
     }
     // }}}
     
