@@ -46,7 +46,7 @@
     private $eventBase = null;
     
     /* Our registered nameservers */
-    private $Nameservers = [ ];
+    private $dnsNameservers = [ ];
     
     /* Our active queries */
     private $Queries = [ ];
@@ -75,21 +75,27 @@
     /**
      * Set the nameserver we should use
      * 
-     * @param string $IP
-     * @param int $Port (optional)
-     * @param enum $Proto (optional)
+     * @param string $serverIP
+     * @param int $serverPort (optional)
+     * @param enum $serverProto (optional)
      * 
      * @access public
      * @return void
      **/
-    public function setNameserver ($IP, $Port = null, $Proto = null) {
-      if ($Port === null)
-        $Port = 53;
+    public function setNameserver (string $serverIP, int $serverPort = null, int $serverProto = null) : void {
+      if (
+        !Events\Socket::isIPv4 ($serverIP) &&
+        !Events\Socket::isIPv6 ($serverIP)
+      )
+        throw new \Error ('Invalid DNS-Server IP-address');
       
-      if ($Proto === null)
-        $Proto = Events\Socket::TYPE_UDP;
-      
-      $this->Nameservers = [ [ $IP, $Port, $Proto ] ];
+      $this->dnsNameservers = [
+        [
+          'ip' => $serverIP,
+          'port' => $serverPort ?? 53,
+          'proto' => $serverProto ?? Events\Socket::TYPE_UDP,
+        ]
+      ];
     }
     // }}}
     
@@ -110,17 +116,37 @@
         throw new \Exception ('Failed to read /etc/resolv.conf');
       
       // Extract nameservers
-      $Nameservers = [ ];
+      $dnsNameservers = [ ];
       
-      foreach ($confLines as $confLine)
-        if (substr ($confLine, 0, 11) == 'nameserver ')
-          $Nameservers [] = [ trim (substr ($confLine, 11)), 53, Events\Socket::TYPE_UDP ];
+      foreach ($confLines as $confLine) {
+        // Check for nameserver-line
+        if (substr ($confLine, 0, 11) != 'nameserver ')
+          continue;
+        
+        // Extract IP-Address
+        $serverIP = trim (substr ($confLine, 11));
+        
+        // Sanatize IP-Address
+        if (
+          !Events\Socket::isIPv4 ($serverIP) &&
+          !Events\Socket::isIPv6 ($serverIP)
+        )
+          continue;
+        
+        // Push to available nameservers
+        $dnsNameservers [] = [
+          'ip' => trim (substr ($confLine, 11)),
+          'port' => 53,
+          'proto' => Events\Socket::TYPE_UDP,
+        ];
+      }
       
-      if (count ($Nameservers) == 0)
+      // Check if any valid nameserver was read from configuration
+      if (count ($dnsNameservers) == 0)
         throw new \Exception ('No nameservers read from /etc/resolv.conf');
       
       // Set the nameservers
-      $this->Nameservers = $Nameservers;
+      $this->dnsNameservers = $dnsNameservers;
     }
     // }}}
     
@@ -208,7 +234,7 @@
     public function enqueueQuery (Stream\DNS\Message $dnsQuery) : Events\Promise {
       try {
         // Make sure we have nameservers registered
-        if (count ($this->Nameservers) == 0)
+        if (count ($this->dnsNameservers) == 0)
           $this->useSystemNameserver ();
         
         // Make sure the message is a question
@@ -223,9 +249,9 @@
       $Socket->useInternalResolver (false);
       
       return $Socket->connect (
-        $this->Nameservers [0][0],
-        $this->Nameservers [0][1],
-        $this->Nameservers [0][2]
+        $this->dnsNameservers [0]['ip'],
+        $this->dnsNameservers [0]['port'],
+        $this->dnsNameservers [0]['proto']
       )->then (
         function () use ($Socket, $dnsQuery) {
           // Create a DNS-Stream
