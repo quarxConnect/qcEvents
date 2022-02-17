@@ -301,12 +301,11 @@
           $promiseCountdown++;
       
       // Check if there is any promise to wait for
-      # TODO: This is a violation of the Spec, but a promise that is forever pending is not suitable for long-running applications
       if (!$forceSpec && ($promiseCountdown == 0)) {
         if ($eventBase)
-          return static::reject ($eventBase);
+          return static::reject (new \Error ('No promise in Promise::any was resolved'), [ ], $eventBase);
         
-        return static::reject ();
+        return static::reject (new \Error ('No promise in Promise::any was resolved'), [ ]);
       }
       
       return new static (
@@ -314,6 +313,7 @@
         use ($watchPromises, $promiseCountdown) {
           // Track if the promise is settled
           $promiseDone = false;
+          $promiseRejections = [ ];
           
           // Register handlers
           foreach ($watchPromises as $watchPromise)
@@ -329,7 +329,10 @@
                 // Forward the result
                 call_user_func_array ($resolveFunction, func_get_args ());
               },
-              function () use (&$promiseDone, &$promiseCountdown, $rejectFunction) {
+              function (\Throwable $promiseRejection) use (&$promiseDone, &$promiseCountdown, &$promiseRejections, $rejectFunction) {
+                // Collect the rejection
+                $promiseRejections [] = $promiseRejection;
+                
                 // Check if the promise is settled
                 if ($promiseDone)
                   return;
@@ -342,7 +345,7 @@
                 $promiseDone = true;
                 
                 // Forward the result
-                call_user_func_array ($rejectFunction, func_get_args ());
+                call_user_func ($rejectFunction, new \Error ('No promise in Promise::any was resolved'), $promiseRejections);
               }
             );
         },
