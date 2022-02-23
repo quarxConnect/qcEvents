@@ -23,12 +23,6 @@
   namespace quarxConnect\Events\Client;
   use quarxConnect\Events;
   
-  if (!extension_loaded ('soap') && (!function_exists ('dl') || !dl ('soap.so'))) {
-    trigger_error ('SOAP-Extension not present', \E_USER_ERROR);
-    
-    return;
-  }
-  
   class SOAP {
     /* Instance of our http-client */
     private $httpClient = null;
@@ -36,6 +30,7 @@
     /* Instance of our soap-client */
     private $soapClient = null;
     
+    /* Promise of last SOAP-Call */
     private $lastSoapCall = null;
     
     // {{{ __construct
@@ -105,7 +100,7 @@
       $wsdlFile = sys_get_temp_dir () . '/qcevents-soap-' . sha1 ($wsdlURL) . '.xml';
       
       if (is_file ($wsdlFile))
-        return $this->loadWSDLFile ($wsdlFile);
+        return $this->loadWSDLFile ($wsdlFile, $soapOptions);
       
       return $this->httpClient->request ($wsdlURL)->then (
         function ($responseBody) use ($wsdlFile) {
@@ -136,6 +131,10 @@
       // Make sure the file is there
       if (!is_file ($wsdlFile))
         return Events\Promise::reject ('File not found');
+      
+      // Make sure SOAP-Extension is available
+      if (!extension_loaded ('soap') && (!function_exists ('dl') || !dl ('soap.so')))
+        return Events\Promise::reject ('Missing soap-Extension');
       
       // Create a new SOAP-Client
       $this->soapClient = new class ($this->httpClient, $wsdlFile, $soapOptions) extends \SoapClient {
