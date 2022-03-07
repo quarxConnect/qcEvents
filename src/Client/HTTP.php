@@ -423,53 +423,60 @@
           }
           
           // Check for redirects
-          if (($Location = $Header->getField ('Location')) &&
-              (($Status >= 300) && ($Status < 400)) &&
-              (($max = $Request->getMaxRedirects ()) > 0) &&
-              is_array ($URI = parse_url ($Location))) {
+          if (
+            ($nextLocation = $Header->getField ('Location')) &&
+            (($Status >= 300) && ($Status < 400)) &&
+            (($maxRedirects = $Request->getMaxRedirects ()) > 0) &&
+            is_array ($nextURI = parse_url ($nextLocation))
+          ) {
             // Make sure the URL is fully qualified
-            if ($rebuild = !isset ($URI ['scheme']))
-              $URI ['scheme'] = ($Request->useTLS () ? 'https' : 'http');
+            if ($rebuildLocation = !isset ($nextURI ['scheme']))
+              $nextURI ['scheme'] = ($Request->useTLS () ? 'https' : 'http');
             
-            if (!isset ($URI ['host'])) {
-              $URI ['host'] = $Request->getHostname ();
-              $rebuild = true;
+            if (!isset ($nextURI ['host'])) {
+              $nextURI ['host'] = $Request->getHostname ();
+              $rebuildLocation = true;
               
               if ($Request->getPort () != ($Request->useTLS () ? 443 : 80))
-                $URI ['port'] = $Request->getPort ();
+                $nextURI ['port'] = $Request->getPort ();
               else
-                unset ($URI ['port']);
-              
-              // Check for a relative redirect
-              if (substr ($URI ['path'], 0, 1) == '.') {
-                $pathStackIn = explode ('/', dirname ($Request->getURI ()) . '/' . $URI ['path']);
-                $pathStack = [ ];
-                
-                foreach ($pathStackIn as $pathSegment) {
-                  if ((strlen ($pathSegment) == 0) || ($pathSegment == '.'))
-                    continue;
-                  
-                  if ($pathSegment == '..')
-                    array_pop ($pathStack);
-                  else
-                    $pathStack [] = $pathSegment;
-                }
-                
-                $URI ['path'] = '/' . implode ('/', $pathStack);
-              }
+                unset ($nextURI ['port']);
             }
             
-            if ($rebuild)
-              $Location = $URI ['scheme'] . '://' . $URI ['host'] . (isset ($URI ['port']) ? ':' . $URI ['port'] : '') . $URI ['path'] . (isset ($URI ['query']) ? '?' . $URI ['query'] : '');
+            // Check for a relative redirect
+            if (
+              (substr ($nextURI ['path'], 0, 1) == '.') ||
+              (strpos ($nextURI ['path'], '/../') !== false) ||
+              (strpos ($nextURI ['path'], '/./') !== false)
+            ) {
+              $pathStackIn = explode ('/', dirname ($Request->getURI ()) . '/' . $nextURI ['path']);
+              $pathStack = [ ];
+              $rebuildLocation = true;
+              
+              foreach ($pathStackIn as $pathSegment) {
+                if ((strlen ($pathSegment) == 0) || ($pathSegment == '.'))
+                  continue;
+                
+                if ($pathSegment == '..')
+                  array_pop ($pathStack);
+                else
+                  $pathStack [] = $pathSegment;
+              }
+              
+              $nextURI ['path'] = '/' . implode ('/', $pathStack);
+            }
+            
+            if ($rebuildLocation)
+              $nextLocation = $nextURI ['scheme'] . '://' . $nextURI ['host'] . (isset ($nextURI ['port']) ? ':' . $nextURI ['port'] : '') . $nextURI ['path'] . (isset ($nextURI ['query']) ? '?' . $nextURI ['query'] : '');
             
             // Fire a callback first
-            $this->___callback ('httpRequestRediect', $Request, $Location, $Header, $Body);
+            $this->___callback ('httpRequestRediect', $Request, $nextLocation, $Header, $Body);
             
             // Set the new location as destination
-            $Request->setURL ($Location);
+            $Request->setURL ($nextLocation);
             
             // Lower the number of max requests
-            $Request->setMaxRedirects ($max - 1);
+            $Request->setMaxRedirects ($maxRedirects - 1);
             
             if ($Status < 307) {
               $Request->setMethod ('GET');
