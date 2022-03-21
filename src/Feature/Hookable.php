@@ -374,6 +374,95 @@
     }
     // }}}
     
+    // {{{ ___awaitHooks
+    /**
+     * Run all registered handlers for a given hook, allow asynchronous processing
+     * 
+     * @param string $hookName
+     * @param ...
+     * 
+     * @access protected
+     * @return Events\Promise
+     **/
+    protected function ___awaitHooks (string $hookName) : Events\Promise {
+      // Output debug-info
+      if (defined ('QCEVENTS_DEBUG_HOOKS') || self::$debugHooks)
+        echo substr (number_format (microtime (true), 4, '.', ''), -8, 8), ' Callback: ', $hookName, ' on ', get_class ($this), ' (async)', "\n";
+      
+      // We are treating hooks in lower-case
+      $hookName = strtolower ($hookName);
+      
+      // Make sure we have all registered hooks
+      if (!isset ($this->hooksAdapted [$hookName]))
+        $this->getHooks ($hookName);
+      
+      // Build queue of registered hooks
+      if (isset ($this->registeredHooks [$hookName]))
+        $hookQueue = $this->registeredHooks [$hookName];
+      else
+        $hookQueue = [ ];
+      
+      if (is_callable ([ $this, $hookName ]))
+        $hookQueue [] = [ [ $this, $hookName ], false ];
+      
+      // Prepare to invoke all hooks
+      $hookInvoker = null;
+      $hookInvoker = function () use (&$hookQueue, &$hookInvoker, $hookName) {
+        $hookResults = func_get_args ();
+        
+        foreach ($hookQueue as $hookIndex=>$nextHook) {
+          // Call the hook
+          $lastResult = call_user_func_array ($nextHook [0], $hookResults);
+          
+          // Remove the hook if it should only be called once
+          if ($nextHook [1])
+            unset ($this->registeredHooks [$hookName][$hookIndex]);
+          
+          // Process the result
+          if ($lastResult instanceof Events\Promise)
+            return $hookResults->then (
+              function () use ($hookResults) {
+                $lastResult = func_get_args ();
+                
+                if (
+                  !is_array ($lastResult) ||
+                  (count ($lastResult) != count ($hookResults))
+                )
+                  $hookResults [0] = $lastResult;
+                else
+                  $hookResults = $lastResult;
+                
+                return new Events\Promise\Solution ($hookResults);
+              }
+            )->then (
+              $hookInvoker
+            );
+          
+          if (
+            !is_array ($lastResult) ||
+            (count ($lastResult) != count ($hookResults))
+          )
+            $hookResults [0] = $lastResult;
+          else
+            $hookResults = $lastResult;
+        }
+        
+        // Output debug-info
+        if (defined ('QCEVENTS_DEBUG_HOOKS') || self::$debugHooks)
+          echo substr (number_format (microtime (true), 4, '.', ''), -8, 8), ' Done:     ', $hookName, ' on ', get_class ($this), ' (async)', "\n";
+        
+        return new Events\Promise\Solution ($hookResults);
+      };
+      
+      return call_user_func_array (
+        [ Events\Promise::class, 'resolve' ],
+        array_slice (func_get_args (), 1)
+      )->then (
+        $hookInvoker
+      );
+    }
+    // }}}
+    
     // {{{ ___raiseCallback
     /**
      * Fire a user-defined callback
