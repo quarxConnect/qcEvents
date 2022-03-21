@@ -29,12 +29,12 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param ABI\Source $Source
+     * @param ABI\Stream $streamSource
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function initStreamConsumer (ABI\Stream $Source) : Events\Promise;
+    public function initStreamConsumer (ABI\Stream $streamSource) : Events\Promise;
     // }}}
     
     
