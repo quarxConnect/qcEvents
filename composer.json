@@ -19,7 +19,8 @@
     },
     "require" : {
         "php" : ">=7.3",
-        "psr/event-dispatcher" : "^1.0"
+        "ext-gmp" : "*",
+        "ext-openssl" : "*"
     },
     "require-dev" : {
         "phpunit/phpunit" : "^9"
