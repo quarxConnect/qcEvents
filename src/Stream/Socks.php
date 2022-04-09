@@ -519,7 +519,7 @@
      * @access public
      * @return Events\Promise
      **/
-    public function deinitConsumer (Events\Interface\Source $sourceStream) : Events\Promise {
+    public function deinitConsumer (Events\ABI\Source $sourceStream) : Events\Promise {
       // Check if the source matches our stream
       if ($this->sourceStream !== $sourceStream)
         return Events\Promise::resolve ();
