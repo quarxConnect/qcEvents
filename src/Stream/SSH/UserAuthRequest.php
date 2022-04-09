@@ -144,7 +144,7 @@
           self::writeString ($this->PublicKey);
         
         if ($this->Signed)
-          $packetData .= self::writeString ($this->Signature);
+          $packetData .= self::writeString ($this->Signature ?? '');
       } elseif ($this->Method == self::METHOD_PASSWORD) {
         $packetData .=
           self::writeBoolean ($this->ChangePassword) .

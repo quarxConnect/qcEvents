@@ -148,8 +148,8 @@
         return null;
       
       $localOffset = $sourceOffset;
-      $localType = ord ($sourceData [$pOffset++]);
-      $localLength = ord ($sourceData [$pOffset++]);
+      $localType = ord ($sourceData [$localOffset++]);
+      $localLength = ord ($sourceData [$localOffset++]);
       
       if ($localLength > 0x80) {
         // Check if there are enough bytes to read the extended length

@@ -237,7 +237,7 @@
       $sshMessage->envName = $variableName;
       $sshMessage->envValue = $variableValue;
       
-      return $this->Stream->writeMessage ($sshMessage);
+      return $this->sshStream->writeMessage ($sshMessage);
     }
     // }}}
     
@@ -455,7 +455,7 @@
       $sshMessage = new ChannelEnd ();
       $sshMessage->RecipientChannel = $this->remoteID;
         
-      return $this->Stream->writeMessage ($sshMessage);
+      return $this->sshStream->writeMessage ($sshMessage);
     }
     // }}}
     
