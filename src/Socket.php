@@ -46,8 +46,8 @@
     public const TYPE_UDP_SERVER = 2;
     
     /* Timeouts */
-    protected const CONNECT_TIMEOUT = 5;
-    protected const UNREACHABLE_TIMEOUT = 10;
+    public const CONNECT_TIMEOUT = 5;
+    public const UNREACHABLE_TIMEOUT = 10;
     
     /* Buffers */
     protected const READ_TCP_BUFFER = 4096;
