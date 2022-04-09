@@ -439,11 +439,28 @@
     }
     // }}}
     
+    // {{{ initConsumer
+    /**
+     * Setup ourself to consume data from a source
+     * 
+     * @param Events\ABI\Source $sourceStream
+     * 
+     * @access public
+     * @return Events\Promise
+     **/
+    public function initConsumer (Events\ABI\Source $sourceStream) : Events\Promise {
+      if ($sourceStream instanceof Events\ABI\Stream)
+        return $this->initStreamConsumer ($sourceStream);
+      
+      return Events\Promise::reject ('Use pipeStream() instead of pipe()');
+    }
+    // }}}
+    
     // {{{ initStreamConsumer
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param Events\ABI\Source $sourceStream
+     * @param Events\ABI\Stream $sourceStream
      * 
      * @access public
      * @return Events\Promise
