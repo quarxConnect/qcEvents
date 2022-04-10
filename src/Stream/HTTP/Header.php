@@ -497,7 +497,10 @@
         
         for ($i = 0; $i <= $authParamsLength; $i++) {
           // Check for end-of-token
-          if (($i == $authParamsLength) || (($parserState == 0) && ($wwwAuthenticate [$i] == ','))) {
+          if (
+            ($i == $authParamsLength) ||
+            (($parserState < 2) && ($wwwAuthenticate [$i] == ','))
+          ) {
             // Check wheter to push the token
             if ($authTokens === null)
               $authTokens = [ ];
@@ -611,7 +614,7 @@
               $parserState = 0;
             } else
               $lastToken .= $wwwAuthenticate [$i];
-          }else
+          } else
             $lastToken .= $wwwAuthenticate [$i];
         }
         

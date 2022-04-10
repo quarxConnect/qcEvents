@@ -344,35 +344,33 @@
           switch ($authMethod) {
             // Digest requires parameters and is therefore processed by ourself
             case 'Digest':
-              $P = $this->authenticationMethods ['Digest'];
+              $digestParameters = $this->authenticationMethods ['Digest'];
               
-              $A1 = $this->authUsername . ':' . $P ['realm'] . ':' . $this->authPassword;
-              $A2 = $this->getMethod () . ':' . $this->getURI ();
-              $NC = sprintf ('%06d', (isset ($P ['nc']) ? $P ['nc'] : 0) + 1);
-              $CNonce = sprintf ('%08x%08x', time (), rand (0, 0xFFFFFFFF));
+              $nonceCount = sprintf ('%06d', (int)($digestParameters ['nc'] ?? 0) + 1);
+              $clientNonce = sprintf ('%08x%08x', time (), rand (0, 0xFFFFFFFF));
               
-              $R = md5 (
-                md5 ($A1) . ':' .
-                $P ['nonce'] . ':' .
-                $NC . ':' .
-                $CNonce . ':' .
-                $P ['qop'] . ':' .
-                md5 ($A2)
+              $digestResponse = md5 (
+                md5 ($this->authUsername . ':' . $digestParameters ['realm'] . ':' . $this->authPassword) . ':' .
+                $digestParameters ['nonce'] . ':' .
+                $nonceCount . ':' .
+                $clientNonce . ':' .
+                ($digestParameters ['qop'] ?? '') . ':' .
+                md5 ($this->getMethod () . ':' . $this->getURI ())
               );
               
               $this->setField (
                 'Authorization',
                 'Digest ' .
                   'username="' . $this->authUsername . '",' .
-                  'realm="' . $P ['realm'] . '",' .
+                  'realm="' . $digestParameters ['realm'] . '",' .
                   'uri="' . $this->getURI () . '",' .
                   'algorithm=MD5,' .
-                  'nonce="' . $P ['nonce'] . '",' .
-                  'nc=' . $NC . ',' .
-                  'cnonce="' . $CNonce . '",' .
-                  'qop=' . $P ['qop'] . ',' .
-                  'response="' . $R . '",' .
-                  'opaque="' . $P ['opaque'] . '",' .
+                  'nonce="' . $digestParameters ['nonce'] . '",' .
+                  'nc=' . $nonceCount . ',' .
+                  'cnonce="' . $clientNonce . '",' .
+                  'qop=' . ($digestParameters ['qop'] ?? '') . ',' .
+                  'response="' . $digestResponse . '",' .
+                  'opaque="' . ($digestParameters ['opaque'] ?? '') . '",' .
                   'userhash=false'
               );
               
