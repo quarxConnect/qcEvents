@@ -469,12 +469,12 @@
     /**
      * Close the stream at the handler
      * 
-     * @param mixed $closeFD
+     * @param mixed $closeFD (optional)
      * 
      * @access protected
      * @return bool
      **/
-    abstract protected function ___close ($closeFD);
+    abstract protected function ___close ($closeFD = null) : bool;
     // }}}
     
     // {{{ ___closeGeneric

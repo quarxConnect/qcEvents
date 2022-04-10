@@ -260,32 +260,30 @@
     /**
      * Read from the underlying stream
      * 
-     * @param int $Length (optional)
+     * @param int $readLength (optional)
      * 
      * @access protected
      * @return string
      **/
-    protected function ___read ($Length = null) {
-      // Determine how many bytes to read
-      if ($Length === null)
-        $Length = $this::DEFAULT_READ_LENGTH;
-      
-      // Try to access our read-fd
-      if (!is_resource ($fd = $this->getReadFD ()))
-        return false;
-      
+    protected function ___read (int $readLength = null) : ?string {
       // Try to read from process
-      if (is_string ($Data = fread ($fd, $Length)) && (strlen ($Data) == 0) && feof ($fd)) {
+      if (($readData = $this->___readGeneric ($readLength)) === null)
+        return null;
+      
+      if (
+        (strlen ($readData) == 0) &&
+        feof ($this->getReadFD ())
+      ) {
         if ($this->hasRead !== null)
           $this->close ();
         
-        return false;
+        return null;
       }
       
       // Return the read data
       $this->hasRead = true;
       
-      return $Data;
+      return $readData;
     }
     // }}}
     
@@ -293,13 +291,13 @@
     /**
      * Forward data for writing to our socket
      * 
-     * @param string $Data
+     * @param string $writeData
      * 
      * @access private
      * @return int Number of bytes written
      **/
-    protected function ___write ($Data) {
-      return fwrite ($this->getWriteFD (), $Data);
+    protected function ___write (string $writeData) : ?int {
+      return $this->___genericWrite ($writeData);
     }
     // }}}
     
@@ -319,9 +317,11 @@
      * @access protected
      * @return bool
      **/
-    protected function ___close ($closeFD = null) {
-      if (($this->processMode == self::MODE_PROCOPEN) ||
-          ($this->processMode == self::MODE_FORKED)) {
+    protected function ___close ($closeFD = null) : bool {
+      if (
+        ($this->processMode == self::MODE_PROCOPEN) ||
+        ($this->processMode == self::MODE_FORKED)
+      ) {
         // Close our pipes first
         if (is_resource ($fd = $this->getReadFD ()))
           fclose ($fd);
@@ -362,7 +362,7 @@
             
             // Check if the process is still running
             if ($childStatus ['running'] && ($closeCounter++ < 1000))
-              return;
+              return false;
             
             // Cancel the timer
             $closeTimer->cancel ();

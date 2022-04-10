@@ -226,24 +226,13 @@
     /**
      * Read from the underlying stream
      * 
-     * @param int $Length (optional)
+     * @param int $readLength (optional)
      * 
      * @access protected
      * @return string   
      **/
-    protected function ___read ($Length = null) {
-      // Retrive our descriptor
-      if (!is_resource ($fd = $this->getReadFD ()))
-        return false;
-      
-      // Check wheter to use the default read-length
-      if ($Length === null)
-        $Length = $this::DEFAULT_READ_LENGTH;
-      
-      // Try to read from file
-      $Result = fread ($fd, $Length);
-      
-      return $Result;
+    protected function ___read (int $readLength = null) : ?string {
+      return $this->___readGeneric ($readLength);
     }
     // }}}
     
@@ -251,18 +240,13 @@
     /**
      * Write to the underlying stream 
      * 
-     * @param string $Data
+     * @param string $writeData
      * 
      * @access protected
      * @return int The number of bytes that have been written
      **/
-    protected function ___write ($Data) {
-      // Retrive our descriptor
-      if (!is_resource ($fd = $this->getWriteFD ()))
-        return false;
-      
-      // Just write out and return
-      return @fwrite ($fd, $Data);
+    protected function ___write (string $writeData) : ?int {
+      return $this->___writeGeneric ($writeData);
     }
     // }}}
     
@@ -275,7 +259,7 @@
      * @access protected
      * @return bool
      **/
-    protected function ___close ($closeFD) {
+    protected function ___close ($closeFD = null) : bool {
       // Retrive our descriptor and close it
       if ($closeFD && !fclose ($closeFD))
         return false;

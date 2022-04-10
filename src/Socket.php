@@ -1072,7 +1072,7 @@
      * @access public
      * @return bool
      **/
-    public function ___close ($closeFD = null) {
+    public function ___close ($closeFD = null) : bool {
       // Check if we are connected/connecting
       if ($this->isDisconnected ())
         return true;
@@ -1106,6 +1106,8 @@
       
       // Fire up callback
       $this->___callback ('socketDisconnected');
+      
+      return true;
     }
     // }}}
     

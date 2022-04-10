@@ -29,12 +29,12 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param ABI\Stream $streamSource
+     * @param ABI\Stream $sourceStream
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function initStreamConsumer (ABI\Stream $streamSource) : Events\Promise;
+    public function initStreamConsumer (ABI\Stream $sourceStream) : Events\Promise;
     // }}}
     
     
@@ -42,11 +42,11 @@
     /**
      * Callback: A stream was attached to this consumer
      * 
-     * @param ABI\Stream $Source
+     * @param ABI\Stream $sourceStream
      * 
      * @access protected
      * @return void
      **/
-    # protected function eventPipedStream (ABI\Stream $Source);
+    # protected function eventPipedStream (ABI\Stream $sourceStream);
     // }}}
   }

@@ -28,12 +28,12 @@
     /**
      * Write data to this sink
      * 
-     * @param string $Data The data to write to this sink
+     * @param string $writeData The data to write to this sink
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function write ($Data) : Events\Promise;
+    public function write (string $writeData) : Events\Promise;
     // }}}
     
     // {{{ watchWrite
