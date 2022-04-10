@@ -213,7 +213,7 @@
      **/
     public function resolve ($dnsName, $dnsType = null, $dnsClass = null) : Events\Promise {
       // Sanatize parameters
-      $dnsName = strtolower ($dnsName);
+      $dnsName = strtolower ((string)$dnsName);
       
       if ($dnsType === null)
         $dnsType = Stream\DNS\Message::TYPE_A;
