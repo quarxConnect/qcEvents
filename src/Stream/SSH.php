@@ -539,7 +539,50 @@
           // Wait for end of stream
           return $sshChannel->once ('eventClosed')->then (
             function () use ($sshChannel) {
-              return $sshChannel->read ();
+              return new Events\Promise\Solution ([
+                $sshChannel->read (),
+                $sshChannel->getCommandStatus (),
+              ]);
+            }
+          );
+        }
+      );
+    }
+    // }}}
+    
+    // {{{ runScript
+    /**
+     * Try to open a session, run a script and return it's output
+     * 
+     * @param string $shellScript
+     * @param array $shellEnvironment (optional)
+     * 
+     * @access public
+     * @return Events\Promise
+     **/
+    public function runScript (string $shellScript, array $shellEnvironment = null) : Events\Promise {
+      // Check for shebang on the script
+      if (substr ($shellScript, 0, 2) == '#!')
+        $scriptInterpreter = trim (substr ($shellScript, 2, strpos ($shellScript, "\n") - 2));
+      else
+        $scriptInterpreter = '/bin/sh';
+      
+      // Start the interpreter
+      return $this->startCommand ($scriptInterpreter, $shellEnvironment)->then (
+        function (SSH\Channel $sshChannel) use ($shellScript) {
+          // Push script to interpreter
+          $sshChannel->write ($shellScript);
+          
+          // Close stdin on channel
+          $sshChannel->eof ();
+
+          // Wait for end of stream
+          return $sshChannel->once ('eventClosed')->then (
+            function () use ($sshChannel) {
+              return new Events\Promise_Solution ([
+                $sshChannel->read (),
+                $sshChannel->getCommandStatus (),
+              ]);
             }
           );
         }
