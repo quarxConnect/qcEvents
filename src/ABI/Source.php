@@ -28,12 +28,12 @@
     /**
      * Try to read pending data from this source
      * 
-     * @param int $Size (optional)
+     * @param int $readLength (optional)
      * 
      * @access public
      * @return string
      **/
-    public function read ($Size = null);
+    public function read (int $readLength = null) : ?string;
     // }}}
     
     // {{{ pipe

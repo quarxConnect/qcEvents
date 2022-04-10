@@ -1275,19 +1275,19 @@
     /**
      * Try to read pending data from this source
      * 
-     * @param int $readSize (optional)
+     * @param int $readLength (optional)
      * 
      * @access public
      * @return string
      **/
-    public function read ($readSize = null) : ?string {
+    public function read (int $readLength = null) : ?string {
       // Check wheter size is unbound
-      if ($readSize === null)
-        $readSize = $this->uncompressedBufferLength - $this->uncompressedBufferOffset;
+      if ($readLength === null)
+        $readLength = $this->uncompressedBufferLength - $this->uncompressedBufferOffset;
       
       // Peek the data from the buffer
-      $readBuffer = substr ($this->uncompressedBuffer, $this->uncompressedBufferOffset, $readSize);
-      $this->uncompressedBufferOffset += $readSize;
+      $readBuffer = substr ($this->uncompressedBuffer, $this->uncompressedBufferOffset, $readLength);
+      $this->uncompressedBufferOffset += $readLength;
       
       // We cannot read further than the entire buffer
       if ($this->uncompressedBufferOffset > $this->uncompressedBufferLength)
@@ -1303,7 +1303,7 @@
       // Return the peeked data
       $this->haveRead = true;
       
-      if ($readSize < 1)
+      if ($readLength < 1)
         return null;
       
       return $readBuffer;

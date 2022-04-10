@@ -1279,15 +1279,15 @@
     /**
      * Write data to this sink
      * 
-     * @param string $Data The data to write to this sink
+     * @param string $writeData The data to write to this sink
      * 
      * @access public
      * @return Promise
      **/
-    public function write ($Data) : Promise {
+    public function write (string $writeData) : Promise {
       // Bypass write-buffer in UDP-Server-Mode
       if ($this->Type == self::TYPE_UDP_SERVER) {
-        if ($this->___write ($Data) === false)
+        if ($this->___write ($writeData) === false)
           return Promise::reject ('Write failed');
         
         # TODO: We don't honor length here
@@ -1296,7 +1296,7 @@
       }
       
       // Let our parent class handle the write-stuff
-      return parent::write ($Data);
+      return parent::write ($writeData);
     }
     // }}}
     
@@ -1304,31 +1304,40 @@
     /**
      * Forward data for writing to our socket
      * 
-     * @param string $Data
+     * @param string $writeData
      * 
      * @access private
      * @return int Number of bytes written
      **/
-    protected function ___write ($Data) {
+    protected function ___write (string $writeData) : ?int {
       // Make sure we have a socket available
-      if ((($this->Type == self::TYPE_UDP_SERVER) && (!is_object ($this->serverParent) || !is_resource ($fd = $this->serverParent->getWriteFDforClient ($this)))) ||
-          (($this->Type != self::TYPE_UDP_SERVER) && !is_resource ($fd = $this->getWriteFD ())))
-        return false;
+      if (
+        (($this->Type == self::TYPE_UDP_SERVER) && (!is_object ($this->serverParent) || !is_resource ($fd = $this->serverParent->getWriteFDforClient ($this)))) ||
+        (($this->Type != self::TYPE_UDP_SERVER) && !is_resource ($fd = $this->getWriteFD ()))
+      )
+        return null;
       
       // Perform a normal unbuffered write
       $this->lastEvent = time ();
       
       if ($this->Type == self::TYPE_UDP_SERVER)
-        return stream_socket_sendto ($fd, $Data, 0, $this->remoteName);
+        $writeLength = stream_socket_sendto ($fd, $writeData, 0, $this->remoteName);
+      else
+        $writeLength = fwrite ($fd, $writeData);
       
-      $lengthWritten = fwrite ($fd, $Data);
-      
-      if ((($lengthWritten === false) ||
-           ($lengthWritten === 0)) &&
-          feof ($fd))
+      if (
+        (
+          ($writeLength === false) ||
+          ($writeLength === 0)
+        ) &&
+        feof ($fd)
+      )
         $this->close (true);
       
-      return $lengthWritten;
+      if ($writeLength === false)
+        return null;
+      
+      return $writeLength;
     }
     // }}}
     
@@ -1671,29 +1680,35 @@
     /**
      * Read data from our internal buffer
      * 
-     * @param int $Length (optional)
+     * @param int $readLength (optional)
      * 
      * @access protected
      * @return string
      **/
-    protected function ___read ($Length = null) {
+    protected function ___read (int $readLength = null) : ?string {
       // Check if the buffer was full before reading
       $readBufferFull = ($this->readBufferLength >= $this::READ_BUFFER_SIZE);
       
       // Check how many bytes to read
-      if (($Length === null) || ($Length >= $this->readBufferLength)) {
+      if (
+        ($readLength === null) ||
+        ($readLength >= $this->readBufferLength)
+      ) {
         $Buffer = $this->readBuffer;
         $this->readBuffer = '';
         $this->readBufferLength = 0;
       } else {
-        $Buffer = substr ($this->readBuffer, 0, $Length = abs ($Length));
-        $this->readBuffer = substr ($this->readBuffer, $Length);
-        $this->readBufferLength -= $Length;
+        $Buffer = substr ($this->readBuffer, 0, $readLength = abs ($readLength));
+        $this->readBuffer = substr ($this->readBuffer, $readLength);
+        $this->readBufferLength -= $readLength;
       }
       
       // Restart reading if buffer was full but has space now
-      if ($readBufferFull && ($this->readBufferLength < $this::READ_BUFFER_SIZE) &&
-          ($eventBase = $this->getEventBase ()))
+      if (
+        $readBufferFull &&
+        ($this->readBufferLength < $this::READ_BUFFER_SIZE) &&
+        ($eventBase = $this->getEventBase ())
+      )
         $eventBase->updateEvent ($this);
       
       return $Buffer;

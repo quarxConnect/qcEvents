@@ -16,7 +16,7 @@
       $eventProcess->addHook (
         'eventReadable',
         function () use ($eventProcess, &$processOutput) {
-          if (($stdOut = $eventProcess->read ()) === false)
+          if (($stdOut = $eventProcess->read ()) === null)
             return;
           
           $processOutput += strlen ($stdOut);

@@ -619,20 +619,20 @@
     /**
      * Try to read from our body-buffer
      * 
-     * @param int $Size (optional)
+     * @param int $readLength (optional)
      * 
      * @access public
      * @return string
      **/
-    public function read ($Size = null) {
-      if ($Size === null)
-        $Size = max (0, strlen ($this->bufferBody) - $this->bufferBodyPos);
+    public function read (int $readLength = null) : ?string {
+      if ($readLength === null)
+        $readLength = max (0, strlen ($this->bufferBody) - $this->bufferBodyPos);
       
-      if ($Size < 1)
+      if ($readLength < 1)
         return '';
       
       if ($this->bufferBodyKeep) {
-        $Data = substr ($this->bufferBody, $this->bufferBodyPos, $Size);
+        $Data = substr ($this->bufferBody, $this->bufferBodyPos, $readLength);
         $this->bufferBodyPos += strlen ($Data);
       } else {
         $Data = $this->bufferBody;

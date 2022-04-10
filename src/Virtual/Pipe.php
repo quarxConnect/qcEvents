@@ -30,11 +30,11 @@
     /**
      * Try to read pending data from this source
      * 
-     * @param int $Size (optional)
+     * @param int $readLength (optional)
      * 
      * @access public
      * @return string
      **/
-    abstract public function read ($Size = null);
+    abstract public function read (int $readLength = null) : ?string;
     // }}}
   }

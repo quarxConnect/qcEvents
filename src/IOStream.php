@@ -155,13 +155,13 @@
     /**
      * Try to read pending data from this source
      * 
-     * @param int $Size (optional)
+     * @param int $readLength (optional)
      *    
      * @access public
      * @return string
      **/
-    public function read ($Size = null) {
-      return $this->___read ($Size);
+    public function read (int $readLength = null) : ?string {
+      return $this->___read ($readLength);
     }
     // }}}
     
@@ -169,12 +169,38 @@
     /**
      * Read from the underlying stream
      * 
-     * @param int $Length (optional)
+     * @param int $readLength (optional)
      * 
      * @access protected
      * @return string
      **/
-    abstract protected function ___read ($Length = null);
+    abstract protected function ___read (int $readLength = null) : ?string;
+    // }}}
+    
+    // {{{ ___readGeneric
+    /**
+     * Use generic fread()-Function to read
+     * 
+     * @param int $readLength (optional)
+     * 
+     * @access protected
+     * @return string
+     **/
+    protected function ___readGeneric (int $readLength = null) : ?string {
+      // Retrive our descriptor
+      if (!is_resource ($readFD = $this->getReadFD ()))
+        throw new \Exception ('No read-fd on this I/O-Stream');
+      
+      // Check wheter to use the default read-length
+      if ($readLength === null)
+        $readLength = $this::DEFAULT_READ_LENGTH;
+
+      // Try to read from file
+      if (($readData = fread ($readFD, $readLength)) === false)
+        return null;
+      
+      return $readData;
+    }
     // }}}
     
     // {{{ watchRead
@@ -234,16 +260,16 @@
     /**
      * Write data to this sink
      * 
-     * @param string $Data The data to write to this sink
+     * @param string $writeData The data to write to this sink
      * 
      * @access public
      * @return Promise
      **/
-    public function write ($Data) : Promise {
+    public function write (string $writeData) : Promise {
       return new Promise (
-        function (callable $resolveFunction, callable $rejectFunction) use ($Data) {
+        function (callable $resolveFunction, callable $rejectFunction) use ($writeData) {
           // Enqueue the packet
-          $this->writeBuffer [] = [ $Data, $resolveFunction, $rejectFunction ];
+          $this->writeBuffer [] = [ $writeData, $resolveFunction, $rejectFunction ];
           
           // Make sure we catch write-events
           if (!$this->watchWrites && ($eventBase = $this->getEventBase ()))
@@ -272,12 +298,34 @@
     /**
      * Write to the underlying stream
      * 
-     * @param string $Data
+     * @param string $writeData
      * 
      * @access protected
      * @return int The number of bytes that have been written
      **/
-    abstract protected function ___write ($Data);
+    abstract protected function ___write (string $writeData) : ?int;
+    // }}}
+    
+    // {{{ ___writeGeneric
+    /**
+     * Use generic fwrite()-Function to write
+     * 
+     * @param string $writeData
+     * 
+     * @access protected
+     * @return int
+     **/
+    protected function ___writeGeneric (string $writeData) : ?int {
+      // Retrive our descriptor
+      if (!is_resource ($writeFD = $this->getWriteFD ()))
+        throw new \Exception ('No write-fd on this I/O-Stream');
+    
+      // Just write out and return
+      if (($writeLength = fwrite ($writeFD, $writeData)) === false)
+        return null;
+      
+      return $writeLength;
+    }
     // }}}
     
     // {{{ watchWrite
@@ -429,6 +477,19 @@
     abstract protected function ___close ($closeFD);
     // }}}
     
+    // {{{ ___closeGeneric
+    /**
+     * Use generic fclose() to close a descriptor
+     * 
+     * @param resource $closeFD
+     * 
+     * @access protected
+     * @return bool
+     **/
+    protected function ___closeGeneric ($closeFD) {
+      return ($closeFD && fclose ($closeFD));
+    }
+    // }}}
     
     
     /*****************************************************************
@@ -468,14 +529,17 @@
       // Write pending packets as long as we can
       while (count ($this->writeBuffer) > 0) {
         // Ask our handler to do the write
-        $Length = $this->___write ($this->writeBuffer [0][0]);
+        $writeLength = $this->___write ($this->writeBuffer [0][0]);
         
-        if (($Length === false) || ($Length === null))
+        if (
+          ($writeLength === false) ||
+          ($writeLength === null) ||
+          ($writeLength === 0)
+        )
           return;
         
         // Truncate the write-buffer
-        if ($Length > 0)
-          $this->writeBuffer [0][0] = substr ($this->writeBuffer [0][0], $Length);
+        $this->writeBuffer [0][0] = substr ($this->writeBuffer [0][0], $writeLength);
         
         // Check if the buffer is now empty
         if (strlen ($this->writeBuffer [0][0]) > 0)

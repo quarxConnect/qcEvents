@@ -100,19 +100,19 @@
     /**
      * Try to read pending data from this source
      * 
-     * @param int $Size (optional)
+     * @param int $readLength (optional)
      * 
      * @access public
      * @return string
      **/
-    public function read ($Size = null) {
+    public function read (int $readLength = null) : ?string {
       // Get the requested bytes from buffer
-      if ($Size === null) {
+      if ($readLength === null) {
         $Buffer = $this->Buffer;
         $this->Buffer = '';
       } else {
-        $Buffer = substr ($this->Buffer, 0, $Size);
-        $this->Buffer = substr ($this->Buffer, $Size);
+        $Buffer = substr ($this->Buffer, 0, $readLength);
+        $this->Buffer = substr ($this->Buffer, $readLength);
       }
       
       // Check if we shall close

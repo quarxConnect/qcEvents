@@ -392,7 +392,7 @@
      * @access public
      * @return Events\Promise
      **/
-    public function write ($sourceData) : Events\Promise {
+    public function write (string $sourceData) : Events\Promise {
       if (
         ($this->sourceStream === null) ||
         ($this->socksState != self::STATE_CONN)

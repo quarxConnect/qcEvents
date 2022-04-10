@@ -368,7 +368,7 @@
      * @access public
      * @return Events\Promise
      **/
-    public function write ($channelData) : Events\Promise {
+    public function write (string $channelData) : Events\Promise {
       // Make sure this channel is connected
       if (
         ($this->remoteID === null) ||
