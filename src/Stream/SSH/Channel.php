@@ -570,7 +570,7 @@
         $this->sshStream->removeChannel ($this);
         
         // Try to reject the promise
-        $this->connectionPromise->reject ($sshMessage->Reason, $Message);
+        $this->connectionPromise->reject ($sshMessage->Reason, $sshMessage);
       
       // Receive-Window-Should be adjusted
       } elseif ($sshMessage instanceof ChannelWindowAdjust) {
@@ -654,8 +654,8 @@
           
           $this->commandSignal = $sshMessage->Signal;
           
-          # $Message->CoreDumped
-          # $Message->errorMessage / $Message->errorLanguage
+          # $sshMessage->CoreDumped
+          # $sshMessage->errorMessage / $sshMessage->errorLanguage
           
           $requestResult = true;
         } else
