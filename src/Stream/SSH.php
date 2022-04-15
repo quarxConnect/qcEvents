@@ -23,7 +23,7 @@
   namespace quarxConnect\Events\Stream;
   use \quarxConnect\Events;
   
-  class SSH extends Events\Hookable implements Events\ABI\Stream\Consumer {
+  class SSH extends Events\Hookable implements Events\ABI\Stream\Consumer, Events\ABI\Socket\Factory {
     /* State of our stream */
     private const STATE_NONE = 0;
     private const STATE_CONNECT = 1;
@@ -481,6 +481,72 @@
       
       // Remove the channel
       unset ($this->sshChannels [$localID]);
+    }
+    // }}}
+    
+    // {{{ createConnection
+    /**
+     * Request a connected socket from this factory
+     * 
+     * @param array|string $remoteHost
+     * @param int $remotePort
+     * @param int $socketType
+     * @param bool $useTLS (optional)
+     * @param bool $allowReuse (optional)
+     * 
+     * @access public
+     * @return Events\Promise
+     **/
+    public function createConnection ($remoteHost, int $remotePort, int $socketType, bool $useTLS = false, bool $allowReuse = false) : Events\Promise {
+      // Sanatize parameters
+      if ($useTLS)
+        return Events\Promise::reject ('No TLS-Support yet');
+      
+      if ($socketType != Events\Socket::TYPE_TCP)
+        return Events\Promise::reject ('Only TCP-Connections are supported');
+      
+      if (!is_array ($remoteHost))
+        $remoteHost = [ $remoteHost ];
+      
+      if (count ($remoteHost) < 1)
+        return Events\Promise::reject ('Empty list of hosts');
+      
+      // Try to create the connection
+      return $this->requestConnection (
+        '127.0.0.1',
+        rand (1025, 0xffff),
+        array_shift ($remoteHost),
+        $remotePort
+      )->catch (
+        function () use ($remoteHost, $remotePort) {
+          // Check if there is another hostname/ip to try
+          if (count ($remoteHost) > 0)
+            return $this->createConnection ($remoteHost, $remotePort, Events\Socket::TYPE_TCP, false, false);
+          
+          // Just pass the rejection
+          throw new Events\Promise\Solution (func_get_args ());
+        }
+      );
+    }
+    // }}}
+
+    // {{{ releaseConnection
+    /**
+     * Return a connected socket back to the factory
+     * 
+     * @param Events\ABI\Stream $leasedConnection
+     * 
+     * @access public
+     * @return void
+     **/
+    public function releaseConnection (Events\ABI\Stream $leasedConnection) : void {
+      if (
+        !($leasedConnection instanceof SSH\Channel) ||
+        ($leasedConnection->getStream () !== $this)
+      )
+        return;
+      
+      $leasedConnection->close ();
     }
     // }}}
     
