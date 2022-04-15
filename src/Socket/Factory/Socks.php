@@ -20,7 +20,7 @@
   
   declare (strict_types=1);
   
-  namespace quarxConnect\Events\Socket\Pool;
+  namespace quarxConnect\Events\Socket\Factory;
   use \quarxConnect\Events;
   use \quarxConnect\Events\ABI;
   
