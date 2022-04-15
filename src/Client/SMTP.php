@@ -88,7 +88,7 @@
                 !$smtpStream->hasFeature ('STARTTLS') &&
                 !$clientSocket->isTLS ()
               )
-                return $this->socketPool->releaseSocket ($clientSocket);
+                return $this->socketPool->releaseConnection ($clientSocket);
               
               // Try to enable TLS
               if (
@@ -121,7 +121,7 @@
           )->catch (
             function () use ($clientSocket) {
               // Release the socket
-              $this->socketPool->releaseSocket ($clientSocket);
+              $this->socketPool->releaseConnection ($clientSocket);
               
               // Forward the error
               throw new Events\Promise\Solution (func_get_args ());
@@ -321,7 +321,7 @@
      * @return Events\Promise
      **/
     public function sendMailNative (string $mailOriginator, array $mailReceivers, string $mailBody) : Events\Promise {
-      return $this->socketPool->acquireSocket (
+      return $this->socketPool->createConnection (
         $this->remoteHost,
         $this->remotePort ?? 25,
         Events\Socket::TYPE_TCP,
@@ -333,7 +333,7 @@
           if (!$smtpClient || !($smtpClient instanceof Events\Stream\SMTP\Client)) {
             // Release the socket
             if ($clientSocket)
-              $this->socketPool->releaseSocket ($clientSocket);
+              $this->socketPool->releaseConnection ($clientSocket);
             
             // Indicate an error
             throw new \Exception ('No SMTP-Client was acquired');
@@ -343,11 +343,11 @@
           return $smtpStream->sendMail ($mailOriginator, $mailReceivers, $mailBody)->then (
             function () use ($clientSocket) {
               // Release the socket
-              $this->socketPool->releaseSocket ($clientSocket);
+              $this->socketPool->releaseConnection ($clientSocket);
             },
             function () use ($clientSocket) {
               // Release the socket
-              $this->socketPool->releaseSocket ($clientSocket);
+              $this->socketPool->releaseConnection ($clientSocket);
               
               // Forward the error
               throw new Events\Promise\Solution (func_get_args ());

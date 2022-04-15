@@ -23,9 +23,8 @@
   namespace quarxConnect\Events\Socket;
   use quarxConnect\Events;
   
-  class Pool extends Events\Hookable {
-    /* The event-base to use */
-    private $eventBase = null;
+  class Pool extends Events\Hookable implements Events\ABI\Socket\Factory {
+    use Events\Feature\Based;
     
     /* Socket-Pool */
     private $Sockets = [ ];
@@ -69,7 +68,7 @@
      * @return void
      **/
     function __construct (Events\Base $eventBase) {
-      $this->eventBase = $eventBase;
+      $this->setEventBase ($eventBase);
     }
     // }}}
     
@@ -85,32 +84,6 @@
         'sockets' => count ($this->Sockets),
         'sessions' => count ($this->activeSessions),
       ];
-    }
-    // }}}
-    
-    // {{{ getEventBase
-    /**
-     * Retrive assigned event-base
-     * 
-     * @access public
-     * @return Events\Base
-     **/
-    public function getEventBase () : Events\Base {
-      return $this->eventBase;
-    }
-    // }}}
-    
-    // {{{ setEventBase
-    /**
-     * Change assigned event-base
-     * 
-     * @param Events\Base $eventBase
-     * 
-     * @access public
-     * @return void
-     **/
-    public function setEventBase (Events\Base $eventBase) : void {
-      $this->eventBase = $eventBase;
     }
     // }}}
     
@@ -159,38 +132,43 @@
     }
     // }}}
     
-    // {{{ acquireSocket
+    // {{{ createConnection
     /**
-     * Request a socket from this pool
+     * Request a connected socket from this factory
      * 
-     * @param mixed $remoteHost
+     * @param array|string $remoteHost
      * @param int $remotePort
-     * @param enum $socketType
-     * @param bool $useTLS
+     * @param int $socketType
+     * @param bool $useTLS (optional)
+     * @param bool $allowReuse (optional)
      * @param Pool\Session $poolSession (optional)
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function acquireSocket ($remoteHost, $remotePort, $socketType, $useTLS, Pool\Session $poolSession = null) : Events\Promise {
-      // Sanatize parameters
-      $remotePort = (int)$remotePort;
-      $socketType = (int)$socketType;
-      $useTLS = !!$useTLS;
-      
-      if (($socketType != Events\Socket::TYPE_TCP) && ($socketType != Events\Socket::TYPE_UDP))
+    public function createConnection ($remoteHost, int $remotePort, int $socketType, bool $useTLS = false, bool $allowReuse = false, Pool\Session $poolSession = null) : Events\Promise {
+      // Sanatize socket-type
+      if (
+        ($socketType != Events\Socket::TYPE_TCP) &&
+        ($socketType != Events\Socket::TYPE_UDP)
+      )
         return Events\Promise::reject ('Invalid socket-type given');
       
-      if (($remotePort < 1) || ($remotePort > 0xFFFF))
+      // Sanatize the port
+      if (
+        ($remotePort < 1) ||
+        ($remotePort > 0xffff)
+      )
         return Events\Promise::reject ('Invalid port given');
       
+      // Make sure remote host is an array
       if (!is_array ($remoteHost))
         $remoteHost = [ $remoteHost ];
       
       // Push request to queue
-      $deferedPromise = new Events\Promise\Defered ($this->eventBase);
+      $deferedPromise = new Events\Promise\Defered ($this->getEventBase ());
       
-      $this->socketQueue [] = [ $remoteHost, $remotePort, $socketType, $useTLS, $poolSession, $deferedPromise ];
+      $this->socketQueue [] = [ $remoteHost, $remotePort, $socketType, $useTLS, $allowReuse, $poolSession, $deferedPromise ];
       
       // Try to run the queue
       $this->checkSocketQueue ($poolSession);
@@ -237,21 +215,21 @@
     }
     // }}}
     
-    // {{{ releaseSocket
+    // {{{ releaseConnection
     /**
-     * Remove a socket from this pool
+     * Return a connected socket back to the factory
      * 
-     * @param Events\Socket $Socket
+     * @param Events\ABI\Stream $leasedConnection
      * 
      * @access public
      * @return void
      **/
-    public function releaseSocket (Events\Socket $Socket) {
+    public function releaseConnection (Events\ABI\Stream $leasedConnection) : void {
       // Try to find the socket on pool
-      if (($socketIndex = array_search ($Socket, $this->Sockets, true)) === false)
+      if (($socketIndex = array_search ($leasedConnection, $this->Sockets, true)) === false)
         return;
       
-      return $this->releaseSocketByIndex ($socketIndex);
+      $this->releaseSocketByIndex ($socketIndex);
     }
     // }}}
     
@@ -327,8 +305,9 @@
           $remotePort = $queueInfo [1];
           $socketType = $queueInfo [2];
           $useTLS = $queueInfo [3];
-          $poolSession = $queueInfo [4];
-          $deferedPromise = $queueInfo [5];
+          $allowReuse = $queueInfo [4];
+          $poolSession = $queueInfo [5];
+          $deferedPromise = $queueInfo [6];
           
           if ($forSession && ($forSession !== $poolSession))
             continue;
@@ -385,8 +364,9 @@
         $remotePort = $queueInfo [1];
         $socketType = $queueInfo [2];
         $useTLS = $queueInfo [3];
-        $poolSession = $queueInfo [4];
-        $deferedPromise = $queueInfo [5];
+        $allowReuse = $queueInfo [4];
+        $poolSession = $queueInfo [5];
+        $deferedPromise = $queueInfo [6];
         
         if ($forSession && ($forSession !== $poolSession))
           continue;
@@ -396,8 +376,15 @@
         // Create a key for the requested socket
         $socketKey = strtolower (implode ('-', $remoteHost)) . '-' . $remotePort . '-' . $socketType . ($useTLS ? '-tls' : '');
         
+        // Request event-base
+        if (!is_object ($eventBase = $this->getEventBase ())) {
+          $deferedPromise->reject ('No event-base assigned');
+          
+          continue;
+        }
+        
         // Create a new socket
-        $this->Sockets [] = $newSocket = new Events\Socket ($this->eventBase);
+        $this->Sockets [] = $newSocket = new Events\Socket ($eventBase);
         
         // Get index of new socket
         if (($socketIndex = array_search ($newSocket, $this->Sockets, true)) === false) {
@@ -483,7 +470,7 @@
       }
       
       if ($forSession && ($activeSockets < $this->maxSockets))
-        $this->eventBase->forceCallback (
+        $this->getEventBase ()->forceCallback (
           function () {
             $this->checkSocketQueue ();
           }

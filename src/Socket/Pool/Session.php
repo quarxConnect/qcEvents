@@ -52,34 +52,35 @@
     }
     // }}}
     
-    // {{{ acquireSocket
+    // {{{ createConnection
     /**
      * Request a socket from this pool-session
      * 
-     * @param mixed $remoteHost
+     * @param array|string $remoteHost
      * @param int $remotePort
-     * @param enum $socketType
-     * @param bool $useTLS
+     * @param int $socketType
+     * @param bool $useTLS (optional)
+     * @param bool $allowReuse (optional)
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function acquireSocket ($remoteHost, $remotePort, $socketType, $useTLS) : Events\Promise {
-      return $this->socketPool->acquireSocket ($remoteHost, $remotePort, $socketType, $useTLS, $this);
+    public function createConnection ($remoteHost, int $remotePort, int $socketType, bool $useTLS = false, bool $allowReuse = false) : Events\Promise {
+      return $this->socketPool->createConnection ($remoteHost, $remotePort, $socketType, $useTLS, $allowReuse, $this);
     }
     // }}}
     
-    // {{{ releaseSocket
+    // {{{ releaseConnection
     /**
-     * Remove a socket from this pool
+     * Return a connected socket back to the factory
      * 
-     * @param Events\Socket $Socket
+     * @param Events\ABI\Stream $leasedConnection
      * 
      * @access public
      * @return void
      **/
-    public function releaseSocket (Events\Socket $Socket) {
-      return $this->socketPool->releaseSocket ($Socket);
+    public function releaseConnection (Events\ABI\Stream $leasedConnection) : void {
+      $this->socketPool->releaseConnection ($leasedConnection);
     }
     // }}}
     

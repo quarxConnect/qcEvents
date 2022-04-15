@@ -45,11 +45,11 @@
     /**
      * Return a connected socket back to the factory
      * 
-     * @param Events\ABI\Stream
+     * @param Events\ABI\Stream $leasedConnection
      * 
      * @access public
      * @return void
      **/
-    public function releaseSocket (Events\ABI\Stream $acquiredSocket) : void;
+    public function releaseConnection (Events\ABI\Stream $leasedConnection) : void;
     // }}}
   }

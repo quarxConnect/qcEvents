@@ -339,7 +339,7 @@
         $orgCookies = null;
       
       // Acquire a socket for this
-      return $socketSession->acquireSocket (
+      return $socketSession->createConnection (
         $Request->getHostname (),
         $Request->getPort (),
         Events\Socket::TYPE_TCP,
@@ -386,7 +386,7 @@
             
             // Release the socket (allow to reuse it)
             $Socket->unpipe ($Request);
-            $socketSession->releaseSocket ($Socket);
+            $socketSession->releaseConnection ($Socket);
           }
           
           // Abort here if no header was received
