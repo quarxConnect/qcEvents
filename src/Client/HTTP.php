@@ -89,6 +89,20 @@
     }
     // }}}
     
+    // {{{ setSocketFactory
+    /**
+     * Change the socket-factory for this HTTP-Client
+     * 
+     * @param Events\ABI\Socket\Factory $socketFactory
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setSocketFactory (Events\ABI\Socket\Factory $socketFactory) : void {
+      $this->socketFactory = $socketFactory;
+    }
+    // }}}
+    
     // {{{ useSessionCookies
     /**
      * Get/Set wheter to use session-cookies
@@ -292,7 +306,12 @@
       }
       
       // Create new socket-session
-      $factorySession = $this->getSocketFactory ()->getSession ();
+      $socketFactory = $this->getSocketFactory ();
+      
+      if ($socketFactory instanceof Events\Socket\Factory\Limited)
+        $factorySession = $this->getSocketFactory ()->getSession ();
+      else
+        $factorySession = $socketFactory;
       
       return $this->requestInternal ($factorySession, $Request, $authenticationPreflight);
     }
@@ -660,14 +679,16 @@
     /**
      * Set the number of max concurrent requests
      * 
-     * @param int $Maximum
+     * @param int $maxRequests
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function setMaxRequests ($Maximum) {
-      // Just forward to our pool
-      return $this->getSocketFactory ()->setMaxConnections ($Maximum);
+    public function setMaxRequests (int $maxRequests) : void {
+      if (!($this->getSocketFactory () instanceof Events\Socket\Factory\Limited))
+        throw new \Exception ('Socket-Factory must implement Limited');
+      
+      $this->getSocketFactory ()->setMaxConnections ($maxRequests);
     }
     // }}}
     
