@@ -2,7 +2,7 @@
 
   /**
    * quarxConnect Events - HTTP Client Implementation
-   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -28,8 +28,8 @@
     /* All queued HTTP-Requests */
     private $httpRequests = [ ];
     
-    /* Socket-Pool */
-    private $socketPool = null;
+    /* Socket-Factory */
+    private $socketFactory = null;
     
     /* Session-Cookies (if enabled) */
     private $sessionCookies = null;
@@ -47,7 +47,9 @@
      * @return void
      **/
     function __construct (Events\Base $eventBase) {
-      $this->socketPool = new Events\Socket\Pool ($eventBase);
+      $this->socketFactory = new Events\Socket\Factory\Limited (
+        new Events\Socket\Factory ($eventBase)
+      );
     }
     // }}}
     
@@ -59,7 +61,7 @@
      * @return Events\Base May be NULL if none is assigned
      **/
     public function getEventBase () : ?Events\Base {
-      return $this->socketPool->getEventBase ();
+      return $this->socketFactory->getEventBase ();
     }
     // }}}
     
@@ -71,19 +73,19 @@
      * @return void
      **/
     public function setEventBase (Events\Base $eventBase) : void {
-      $this->socketPool->setEventBase ($eventBase);
+      $this->socketFactory->setEventBase ($eventBase);
     }
     // }}}
     
-    // {{{ getSocketPool
+    // {{{ getSocketFactory
     /**
      * Retrive the socket-pool for this client
      * 
      * @access public
-     * @return Events\Socket\Pool
+     * @return Events\ABI\Socket\Factory
      **/
-    public function getSocketPool () : Events\Socket\Pool {
-      return $this->socketPool;
+    public function getSocketFactory () : Events\ABI\Socket\Factory {
+      return $this->socketFactory;
     }
     // }}}
     
@@ -290,13 +292,9 @@
       }
       
       // Create new socket-session
-      $socketSession = $this->getSocketPool ()->getSession ();
+      $factorySession = $this->getSocketFactory ()->getSession ();
       
-      return $this->requestInternal ($socketSession, $Request, $authenticationPreflight)->finally (
-        function () use ($socketSession) {
-          $socketSession->close ();
-        }
-      );
+      return $this->requestInternal ($factorySession, $Request, $authenticationPreflight);
     }
     // }}}
     
@@ -304,14 +302,14 @@
     /**
      * Enqueue a request on a socket-session
      * 
-     * @param Events\Socket\Pool\Session $socketSession
+     * @param Events\ABI\Socket\Factory $factorySession
      * @param Stream\HTTP\Request $Request
      * @param bool $authenticationPreflight
      * 
      * @access private
      * @return Events\Promise
      **/
-    private function requestInternal (Events\Socket\Pool\Session $socketSession, Stream\HTTP\Request $Request, $authenticationPreflight) : Events\Promise {
+    private function requestInternal (Events\ABI\Socket\Factory $factorySession, Stream\HTTP\Request $Request, $authenticationPreflight) : Events\Promise {
       // Push to our request-queue
       $this->httpRequests [] = $Request;
       
@@ -339,7 +337,7 @@
         $orgCookies = null;
       
       // Acquire a socket for this
-      return $socketSession->createConnection (
+      return $factorySession->createConnection (
         $Request->getHostname (),
         $Request->getPort (),
         Events\Socket::TYPE_TCP,
@@ -364,7 +362,7 @@
         }
       )->then (
         function (Stream\HTTP\Header $Header = null, $Body = null)
-        use ($Request, $authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies, $socketSession) {
+        use ($Request, $authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies, $factorySession) {
           // Remove from request-queue
           unset ($this->httpRequests [$Index]);
           
@@ -386,7 +384,7 @@
             
             // Release the socket (allow to reuse it)
             $Socket->unpipe ($Request);
-            $socketSession->releaseConnection ($Socket);
+            $factorySession->releaseConnection ($Socket);
           }
           
           // Abort here if no header was received
@@ -416,8 +414,8 @@
             
             // Re-enqueue the request
             return $cookiePromise->then (
-              function () use ($socketSession, $Request) {
-                return $this->requestInternal ($socketSession, $Request, false);
+              function () use ($factorySession, $Request) {
+                return $this->requestInternal ($factorySession, $Request, false);
               }
             );
           }
@@ -485,8 +483,8 @@
             
             // Re-Enqueue the request
             return $cookiePromise->then (
-              function () use ($socketSession, $Request) {
-                return $this->requestInternal ($socketSession, $Request, true);
+              function () use ($factorySession, $Request) {
+                return $this->requestInternal ($factorySession, $Request, true);
               }
             );
           }
@@ -669,7 +667,7 @@
      **/
     public function setMaxRequests ($Maximum) {
       // Just forward to our pool
-      return $this->getSocketPool ()->setMaximumSockets ($Maximum);
+      return $this->getSocketFactory ()->setMaxConnections ($Maximum);
     }
     // }}}
     
