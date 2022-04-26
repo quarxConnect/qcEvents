@@ -362,7 +362,7 @@
         Events\Socket::TYPE_TCP,
         $Request->useTLS ()
       )->then (
-        function (Events\Socket $Socket) use ($Request, $authenticationPreflight, $Username, $Password) {
+        function (Events\ABI\Stream $httpConnection) use ($Request, $authenticationPreflight, $Username, $Password) {
           // Handle authenticiation more special
           if (!$Request->hasBody () && $authenticationPreflight && (($Username !== null) || ($Password !== null))) {
             $Request->setMethod ('OPTIONS');
@@ -371,7 +371,7 @@
             $Request->addAuthenticationMethod ('Basic');
           
           // Pipe the socket to our request
-          $Socket->pipe ($Request);
+          $httpConnection->pipe ($Request);
           
           // Raise event
           $this->___callback ('httpRequestStart', $Request);
@@ -394,16 +394,16 @@
           }
           
           // Retrive the current socket for the request
-          if ($Socket = $Request->getPipeSource ()) {
+          if ($httpConnection = $Request->getPipeSource ()) {
             // Check if we may reuse the socket
             if (!$Header ||
                 (($Header->getVersion () < 1.1) && ($Header->getField ('Connection') != 'keep-alive')) ||
                 ($Header->getField ('Connection') == 'close'))
-              $Socket->close ();
+              $httpConnection->close ();
             
             // Release the socket (allow to reuse it)
-            $Socket->unpipe ($Request);
-            $factorySession->releaseConnection ($Socket);
+            $httpConnection->unpipe ($Request);
+            $factorySession->releaseConnection ($httpConnection);
           }
           
           // Abort here if no header was received
