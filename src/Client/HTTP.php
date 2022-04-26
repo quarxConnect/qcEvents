@@ -328,21 +328,21 @@
      * @access private
      * @return Events\Promise
      **/
-    private function requestInternal (Events\ABI\Socket\Factory $factorySession, Stream\HTTP\Request $Request, $authenticationPreflight) : Events\Promise {
+    private function requestInternal (Events\ABI\Socket\Factory $factorySession, Stream\HTTP\Request $httpRequest, $authenticationPreflight) : Events\Promise {
       // Push to our request-queue
-      $this->httpRequests [] = $Request;
+      $this->httpRequests [] = $httpRequest;
       
       // Remember some immutable parameters from request
-      $Index = array_search ($Request, $this->httpRequests, true);
-      $Method = $Request->getMethod ();
-      $Username = $Request->getUsername ();
-      $Password = $Request->getPassword ();
+      $Index = array_search ($httpRequest, $this->httpRequests, true);
+      $Method = $httpRequest->getMethod ();
+      $Username = $httpRequest->getUsername ();
+      $Password = $httpRequest->getPassword ();
       
-      if ($newCookies = $this->getSessionCookiesForRequest ($Request)) {
-        $orgCookies = $Request->getField ('Cookie', true);
+      if ($newCookies = $this->getSessionCookiesForRequest ($httpRequest)) {
+        $orgCookies = $httpRequest->getField ('Cookie', true);
         $Cookies = $orgCookies;
         
-        $Request->unsetField ('Cookie');
+        $httpRequest->unsetField ('Cookie');
         
         if (count ($Cookies) < 1)
           $Cookies [] = '';
@@ -351,50 +351,50 @@
           $Cookies [0] .= (strlen ($Cookies [0]) > 0 ? ';' : '') . urlencode ($Cookie ['name']) . '=' . urlencode ($Cookie ['value']);
         
         foreach ($Cookies as $Cookie)
-          $Request->setField ('Cookie', $Cookie, false);
+          $httpRequest->setField ('Cookie', $Cookie, false);
       } else
         $orgCookies = null;
       
       // Acquire a socket for this
       return $factorySession->createConnection (
-        $Request->getHostname (),
-        $Request->getPort (),
+        $httpRequest->getHostname (),
+        $httpRequest->getPort (),
         Events\Socket::TYPE_TCP,
-        $Request->useTLS ()
+        $httpRequest->useTLS ()
       )->then (
-        function (Events\ABI\Stream $httpConnection) use ($Request, $authenticationPreflight, $Username, $Password) {
+        function (Events\ABI\Stream $httpConnection) use ($httpRequest, $authenticationPreflight, $Username, $Password) {
           // Handle authenticiation more special
-          if (!$Request->hasBody () && $authenticationPreflight && (($Username !== null) || ($Password !== null))) {
-            $Request->setMethod ('OPTIONS');
-            $Request->setCredentials (null, null);
+          if (!$httpRequest->hasBody () && $authenticationPreflight && (($Username !== null) || ($Password !== null))) {
+            $httpRequest->setMethod ('OPTIONS');
+            $httpRequest->setCredentials (null, null);
           } elseif (!$authenticationPreflight && (($Username !== null) || ($Password !== null)))
-            $Request->addAuthenticationMethod ('Basic');
+            $httpRequest->addAuthenticationMethod ('Basic');
           
           // Pipe the socket to our request
-          $httpConnection->pipe ($Request);
+          $httpConnection->pipeStream ($httpRequest);
           
           // Raise event
-          $this->___callback ('httpRequestStart', $Request);
+          $this->___callback ('httpRequestStart', $httpRequest);
           
           // Watch events on the request
-          return $Request->once ('httpRequestResult');
+          return $httpRequest->once ('httpRequestResult');
         }
       )->then (
         function (Stream\HTTP\Header $Header = null, $Body = null)
-        use ($Request, $authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies, $factorySession) {
+        use ($httpRequest, $authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies, $factorySession) {
           // Remove from request-queue
           unset ($this->httpRequests [$Index]);
           
           // Restore cookies on request
           if ($orgCookies !== null) {
-            $Request->unsetField ('Cookie');
+            $httpRequest->unsetField ('Cookie');
             
             foreach ($orgCookies as $Cookie)
-              $Request->setField ('Cookie', $Cookie, false);
+              $httpRequest->setField ('Cookie', $Cookie, false);
           }
           
           // Retrive the current socket for the request
-          if ($httpConnection = $Request->getPipeSource ()) {
+          if ($httpConnection = $httpRequest->getPipeSource ()) {
             // Check if we may reuse the socket
             if (!$Header ||
                 (($Header->getVersion () < 1.1) && ($Header->getField ('Connection') != 'keep-alive')) ||
@@ -402,7 +402,7 @@
               $httpConnection->close ();
             
             // Release the socket (allow to reuse it)
-            $httpConnection->unpipe ($Request);
+            $httpConnection->unpipe ($httpRequest);
             $factorySession->releaseConnection ($httpConnection);
           }
           
@@ -415,7 +415,7 @@
           
           // Check wheter to process cookies
           if (($this->sessionCookies !== null) && $Header->hasField ('Set-Cookie'))
-            $cookiePromise = $this->updateSessionCookies ($Request, $Header)->catch (function () { });
+            $cookiePromise = $this->updateSessionCookies ($httpRequest, $Header)->catch (function () { });
           else
             $cookiePromise = Events\Promise::resolve ();
           
@@ -425,16 +425,16 @@
               is_array ($authenticationSchemes = $Header->getAuthenticationInfo ())) {
             // Push schemes to request
             foreach ($authenticationSchemes as $authenticationScheme)
-              $Request->addAuthenticationMethod ($authenticationScheme ['scheme'], $authenticationScheme ['params']);
+              $httpRequest->addAuthenticationMethod ($authenticationScheme ['scheme'], $authenticationScheme ['params']);
             
             // Restore the request's state
-            $Request->setMethod ($Method);
-            $Request->setCredentials ($Username, $Password);
+            $httpRequest->setMethod ($Method);
+            $httpRequest->setCredentials ($Username, $Password);
             
             // Re-enqueue the request
             return $cookiePromise->then (
-              function () use ($factorySession, $Request) {
-                return $this->requestInternal ($factorySession, $Request, false);
+              function () use ($factorySession, $httpRequest) {
+                return $this->requestInternal ($factorySession, $httpRequest, false);
               }
             );
           }
@@ -443,19 +443,19 @@
           if (
             ($nextLocation = $Header->getField ('Location')) &&
             (($Status >= 300) && ($Status < 400)) &&
-            (($maxRedirects = $Request->getMaxRedirects ()) > 0) &&
+            (($maxRedirects = $httpRequest->getMaxRedirects ()) > 0) &&
             is_array ($nextURI = parse_url ($nextLocation))
           ) {
             // Make sure the URL is fully qualified
             if ($rebuildLocation = !isset ($nextURI ['scheme']))
-              $nextURI ['scheme'] = ($Request->useTLS () ? 'https' : 'http');
+              $nextURI ['scheme'] = ($httpRequest->useTLS () ? 'https' : 'http');
             
             if (!isset ($nextURI ['host'])) {
-              $nextURI ['host'] = $Request->getHostname ();
+              $nextURI ['host'] = $httpRequest->getHostname ();
               $rebuildLocation = true;
               
-              if ($Request->getPort () != ($Request->useTLS () ? 443 : 80))
-                $nextURI ['port'] = $Request->getPort ();
+              if ($httpRequest->getPort () != ($httpRequest->useTLS () ? 443 : 80))
+                $nextURI ['port'] = $httpRequest->getPort ();
               else
                 unset ($nextURI ['port']);
             }
@@ -466,7 +466,7 @@
               (strpos ($nextURI ['path'], '/../') !== false) ||
               (strpos ($nextURI ['path'], '/./') !== false)
             ) {
-              $pathStackIn = explode ('/', dirname ($Request->getURI ()) . '/' . $nextURI ['path']);
+              $pathStackIn = explode ('/', dirname ($httpRequest->getURI ()) . '/' . $nextURI ['path']);
               $pathStack = [ ];
               $rebuildLocation = true;
               
@@ -487,33 +487,33 @@
               $nextLocation = $nextURI ['scheme'] . '://' . $nextURI ['host'] . (isset ($nextURI ['port']) ? ':' . $nextURI ['port'] : '') . $nextURI ['path'] . (isset ($nextURI ['query']) ? '?' . $nextURI ['query'] : '');
             
             // Fire a callback first
-            $this->___callback ('httpRequestRediect', $Request, $nextLocation, $Header, $Body);
+            $this->___callback ('httpRequestRediect', $httpRequest, $nextLocation, $Header, $Body);
             
             // Set the new location as destination
-            $Request->setURL ($nextLocation);
+            $httpRequest->setURL ($nextLocation);
             
             // Lower the number of max requests
-            $Request->setMaxRedirects ($maxRedirects - 1);
+            $httpRequest->setMaxRedirects ($maxRedirects - 1);
             
             if ($Status < 307) {
-              $Request->setMethod ('GET');
-              $Request->setBody (null);
+              $httpRequest->setMethod ('GET');
+              $httpRequest->setBody (null);
             }
             
             // Re-Enqueue the request
             return $cookiePromise->then (
-              function () use ($factorySession, $Request) {
-                return $this->requestInternal ($factorySession, $Request, true);
+              function () use ($factorySession, $httpRequest) {
+                return $this->requestInternal ($factorySession, $httpRequest, true);
               }
             );
           }
           
           // Fire the callbacks
-          $this->___callback ('httpRequestResult', $Request, $Header, $Body);
+          $this->___callback ('httpRequestResult', $httpRequest, $Header, $Body);
           
           return $cookiePromise->then (
-            function () use ($Body, $Header, $Request) {
-              return new Events\Promise\Solution ([ $Body, $Header, $Request ]);
+            function () use ($Body, $Header, $httpRequest) {
+              return new Events\Promise\Solution ([ $Body, $Header, $httpRequest ]);
             }
           );
         }
