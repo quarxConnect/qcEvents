@@ -202,6 +202,53 @@
     }
     // }}}
     
+    // {{{ getEventBase
+    /**
+     * Retrive the handle of the current event-loop-handler
+     * 
+     * @access public
+     * @return Events\Base
+     **/
+    public function getEventBase () : ?Events\Base {
+      if (!$this->sourceStream)
+        return null;
+      
+      return $this->sourceStream->getEventBase ();
+    }
+    // }}}
+    
+    // {{{ setEventBase
+    /**
+     * Set the Event-Base of this source
+     * 
+     * @param Events\Base $eventBase
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setEventBase (\quarxConnect\Events\Base $eventBase) : void {
+      if (!$this->sourceStream)
+        return;
+      
+      $this->sourceStream->setEventBase ($eventBase);
+    }
+    // }}}
+    
+    // {{{ unsetEventBase
+    /**
+     * Remove any assigned event-loop-handler
+     * 
+     * @access public
+     * @return void
+     **/
+    public function unsetEventBase () : void {
+      if (!$this->sourceStream)
+        return;
+      
+      $this->sourceStream->unsetEventBase ();
+    }
+    // }}}
+    
     // {{{ getLocalVersion
     /**
      * Retrive the local version-string of this stream
