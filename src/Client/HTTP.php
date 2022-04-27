@@ -498,7 +498,7 @@
             return $cookiePromise->then (
               function () use ($factorySession, $httpRequest, $requestTimer) {
                 if ($requestTimer)
-                  $requestTimer->stop ();
+                  $requestTimer->cancel ();
                 
                 return $this->requestInternal ($factorySession, $httpRequest, false);
               }
@@ -570,7 +570,7 @@
             return $cookiePromise->then (
               function () use ($factorySession, $httpRequest, $requestTimer) {
                 if ($requestTimer)
-                  $requestTimer->stop ();
+                  $requestTimer->cancel ();
                 
                 return $this->requestInternal ($factorySession, $httpRequest, true);
               }
@@ -578,7 +578,7 @@
           }
           
           if ($requestTimer)
-            $requestTimer->stop ();
+            $requestTimer->cancel ();
           
           // Fire the callbacks
           $this->___callback ('httpRequestResult', $httpRequest, $responseHeader, $Body);
