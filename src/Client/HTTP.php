@@ -37,6 +37,9 @@
     /* Path to save session-cookies at */
     private $sessionPath = null;
     
+    /* Timeout for pending requests */
+    private $requestTimeout = null;
+    
     // {{{ __construct
     /**
      * Create a new HTTP-Client Pool
@@ -100,6 +103,20 @@
      **/
     public function setSocketFactory (Events\ABI\Socket\Factory $socketFactory) : void {
       $this->socketFactory = $socketFactory;
+    }
+    // }}}
+    
+    // {{{ setRequestTimeout
+    /**
+     * Set a timeout for pending requests
+     * 
+     * @param float $requestTimeout (optional)
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setRequestTimeout (float $requestTimeout = null) {
+      $this->requestTimeout = $requestTimeout;
     }
     // }}}
     
@@ -324,16 +341,17 @@
      * @param Events\ABI\Socket\Factory $factorySession
      * @param Stream\HTTP\Request $Request
      * @param bool $authenticationPreflight
+     * @param Events\Timer $requestTimer (optional)
      * 
      * @access private
      * @return Events\Promise
      **/
-    private function requestInternal (Events\ABI\Socket\Factory $factorySession, Stream\HTTP\Request $httpRequest, $authenticationPreflight) : Events\Promise {
+    private function requestInternal (Events\ABI\Socket\Factory $factorySession, Stream\HTTP\Request $httpRequest, bool $authenticationPreflight, Events\Timer $requestTimer = null) : Events\Promise {
       // Push to our request-queue
       $this->httpRequests [] = $httpRequest;
       
       // Remember some immutable parameters from request
-      $Index = array_search ($httpRequest, $this->httpRequests, true);
+      $requestIndex = array_search ($httpRequest, $this->httpRequests, true);
       $Method = $httpRequest->getMethod ();
       $Username = $httpRequest->getUsername ();
       $Password = $httpRequest->getPassword ();
@@ -355,14 +373,42 @@
       } else
         $orgCookies = null;
       
-      // Acquire a socket for this
-      return $factorySession->createConnection (
+      // Create defered promise
+      $deferedPromise = new Events\Promise\Defered ($factorySession->getEventBase ());
+      
+      // Setup timer for timeouts
+      $requestTimeout = false;
+      
+      if (!$requestTimer && ($this->requestTimeout !== null))
+        $requestTimer = $factorySession->getEventBase ()->addTimeout ($this->requestTimeout);
+      
+      if ($requestTimer) {
+        $requestTimer->restart ();
+        
+        $requestTimer->then (
+          function () use ($deferedPromise, &$requestTimeout) {
+            $requestTimeout = true;
+            $deferedPromise->reject ('Timeout');
+          }
+        );
+      }
+      
+      // Acquire a stream for this
+      $factorySession->createConnection (
         $httpRequest->getHostname (),
         $httpRequest->getPort (),
         Events\Socket::TYPE_TCP,
         $httpRequest->useTLS ()
       )->then (
-        function (Events\ABI\Stream $httpConnection) use ($httpRequest, $authenticationPreflight, $Username, $Password) {
+        function (Events\ABI\Stream $httpConnection) use ($httpRequest, $authenticationPreflight, $Username, $Password, $factorySession, $requestTimer, &$requestTimeout) {
+          // Check if we already reached a timeout
+          if ($requestTimeout) {
+            $httpConnection->close ();
+            $factorySession->releaseConnection ($httpConnection);
+            
+            throw new \Exception ('Timeout');
+          }
+            
           // Handle authenticiation more special
           if (!$httpRequest->hasBody () && $authenticationPreflight && (($Username !== null) || ($Password !== null))) {
             $httpRequest->setMethod ('OPTIONS');
@@ -376,15 +422,25 @@
           // Raise event
           $this->___callback ('httpRequestStart', $httpRequest);
           
+          // Close the connection on timeout
+          if ($requestTimer)
+            $requestTimer->then (
+              function () use ($httpConnection) {
+                $httpConnection->close ();
+              }
+            );
+          
           // Watch events on the request
           return $httpRequest->once ('httpRequestResult');
         }
-      )->then (
-        function (Stream\HTTP\Header $Header = null, $Body = null)
-        use ($httpRequest, $authenticationPreflight, $Username, $Password, $Method, $Index, $orgCookies, $factorySession) {
+      )->finally (
+        function () use ($requestIndex) {
           // Remove from request-queue
-          unset ($this->httpRequests [$Index]);
-          
+          unset ($this->httpRequests [$requestIndex]);
+        }
+      )->then (
+        function (Stream\HTTP\Header $responseHeader = null, $Body = null)
+        use ($httpRequest, $authenticationPreflight, $Username, $Password, $Method, $orgCookies, $factorySession, $requestTimer, &$requestTimeout) {
           // Restore cookies on request
           if ($orgCookies !== null) {
             $httpRequest->unsetField ('Cookie');
@@ -396,9 +452,12 @@
           // Retrive the current socket for the request
           if ($httpConnection = $httpRequest->getPipeSource ()) {
             // Check if we may reuse the socket
-            if (!$Header ||
-                (($Header->getVersion () < 1.1) && ($Header->getField ('Connection') != 'keep-alive')) ||
-                ($Header->getField ('Connection') == 'close'))
+            if (
+              $requestTimeout ||
+              !$responseHeader ||
+              (($responseHeader->getVersion () < 1.1) && ($responseHeader->getField ('Connection') != 'keep-alive')) ||
+              ($responseHeader->getField ('Connection') == 'close')
+            )
               $httpConnection->close ();
             
             // Release the socket (allow to reuse it)
@@ -406,23 +465,27 @@
             $factorySession->releaseConnection ($httpConnection);
           }
           
+          // Check if we already reached a timeout
+          if ($requestTimeout)
+            throw new \Exception ('Timeout');
+          
           // Abort here if no header was received
-          if (!$Header)
+          if (!$responseHeader)
             throw new \exception ('No header was received');
           
           // Retrive the status of the response
-          $Status = $Header->getStatus ();
+          $Status = $responseHeader->getStatus ();
           
           // Check wheter to process cookies
-          if (($this->sessionCookies !== null) && $Header->hasField ('Set-Cookie'))
-            $cookiePromise = $this->updateSessionCookies ($httpRequest, $Header)->catch (function () { });
+          if (($this->sessionCookies !== null) && $responseHeader->hasField ('Set-Cookie'))
+            $cookiePromise = $this->updateSessionCookies ($httpRequest, $responseHeader)->catch (function () { });
           else
             $cookiePromise = Events\Promise::resolve ();
           
           // Check for authentication
           if ($authenticationPreflight &&
               (($Username !== null) || ($Password !== null)) &&
-              is_array ($authenticationSchemes = $Header->getAuthenticationInfo ())) {
+              is_array ($authenticationSchemes = $responseHeader->getAuthenticationInfo ())) {
             // Push schemes to request
             foreach ($authenticationSchemes as $authenticationScheme)
               $httpRequest->addAuthenticationMethod ($authenticationScheme ['scheme'], $authenticationScheme ['params']);
@@ -433,7 +496,10 @@
             
             // Re-enqueue the request
             return $cookiePromise->then (
-              function () use ($factorySession, $httpRequest) {
+              function () use ($factorySession, $httpRequest, $requestTimer) {
+                if ($requestTimer)
+                  $requestTimer->stop ();
+                
                 return $this->requestInternal ($factorySession, $httpRequest, false);
               }
             );
@@ -441,7 +507,7 @@
           
           // Check for redirects
           if (
-            ($nextLocation = $Header->getField ('Location')) &&
+            ($nextLocation = $responseHeader->getField ('Location')) &&
             (($Status >= 300) && ($Status < 400)) &&
             (($maxRedirects = $httpRequest->getMaxRedirects ()) > 0) &&
             is_array ($nextURI = parse_url ($nextLocation))
@@ -487,7 +553,7 @@
               $nextLocation = $nextURI ['scheme'] . '://' . $nextURI ['host'] . (isset ($nextURI ['port']) ? ':' . $nextURI ['port'] : '') . $nextURI ['path'] . (isset ($nextURI ['query']) ? '?' . $nextURI ['query'] : '');
             
             // Fire a callback first
-            $this->___callback ('httpRequestRediect', $httpRequest, $nextLocation, $Header, $Body);
+            $this->___callback ('httpRequestRediect', $httpRequest, $nextLocation, $responseHeader, $Body);
             
             // Set the new location as destination
             $httpRequest->setURL ($nextLocation);
@@ -502,22 +568,33 @@
             
             // Re-Enqueue the request
             return $cookiePromise->then (
-              function () use ($factorySession, $httpRequest) {
+              function () use ($factorySession, $httpRequest, $requestTimer) {
+                if ($requestTimer)
+                  $requestTimer->stop ();
+                
                 return $this->requestInternal ($factorySession, $httpRequest, true);
               }
             );
           }
           
+          if ($requestTimer)
+            $requestTimer->stop ();
+          
           // Fire the callbacks
-          $this->___callback ('httpRequestResult', $httpRequest, $Header, $Body);
+          $this->___callback ('httpRequestResult', $httpRequest, $responseHeader, $Body);
           
           return $cookiePromise->then (
-            function () use ($Body, $Header, $httpRequest) {
-              return new Events\Promise\Solution ([ $Body, $Header, $httpRequest ]);
+            function () use ($Body, $responseHeader, $httpRequest) {
+              return new Events\Promise\Solution ([ $Body, $responseHeader, $httpRequest ]);
             }
           );
         }
+      )->then (
+        [ $deferedPromise, 'resolve' ],
+        [ $deferedPromise, 'reject' ]
       );
+      
+      return $deferedPromise->getPromise ();
     }
     // }}}
     
