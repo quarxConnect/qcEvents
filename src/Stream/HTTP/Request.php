@@ -264,13 +264,13 @@
     /**
      * Store HTTP-Credentials
      * 
-     * @param string $authUsername
-     * @param string $authPassword
+     * @param string $authUsername (optional)
+     * @param string $authPassword (optional)
      * 
      * @access public
      * @return void
      **/
-    public function setCredentials (string $authUsername, string $authPassword) : void {
+    public function setCredentials (string $authUsername = null, string $authPassword = null) : void {
       // Store the new credentials
       $this->authUsername = $authUsername;
       $this->authPassword = $authPassword;
