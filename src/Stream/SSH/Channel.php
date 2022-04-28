@@ -468,6 +468,9 @@
      **/
     public function close () : Events\Promise {
       // Check if we are already trying to close the channel
+      if ($this->isClosed () || !$this->remoteID)
+        return Events\Promise::resolve ();
+      
       if (!$this->isClosing) {
         // Mark ourself as closing
         $this->isClosing = true;
@@ -614,7 +617,8 @@
       // Close the remote end of the channel
       } elseif ($sshMessage instanceof ChannelClose) {
         // Check if we should close as well
-        $this->close ();
+        if (!$this->isClosing)
+          $this->close ();
         
         // Mark the stream as closed (and raise events for this)
         parent::close ();
