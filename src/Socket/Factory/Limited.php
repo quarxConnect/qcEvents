@@ -265,6 +265,9 @@
         if (!$nextRequest)
           $nextRequest = array_shift ($this->pendingConnections);
         
+        // Move to active (although it's actually pending)
+        $this->activeConnections [] = $nextRequest;
+        
         // Request the connection at our parent
         $this->socketFactory->createConnection (
           $nextRequest [1],
@@ -281,15 +284,22 @@
               return $activeConnection;
             }
             
+            // Replace promise with stream on active connections
             $requestPromise = $this->activeConnections [$requestIndex][0];
             $this->activeConnections [$requestIndex][0] = $activeConnection;
             
+            // Resolve the promise
             $requestPromise->resolve ($activeConnection);
+            
+            // Check for additional pending connections
+            $this->checkPendingConnections ();
           },
           function () use ($nextRequest) {
             // Remove from active connections
             if (($requestIndex = array_search ($nextRequest, $this->activeConnections, true)) !== false)
               unset ($this->activeConnections [$requestIndex]);
+            else
+              trigger_error ('Connection-Request not found on active connections - this should never happen', E_USER_WARNING);
             
             // Forward the rejection
             call_user_func_array ([ $nextRequest [0], 'reject' ], func_get_args ());
@@ -298,9 +308,6 @@
             $this->checkPendingConnections ();
           }
         );
-        
-        // Move to active (although it's actually pending)
-        $this->activeConnections [] = $nextRequest;
       }
     }
     // }}}
