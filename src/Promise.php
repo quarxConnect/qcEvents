@@ -163,9 +163,12 @@
                 $promiseResult = [ ];
                 
                 foreach ($resultValues as $resultIndex=>$currentResults)
-                  if ((count ($currentResults) == 1) && !isset ($promiseResult [$resultIndex]))
-                    $promiseResult [$resultIndex] = array_shift ($currentResults);
-                  else
+                  if (!isset ($promiseResult [$resultIndex])) {
+                    if (count ($currentResults) == 1)
+                      $promiseResult [$resultIndex] = array_shift ($currentResults);
+                    else
+                      $promiseResult [$resultIndex] = $currentResults;
+                  } else
                     foreach ($currentResults as $currentResult)
                       $promiseResult [] = $currentResult;
                 
