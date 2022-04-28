@@ -563,7 +563,9 @@
         '127.0.0.1',
         rand (1025, 0xffff),
         array_shift ($remoteHost),
-        $remotePort
+        $remotePort,
+        false,
+        Events\Socket::CONNECT_TIMEOUT
       )->catch (
         function () use ($remoteHost, $remotePort) {
           // Check if there is another hostname/ip to try
