@@ -6,7 +6,7 @@
   use quarxConnect\Events;
 
   final class TimerTest extends TestCase {
-    private const TOLERANCE = 0.03;
+    private const TOLERANCE = 1.3;
     
     /**
      * @dataProvider timerParameters
@@ -29,7 +29,7 @@
       
       $this->assertLessThan (
         $expectedTime * self::TOLERANCE,
-        abs ($duration - $expectedTime)
+        $duration
       );
     }
     
@@ -80,7 +80,7 @@
       
       $this->assertLessThan (
         $expectedTime * self::TOLERANCE,
-        abs ($duration - $expectedTime)
+        $duration
       );
     }
     
@@ -112,7 +112,6 @@
       $eventBase = Events\Base::singleton ();
       $timer = $eventBase->addTimeout ($timerInterval, true);
       $defered = new Events\Promise\Defered ();
-      $startTime = microtime (true);
       $counter = 0;
       
       $timer->then (
@@ -128,6 +127,8 @@
           );
         }
       );
+      
+      $startTime = microtime (true);
       
       Events\Synchronizer::do (
         $eventBase,
@@ -145,7 +146,7 @@
       
       $this->assertLessThan (
         $expectedTime * self::TOLERANCE,
-        abs ($duration - $expectedTime)
+        $duration
       );
     }
   }

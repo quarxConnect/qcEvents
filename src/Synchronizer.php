@@ -240,7 +240,7 @@
       $onLoop = true;
       
       while (!$resultReady)
-        $eventBase->loop (true);
+        $eventBase->loop (true, true);
       
       if ($coughtException && $this->throwExceptions)
         throw $coughtException;

@@ -42,8 +42,8 @@
     private $forcedEvents = [ ];
     
     /* Timer-Events */
-    private $Timers = [ ];
-    private $TimerNext = null;
+    private $activeTimers = [ ];
+    private $timerNext = null;
     
     /* Loop-State */
     private const LOOP_STATE_IDLE = -1;
@@ -110,15 +110,15 @@
       }
       
       // Append timers to result
-      if (count ($this->Timers) > 0) {
+      if (count ($this->activeTimers) > 0) {
         $registeredTimers = [ ];
         
-        foreach ($this->Timers as $secTimers)
+        foreach ($this->activeTimers as $secTimers)
           foreach ($secTimers as $usecTimers)
             $registeredTimers = array_merge ($registeredTimers, array_values ($usecTimers));
         
         $Result ['registeredTimers'] = $registeredTimers;
-        $Result ['nextTimerScheduledAt'] = [ 'sec' => $this->TimerNext [0], 'usec' => $this->TimerNext [1] ];
+        $Result ['nextTimerScheduledAt'] = [ 'sec' => $this->timerNext [0], 'usec' => $this->timerNext [1] ];
       }
       
       // Append forced events to result
@@ -350,20 +350,20 @@
      * @param Timer $Timer
      * 
      * @access public
-     * @return bool TRUE if the timer was added, FALSE if Timer is already on queue
+     * @return void
      **/
-    public function addTimer (Timer $Timer) {
+    public function addTimer (Timer $newTimer) : void {
       // Check if the timer is already enqueue
-      foreach ($this->Timers as $sTime=>$Timers)
-        foreach ($Timers as $uTime=>$Instances)
-          if (in_array ($Timer, $Instances, true))
-            return false;
+      foreach ($this->activeTimers as $usecTimeouts)
+        foreach ($usecTimeouts as $timerInstances)
+          if (in_array ($newTimer, $timerInstances, true))
+            return;
       
       // Get interval the timer
-      $Interval = $Timer->getInterval ();
+      $timerInterval = $newTimer->getInterval ();
       
-      $Seconds = floor ($Interval);
-      $uSeconds = ($Interval - $Seconds) * 1000000;
+      $Seconds = floor ($timerInterval);
+      $uSeconds = ($timerInterval - $Seconds) * 1000000;
       
       // Enqueue the timer
       $Then = $this->getTimer ();
@@ -377,24 +377,24 @@
       }
       
       // Enqueue the event
-      if (!isset ($this->Timers [$Then [0]])) {
-        $this->Timers [$Then [0]] = [ $Then [1] => [ $Timer ] ];
+      if (!isset ($this->activeTimers [$Then [0]])) {
+        $this->activeTimers [$Then [0]] = [ $Then [1] => [ $newTimer ] ];
         
-        ksort ($this->Timers, SORT_NUMERIC);
-      } elseif (!isset ($this->Timers [$Then [0]][$Then [1]])) {
-        $this->Timers [$Then [0]][$Then [1]] = [ $Timer ];
+        ksort ($this->activeTimers, SORT_NUMERIC);
+      } elseif (!isset ($this->activeTimers [$Then [0]][$Then [1]])) {
+        $this->activeTimers [$Then [0]][$Then [1]] = [ $newTimer ];
         
-        ksort ($this->Timers [$Then [0]], SORT_NUMERIC);
+        ksort ($this->activeTimers [$Then [0]], SORT_NUMERIC);
       } else
-        $this->Timers [$Then [0]][$Then [1]][] = $Timer;
+        $this->activeTimers [$Then [0]][$Then [1]][] = $newTimer;
       
       // Set the next timer
-      if (($this->TimerNext === null) ||
-          ($this->TimerNext [0] > $Then [0]) ||
-          (($this->TimerNext [0] == $Then [0]) && ($this->TimerNext [1] > $Then [1])))
-        $this->TimerNext = $Then;
-      
-      return true;
+      if (
+        ($this->timerNext === null) ||
+        ($this->timerNext [0] > $Then [0]) ||
+        (($this->timerNext [0] == $Then [0]) && ($this->timerNext [1] > $Then [1]))
+      )
+        $this->timerNext = $Then;
     }
     // }}}
     
@@ -410,25 +410,25 @@
     public function clearTimer (Timer $Timer) {
       $Found = false;
       
-      foreach ($this->Timers as $Second=>$Timers) {
+      foreach ($this->activeTimers as $Second=>$Timers) {
         foreach ($Timers as $uSecond=>$Events) {
           foreach ($Events as $ID=>$pTimer)
             if ($pTimer === $Timer) {
               $Found = true;
               
-              unset ($this->Timers [$Second][$uSecond][$ID]);
+              unset ($this->activeTimers [$Second][$uSecond][$ID]);
               break;
             }
           
-          if (count ($this->Timers [$Second][$uSecond]) == 0)
-            unset ($this->Timers [$Second][$uSecond]);
+          if (count ($this->activeTimers [$Second][$uSecond]) == 0)
+            unset ($this->activeTimers [$Second][$uSecond]);
           
           if ($Found)
             break;
         }
         
-        if (count ($this->Timers [$Second]) == 0)
-          unset ($this->Timers [$Second]);
+        if (count ($this->activeTimers [$Second]) == 0)
+          unset ($this->activeTimers [$Second]);
         
         if ($Found)
           break;
@@ -446,11 +446,12 @@
      * Enter the event-loop
      * 
      * @param bool $loopSingle (optional) Just process all pending events once
+     * @param bool $singleWait (optional) Wait for timers if neccessary
      * 
      * @access public
      * @return void
      **/
-    public function loop (bool $loopSingle = false) : void {
+    public function loop (bool $loopSingle = false, bool $singleWait = false) : void {
       // Don't enter the loop twice
       $onLoop = ($this->loopState != self::LOOP_STATE_IDLE);
       
@@ -475,7 +476,7 @@
         }
         
         // Check if there are queued event-handlers
-        if ((count ($this->fdOwner) == 0) && (count ($this->Timers) == 0)) {
+        if ((count ($this->fdOwner) == 0) && (count ($this->activeTimers) == 0)) {
           if (!$loopSingle && (count ($this->forcedEvents) > 0))
             continue;
           
@@ -488,16 +489,19 @@
         $errorFDs = $this->errorFDs;
         
         // Check if there are events forced 
-        if ($loopSingle || (count ($this->forcedEvents) > 0)) {
+        if (
+          ($loopSingle && (!$singleWait || !$this->timerNext)) ||
+          (count ($this->forcedEvents) > 0)
+        ) {
           $usecs = 1;
         
         // Check if there is a timer queued
-        } elseif ($this->TimerNext !== null) {
+        } elseif ($this->timerNext !== null) {
           // Get the current time
           $Now = $this->getTimer ();
           
           // Return the wait-time
-          $usecs = (int)max (1, (($this->TimerNext [0] - $Now [0]) * 1000000) + ($this->TimerNext [1] - $Now [1]));
+          $usecs = (int)max (1, (($this->timerNext [0] - $Now [0]) * 1000000) + ($this->timerNext [1] - $Now [1]));
         } else
           $usecs = 5000000;
         
@@ -506,7 +510,7 @@
           $eventCount = 0;
           
           // Check if there are timers enqueued
-          if ($this->TimerNext === null)
+          if ($this->timerNext === null)
             trigger_error ('Empty loop without timers');
           
           // Sleep if we are in a normal loop
@@ -514,13 +518,13 @@
             usleep ($usecs);
         } else {
           $secs = (int)floor ($usecs / 1000000);
-          $usecs -= $secs * 1000000;
+          $usecs %= 1000000;
           
           $eventCount = stream_select ($readFDs, $writeFDs, $errorFDs, $secs, $usecs);
         }
         
         // Check for pending signals
-        if ($this->TimerNext !== null)
+        if ($this->timerNext !== null)
           $this->runTimers ();
         
         // Stop here if there are no events pending
@@ -610,28 +614,37 @@
      **/
     private function runTimers () {
       // Check if there is a timer queued
-      if ($this->TimerNext === null)
+      if ($this->timerNext === null)
         return;
       
       // Get the current time
       $Now = $this->getTimer ();
       
       // Check wheter to run timers
-      if (($this->TimerNext [0] > $Now [0]) ||
-          (($this->TimerNext [0] == $Now [0]) && ($this->TimerNext [1] > $Now [1])))
+      if (
+        ($this->timerNext [0] > $Now [0]) ||
+        (($this->timerNext [0] == $Now [0]) && ($this->timerNext [1] > $Now [1]))
+      )
         return;
       
       // Run all timers
-      $Current = $this->TimerNext;
+      $Current = $this->timerNext;
       
-      foreach ($this->Timers as $Second=>$Timers) {
+      foreach ($this->activeTimers as $Second=>$Timers) {
         // Check if we have moved too far
         if ($Second > $Now [0]) {
-          if (($this->TimerNext !== null) &&
-              (($this->TimerNext [0] == $Current [0]) || ($this->TimerNext [0] > $Second))) {
-            reset ($this->Timers);
+          if (
+            ($this->timerNext !== null) &&
+            (($this->timerNext [0] == $Current [0]) || ($this->timerNext [0] > $Second))
+          ) {
+            reset ($this->activeTimers);
             
-            $this->TimerNext = [ key ($this->Timers), key ($Timers) ];
+            if (($nextSecond = key ($this->activeTimers)) !== null) {
+              reset ($this->activeTimers [$nextSecond]);
+              
+              $this->timerNext = [ $nextSecond, key ($this->activeTimers [$nextSecond]) ];
+            } else
+              $this->timerNext = null;
           }
           
           break;
@@ -640,7 +653,7 @@
         foreach ($Timers as $uSecond=>$pTimers) {
           // Check if we are dealing with realy present events and would move too far
           if (($Second == $Now [0]) && ($uSecond > $Now [1])) {
-            $this->TimerNext [1] = $uSecond;
+            $this->timerNext [1] = $uSecond;
             
             break (2);
           }
@@ -648,7 +661,7 @@
           // Remove this distinct usec from queue
           // We do this already here because $Timer->run() might re-enqueue timers
           // so they have to be removed before
-          unset ($this->Timers [$Second][$uSecond]);
+          unset ($this->activeTimers [$Second][$uSecond]);
           
           // Run all events
           foreach ($pTimers as $Timer)
@@ -660,20 +673,25 @@
         }
         
         // Remove the second if all timers were fired
-        if (($Second < $Now [0]) || (isset ($this->Timers [$Second]) && (count ($this->Timers [$Second]) == 0)))
-          unset ($this->Timers [$Second]);
+        if (
+          ($Second < $Now [0]) ||
+          (isset ($this->activeTimers [$Second]) && (count ($this->activeTimers [$Second]) == 0))
+        )
+          unset ($this->activeTimers [$Second]);
       }
       
       // Check wheter to dequeue the timer
-      if (count ($this->Timers) == 0)
-        $this->TimerNext = null;
-      elseif (($this->TimerNext [0] == $Current [0]) &&
-              ($this->TimerNext [1] == $Current [1])) {
-        reset ($this->Timers);
+      if (count ($this->activeTimers) == 0)
+        $this->timerNext = null;
+      elseif (
+        ($this->timerNext [0] == $Current [0]) &&
+        ($this->timerNext [1] == $Current [1])
+      ) {
+        reset ($this->activeTimers);
         
-        $this->TimerNext = [
-          key ($this->Timers),
-          key (current ($this->Timers))
+        $this->timerNext = [
+          key ($this->activeTimers),
+          key (current ($this->activeTimers))
         ];
       }
     }
