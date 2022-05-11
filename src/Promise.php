@@ -124,7 +124,7 @@
           if (!$eventBase)
             $eventBase = $promiseValue->eventBase;
         } else
-          $resultValues [$promiseIndex] = [ $promiseValue ];
+          $resultValues [$promiseIndex] = $promiseValue;
       
       // Check if there is any promise to wait for
       if (count ($realPromises) == 0) {
@@ -163,14 +163,10 @@
                 $promiseResult = [ ];
                 
                 foreach ($resultValues as $resultIndex=>$currentResults)
-                  if (!isset ($promiseResult [$resultIndex])) {
-                    if (count ($currentResults) == 1)
-                      $promiseResult [$resultIndex] = array_shift ($currentResults);
-                    else
-                      $promiseResult [$resultIndex] = $currentResults;
-                  } else
-                    foreach ($currentResults as $currentResult)
-                      $promiseResult [] = $currentResult;
+                  if (count ($currentResults) == 1)
+                    $promiseResult [$resultIndex] = array_shift ($currentResults);
+                  else
+                    $promiseResult [$resultIndex] = $currentResults;
                 
                 call_user_func ($resolveFunction, $promiseResult);
               },

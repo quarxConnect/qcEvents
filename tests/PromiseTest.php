@@ -333,6 +333,36 @@
       $this->assertTrue ($secondRejection);
     }
     
+    public function testAll () : void {
+      $eventBase = Events\Base::singleton ();
+      
+      $allResults = Events\Synchronizer::do (
+        $eventBase,
+        Events\Promise::all ([
+          Events\Promise::resolve (42),
+          'x' => Events\Promise::resolve (19, 23, 42),
+        ])
+      );
+      
+      $this->assertCount (2, $allResults);
+      
+      $this->assertTrue (isset ($allResults [0]));
+      $this->assertEquals (42, $allResults [0]);
+      
+      $this->assertTrue (isset ($allResults ['x']));
+      $this->assertEquals ([ 19, 23, 42 ], $allResults ['x']);
+      
+      $this->expectException (\Exception::class);
+      
+      Events\Synchronizer::do (
+        $eventBase,
+        Events\Promise::all ([
+          Events\Promise::resolve (42),
+          Events\Promise::reject ('No, no, no'),
+        ])
+      );
+    }
+    
     public function testAllSettled () : void {
       $eventBase = Events\Base::singleton ();
       
