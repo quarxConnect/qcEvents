@@ -237,16 +237,18 @@
     public static function setLabel ($Label, $Offset = null, &$Labels = [ ]) {
       // Make sure we have the label split into parts
       if ($Label instanceof Label) {
-        $Name = strtolower ($Label);
+        $Name = strtolower ((string)$Label);
         $Label = $Label->getParts ();
-      } elseif (!is_array ($Label)) {
+      } elseif (is_string ($Label)) {
         $Name = strtolower ($Label);
         $Label = explode ('.', $Label);
         
         if ((($l = strlen ($Name)) < 1) || ($Name [$l - 1] != '.'))
           $Name .= '.';
-      } else
+      } elseif (is_array ($Label))
         $Name = strtolower (implode ('.', $Label)) . '.';
+      else
+        throw new \Exception ('Invalid label');
       
       // Make sure the name is not too long
       if (strlen ($Name) > 255)
