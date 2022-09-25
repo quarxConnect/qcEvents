@@ -50,8 +50,8 @@
     public const UNREACHABLE_TIMEOUT = 10;
     
     /* Buffers */
-    protected const READ_TCP_BUFFER = 4096;
-    protected const READ_UDP_BUFFER = 1500;
+    public const READ_TCP_BUFFER = 4096;
+    public const READ_UDP_BUFFER = 1500;
     
     protected const READ_BUFFER_SIZE = 10485760;
     
