@@ -2,7 +2,7 @@
 
   /**
    * quarxConnect Events - Multi-Purpose Server Interface
-   * Copyright (C) 2013-2021 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2013-2022 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -52,7 +52,7 @@
     /* Type of our server-socket */
     private $Type = Server::TYPE_TCP;
     
-    /* Class for new child-connections (should be at least qcEvents_Socket) */
+    /* Class for new child-connections (should be at least Events\Socket) */
     private $childClass = Server::CHILD_CLASS_BASE;
     
     /* Use Child-Class as pipe-consumer, not as socket */
@@ -72,8 +72,8 @@
     
     /* Preset of TLS-Options */
     private $tlsOptions = [
-      'ciphers' => 'ECDHE:!aNULL:!WEAK',
-      'verify_peer' => false,
+      'ciphers'          => 'ECDHE:!aNULL:!WEAK',
+      'verify_peer'      => false,
       'verify_peer_name' => false,
     ];
     
@@ -162,7 +162,10 @@
      * @return resource
      **/
     public function getWriteFDforClient (Events\Socket $Client) {
-      if (($this->Type != self::TYPE_UDP) || !in_array ($Client, $this->Clients, true))
+      if (
+        ($this->Type != self::TYPE_UDP) ||
+        !in_array ($Client, $this->Clients, true)
+      )
         return null;
       
       return $this->Socket;
@@ -173,26 +176,23 @@
     /**
      * Set class to use for incoming connections
      * 
-     * @param string $Classname
-     * @param bool $Piped (optional) Treat the class as pipe-consumer, not as socket
+     * @param string $childClassname
+     * @param bool $isPiped (optional) Treat the class as pipe-consumer, not as socket
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function setChildClass (string $Classname, bool $Piped = false) : bool {
+    public function setChildClass (string $childClassname, bool $isPiped = false) : void {
       // Verify the class
-      if ((!$Piped && !is_a ($Classname, $this::CHILD_CLASS_BASE, true)) ||
-          ($Piped && !is_a ($Classname, Events\ABI\Consumer::class, true) && !is_a ($Classname, Events\ABI\Stream\Consumer::class, true))) {
-        trigger_error ($Classname . ' has to implement ' . ($Piped ? Events\ABI\Consumer::class . ' or ' . Events\ABI\Stream\Consumer::class : $this::CHILD_CLASS_BASE));
-        
-        return false;
-      }
+      if (
+        (!$isPiped && !is_a ($childClassname, $this::CHILD_CLASS_BASE, true)) ||
+        ($isPiped && !is_a ($childClassname, Events\ABI\Consumer::class, true) && !is_a ($childClassname, Events\ABI\Stream\Consumer::class, true))
+      )
+        throw new \ValueError ($childClassname . ' has to implement ' . ($isPiped ? Events\ABI\Consumer::class . ' or ' . Events\ABI\Stream\Consumer::class : $this::CHILD_CLASS_BASE));
       
       // Set the class
-      $this->childClass = $Classname;
-      $this->childClassPiped = $Piped;
-      
-      return true;
+      $this->childClass = $childClassname;
+      $this->childClassPiped = $isPiped;
     }
     // }}}
     
@@ -342,46 +342,46 @@
     /**
      * Create a the server-process
      * 
-     * @param enum $Type
-     * @param int $Port (optional)
-     * @param string $Host (optional)
-     * @param int $Backlog (optional)
+     * @param enum $socketType
+     * @param int $serverPort (optional)
+     * @param string $serverHost (optional)
+     * @param int $socketBacklog (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function listen (int $Type, int $Port = null, string $Host = null, int $Backlog = null) : bool {
+    public function listen (int $socketType, int $serverPort = null, string $serverHost = null, int $socketBacklog = null) : void {
       // Handle Context
-      if ($Backlog !== null)
-        $Context = stream_context_create ([ 'backlog' => $Backlog ]);
+      if ($socketBacklog !== null)
+        $streamContext = stream_context_create ([ 'backlog' => $socketBacklog ]);
       else
-        $Context = stream_context_create ([ ]);
-      
-      if ($Host === null)
-        $Host = '[::]';
+        $streamContext = stream_context_create ([ ]);
       
       // Create the socket
-      if ($Type == self::TYPE_UDP) {
-        $Proto = 'udp';
-        $Flags = \STREAM_SERVER_BIND;
-      } elseif ($Type == self::TYPE_TCP) {
-        $Proto = 'tcp';
-        $Flags = \STREAM_SERVER_BIND | \STREAM_SERVER_LISTEN;
+      if ($socketType == self::TYPE_UDP) {
+        $socketProto = 'udp';
+        $socketFlags = \STREAM_SERVER_BIND;
+      } elseif ($socketType == self::TYPE_TCP) {
+        $socketProto = 'tcp';
+        $socketFlags = \STREAM_SERVER_BIND | \STREAM_SERVER_LISTEN;
       } else
-        return false;
+        throw new \ValueError ('Invalid socket-type');
       
-      if ($Port === null)
-        $Port = 0;
+      $serverSocket = stream_socket_server (
+        $socketProto . '://' . ($serverHost ?? '[::]') . ':' . ($serverPort ?? 0),
+        $socketError,
+        $socketErrorMessage,
+        $socketFlags,
+        $streamContext
+      );
       
-      if (!is_resource ($Socket = stream_socket_server ($Proto . '://' . $Host . ':' . $Port, $ErrNo, $ErrStr, $Flags, $Context)))
-        return false;
+      if (!is_resource ($serverSocket))
+        throw new \Exception ('Failed to create server-socket: ' . $socketError . ' - ' . $socketErrorMessage);
       
-      $this->setServerSocket ($Socket, $Type, true);
+      $this->setServerSocket ($serverSocket, $socketType, true);
       
       // Fire callback
       $this->___callback ('serverOnline');
-      
-      return true;
     }
     // }}}
     
@@ -441,7 +441,7 @@
     public final function raiseRead () : void {
       // Handle UDP-Events
       if ($this->Type == self::TYPE_UDP) {
-        if (($Data = stream_socket_recvfrom ($this->Socket, qcEvents_Socket::READ_UDP_BUFFER, 0, $Remote)) === false)
+        if (($Data = stream_socket_recvfrom ($this->Socket, Events\Socket::READ_UDP_BUFFER, 0, $Remote)) === false)
           # TODO: What to do here?
           return;
         
