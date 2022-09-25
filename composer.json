@@ -29,5 +29,10 @@
         "psr-4" : {
             "quarxConnect\\Events\\" : "src/"
         }
+  },
+  "extra" : {
+    "branch-alias" : {
+      "dev-composer" : "0.0.1-dev"
     }
+  }
 }
