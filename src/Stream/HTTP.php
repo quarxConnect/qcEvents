@@ -49,7 +49,7 @@
     private $httpState = HTTP::HTTP_STATE_DISCONNECTED;
     
     /* Source for this HTTP-Stream */
-    private $Source = null;
+    private $streamSource = null;
     
     /* Don't try to read any body-data */
     private $bodySuppressed = false;
@@ -274,8 +274,10 @@
      **/
     public function close () : Events\Promise {
       // Unregister the source
-      $this->Source->removeHook ('eventClosed', [ $this, 'httpStreamClosed' ]);
-      $this->Source = null;
+      if ($this->streamSource) {
+        $this->streamSource->removeHook ('eventClosed', [ $this, 'httpStreamClosed' ]);
+        $this->streamSource = null;
+      }
       
       // Call our own handler
       $this->httpStreamClosed ();
@@ -299,12 +301,12 @@
      **/
     public function initConsumer (Events\ABI\Source $dataSource) : Events\Promise {
       // Check if this source is already set
-      if ($this->Source === $dataSource)
+      if ($this->streamSource === $dataSource)
         return Events\Promise::resolve ();
       
       // Check if there is an existing source
-      if ($this->Source)
-        $deinitPromise = $this->deinitConsumer ($this->Source)->catch (function () { });
+      if ($this->streamSource)
+        $deinitPromise = $this->deinitConsumer ($this->streamSource)->catch (function () { });
       else
         $deinitPromise = Events\Promise::resolve ();
       
@@ -315,7 +317,7 @@
           $this->httpSetState ($this::HTTP_STATE_CONNECTED);
           
           // Set the new source
-          $this->Source = $dataSource;
+          $this->streamSource = $dataSource;
           
           // Register hooks there
           $dataSource->addHook ('eventClosed', [ $this, 'httpStreamClosed' ]);
@@ -338,12 +340,12 @@
      **/
     public function initStreamConsumer (Events\ABI\Stream $Source) : Events\Promise {
       // Check if this source is already set
-      if ($this->Source === $Source)
+      if ($this->streamSource === $Source)
         return Events\Promise::resolve ();
       
       // Check if there is an existing source
-      if ($this->Source)
-        $Promise = $this->deinitConsumer ($this->Source)->catch (function () { });
+      if ($this->streamSource)
+        $Promise = $this->deinitConsumer ($this->streamSource)->catch (function () { });
       else
         $Promise = Events\Promise::resolve ();
       
@@ -354,7 +356,7 @@
           $this->httpSetState ($this::HTTP_STATE_CONNECTED);
           
           // Set the new source
-          $this->Source = $Source;
+          $this->streamSource = $Source;
           
           // Register hooks there
           $Source->addHook ('eventClosed', [ $this, 'httpStreamClosed' ]);
@@ -377,14 +379,14 @@
      **/
     public function deinitConsumer (Events\ABI\Source $Source) : Events\Promise {
       // Check if this is the right source
-      if ($this->Source !== $Source)
+      if ($this->streamSource !== $Source)
         return Events\Promise::resolve ();
       
       // Remove our hooks
       $Source->removeHook ('eventClosed', [ $this, 'httpStreamClosed' ]);
       
       // Unset the source
-      $this->Source = null;
+      $this->streamSource = null;
       
       // Raise an event for this
       $this->___callback ('eventUnpiped', $Source);
@@ -401,8 +403,8 @@
      * @return string
      **/
     public function getRemoteHost () {
-      if ($this->Source instanceof Events\Socket)
-        return $this->Source->getRemoteHost ();
+      if ($this->streamSource instanceof Events\Socket)
+        return $this->streamSource->getRemoteHost ();
     }
     // }}}
 
@@ -414,8 +416,8 @@
      * @return int
      **/
     public function getRemotePort () {
-      if ($this->Source instanceof Events\Socket)
-        return $this->Source->getRemotePort ();
+      if ($this->streamSource instanceof Events\Socket)
+        return $this->streamSource->getRemotePort ();
     }
     // }}}
     
@@ -447,7 +449,7 @@
       $this->bufferCompleteBody = false;
       $this->Header = null;
       $this->bodyEncodings = [ ];
-      $this->httpSetState ($this->Source ? $this::HTTP_STATE_CONNECTED : $this::HTTP_STATE_DISCONNECTED);
+      $this->httpSetState ($this->streamSource ? $this::HTTP_STATE_CONNECTED : $this::HTTP_STATE_DISCONNECTED);
     }
     // }}}
     
@@ -462,7 +464,7 @@
      **/
     protected function httpHeaderWrite (HTTP\Header $Header) : Events\Promise {
       // Make sure we have the right source for this
-      if (!$this->Source || !($this->Source instanceof Events\ABI\Sink))
+      if (!$this->streamSource || !($this->streamSource instanceof Events\ABI\Sink))
         return Events\Promise::reject ('No suitable source to write headers');
       
       if ($this->httpState != $this::HTTP_STATE_CONNECTED)
@@ -471,7 +473,7 @@
       // Try to write out the status
       $this->httpSetState ($this::HTTP_STATE_HEADER);
       
-      return $this->Source->write (strval ($Header))->then (
+      return $this->streamSource->write (strval ($Header))->then (
         function () use ($Header) {
           // Run the callback
           $this->___callback ('httpHeadersSent', $Header);
@@ -491,7 +493,7 @@
      * @return Events\ABI\Source
      **/
     public function getPipeSource () : ?Events\ABI\Source {
-      return $this->Source;
+      return $this->streamSource;
     }
     // }}}
     
@@ -535,8 +537,8 @@
       
       // Fire the callback
       if ($this->isPiped ()) {
-        $this->Source->removeHook ('eventClosed', [ $this, 'httpStreamClosed' ]);
-        $this->Source = null;
+        $this->streamSource->removeHook ('eventClosed', [ $this, 'httpStreamClosed' ]);
+        $this->streamSource = null;
         $this->___callback ('eventClosed');
       }
       
@@ -591,10 +593,10 @@
      * @return bool  
      **/
     public function isWatching ($Set = null) {
-      if (!$this->Source)
+      if (!$this->streamSource)
         return false;
       
-      return $this->Source->isWatching ($Set);
+      return $this->streamSource->isWatching ($Set);
     }
     // }}}
     
@@ -608,10 +610,10 @@
      * @return bool  
      **/  
     public function watchRead ($Set = null) {
-      if (!$this->Source)
+      if (!$this->streamSource)
         return false;
       
-      return $this->Source->watchRead ($Set);
+      return $this->streamSource->watchRead ($Set);
     }
     // }}}
     
