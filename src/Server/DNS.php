@@ -129,6 +129,8 @@
      * @access protected
      * @return Stream\DNS\Message If not NULL a direct reply is issued
      **/
-    protected function dnsQueryReceived (Stream\DNS\Message $Query) : ?Stream\DNS\Message { }
+    protected function dnsQueryReceived (Stream\DNS\Message $Query) : ?Stream\DNS\Message {
+      return null;
+    }
     // }}}
   }
