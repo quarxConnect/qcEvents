@@ -28,13 +28,13 @@
     /**
      * Set class to use for incoming connections
      * 
-     * @param string $Classname
-     * @param bool $Piped (optional) Treat the class as pipe-consumer, not as socket
+     * @param string $childClassname
+     * @param bool $isPiped (optional) Treat the class as pipe-consumer, not as socket
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function setChildClass (string $Classname, bool $Piped = false) : bool;
+    public function setChildClass (string $childClassname, bool $isPiped = false) : void;
     // }}}
     
     // {{{ addChildHook
@@ -75,15 +75,15 @@
     /**
      * Create a the server-process
      * 
-     * @param enum $Type
-     * @param int $Port (optional)
-     * @param string $Host (optional)
-     * @param int $Backlog (optional)
+     * @param enum $socketType
+     * @param int $serverPort (optional)
+     * @param string $serverHost (optional)
+     * @param int $socketBacklog (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function listen (int $Type, int $Port = null, string $Host = null, int $Backlog = null) : bool;
+    public function listen (int $Type, int $Port = null, string $Host = null, int $Backlog = null) : void;
     // }}}
     
     // {{{ close
