@@ -300,24 +300,24 @@
       $argc = count ($argv);
       
       if ($argc < 1)
-        return Promise::reject ('Missing Request-Arguement');
+        return Events\Promise::reject ('Missing Request-Arguement');
       
       if ($argv [0] instanceof Stream\HTTP\Request) {
-        $Request = $argv [0];
+        $httpRequest = $argv [0];
         $authenticationPreflight = (($argc < 2) || ($argv [1] === true));
       } else {
-        $Request = new Stream\HTTP\Request ($argv [0]);
+        $httpRequest = new Stream\HTTP\Request ($argv [0]);
         
         // Set additional properties of the request
         if (($argc > 1) && ($argv [1] !== null))
-          $Request->setMethod ($argv [1]);
+          $httpRequest->setMethod ($argv [1]);
         
         if (($argc > 2) && is_array ($argv [2]))
-          foreach ($argv [2] as $Key=>$Value)
-            $Request->setField ($Key, $Value);
+          foreach ($argv [2] as $headerField=>$headerValue)
+            $httpRequest->setField ($headerField, $headerValue);
         
         if (($argc > 3) && ($argv [3] !== null))
-          $Request->setBody ($argv [3]);
+          $httpRequest->setBody ($argv [3]);
         
         $authenticationPreflight = (($argc < 5) || ($argv [4] === true));
       }
@@ -330,7 +330,7 @@
       else
         $factorySession = $socketFactory;
       
-      return $this->requestInternal ($factorySession, $Request, $authenticationPreflight);
+      return $this->requestInternal ($factorySession, $httpRequest, $authenticationPreflight);
     }
     // }}}
     
@@ -347,6 +347,10 @@
      * @return Events\Promise
      **/
     private function requestInternal (Events\ABI\Socket\Factory $factorySession, Stream\HTTP\Request $httpRequest, bool $authenticationPreflight, Events\Timer $requestTimer = null) : Events\Promise {
+      // Validate the request
+      if ($httpRequest->getHostname () === null)
+        return Events\Promise::reject ('Invalid Url given');
+      
       // Push to our request-queue
       $this->httpRequests [] = $httpRequest;
       
@@ -526,31 +530,36 @@
                 unset ($nextURI ['port']);
             }
             
-            // Check for a relative redirect
-            if (
-              (substr ($nextURI ['path'], 0, 1) == '.') ||
-              (strpos ($nextURI ['path'], '/../') !== false) ||
-              (strpos ($nextURI ['path'], '/./') !== false)
-            ) {
-              $pathStackIn = explode ('/', dirname ($httpRequest->getURI ()) . '/' . $nextURI ['path']);
-              $pathStack = [ ];
-              $rebuildLocation = true;
-              
-              foreach ($pathStackIn as $pathSegment) {
-                if ((strlen ($pathSegment) == 0) || ($pathSegment == '.'))
-                  continue;
+            if (isset ($nextURI ['path'])) {
+              // Check for a relative redirect
+              if (
+                (substr ($nextURI ['path'], 0, 1) == '.') ||
+                (strpos ($nextURI ['path'], '/../') !== false) ||
+                (strpos ($nextURI ['path'], '/./') !== false)
+              ) {
+                $pathStackIn = explode ('/', dirname ($httpRequest->getURI ()) . '/' . $nextURI ['path']);
+                $pathStack = [ ];
+                $rebuildLocation = true;
                 
-                if ($pathSegment == '..')
-                  array_pop ($pathStack);
-                else
-                  $pathStack [] = $pathSegment;
+                foreach ($pathStackIn as $pathSegment) {
+                  if ((strlen ($pathSegment) == 0) || ($pathSegment == '.'))
+                    continue;
+                  
+                  if ($pathSegment == '..')
+                    array_pop ($pathStack);
+                  else
+                    $pathStack [] = $pathSegment;
+                }
+                
+                $nextURI ['path'] = '/' . implode ('/', $pathStack);
               }
               
-              $nextURI ['path'] = '/' . implode ('/', $pathStack);
+              if (substr ($nextURI ['path'], 0, 1) != '/')
+                $nextURI ['path'] = '/' . $nextURI ['path'];
             }
             
             if ($rebuildLocation)
-              $nextLocation = $nextURI ['scheme'] . '://' . $nextURI ['host'] . (isset ($nextURI ['port']) ? ':' . $nextURI ['port'] : '') . $nextURI ['path'] . (isset ($nextURI ['query']) ? '?' . $nextURI ['query'] : '');
+              $nextLocation = $nextURI ['scheme'] . '://' . $nextURI ['host'] . (isset ($nextURI ['port']) ? ':' . $nextURI ['port'] : '') . ($nextURI ['path'] ?? '/') . (isset ($nextURI ['query']) ? '?' . $nextURI ['query'] : '');
             
             // Fire a callback first
             $this->___callback ('httpRequestRediect', $httpRequest, $nextLocation, $responseHeader, $Body);
