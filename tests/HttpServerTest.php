@@ -12,7 +12,7 @@
       $httpServerPool = new Events\Socket\Server ($eventBase);
       
       // Set HTTP-Server-Class as handler
-      $this->assertTrue (
+      $this->assertNull (
         $httpServerPool->setChildClass (
           Events\Server\HTTP::class,
           true
@@ -20,7 +20,7 @@
       );
       
       // Open listening socket
-      $this->assertTrue (
+      $this->assertNull (
         $httpServerPool->listen ($httpServerPool::TYPE_TCP)
       );
       

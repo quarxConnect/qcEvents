@@ -2,7 +2,7 @@
 
   /**
    * quarxConnect Events - Asyncronous Sockets
-   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -116,11 +116,19 @@
     /* Short-hand of remote hostname and port (for UDP-Server-Mode) */
     private $remoteName = null;
     
+    /* Preset of TLS-Options */
+    private $tlsOptions = [
+      'ciphers'                 => 'ECDHE:!aNULL:!WEAK',
+      'verify_peer'             => true,
+      'verify_peer_name'        => true,
+      'capture_peer_cert'       => true,
+      'capture_peer_cert_chain' => true,
+      'SNI_enabled'             => true,
+      'disable_compression'     => true,
+    ];
+    
     /* Our current TLS-Status */
     private $tlsEnabled = false;
-    
-    /* Our desired TLS-Status */
-    private $tlsStatus = null;
     
     /* Promise for TLS-Initialization */
     private $tlsPromise = null;
@@ -468,7 +476,7 @@
       $this->socketAddress = null;
       $this->socketConnectResolve = null;
       $this->socketConnectReject = null;
-      $this->tlsStatus = ($enableTLS ? true : null);
+      $this->tlsEnabled = ($enableTLS ? null : false);
       
       // Create a new promise
       return new Promise (
@@ -490,7 +498,12 @@
             
             // Check for IPv4/v6 or wheter to skip the resolver
             if (($this->Resolving < 0) || $this::isIPv4 ($Host) || $IPv6)
-              $this->socketAddresses [] = [ $Host, $Host, $Port, $Type ];
+              $this->socketAddresses [] = [
+                'target'   => $Host,
+                'hostname' => $Host,
+                'port'     => $Port,
+                'type'     => $Type,
+              ];
             else
               $Resolve [] = $Host;
           }
@@ -547,12 +560,12 @@
         return Promise::reject ('Failed to disconnect socket before connect');
       
       // Reset internal addresses
-      $this->socketAddresses = null;
-      $this->socketAddress = null;
+      $this->socketAddresses      = null;
+      $this->socketAddress        = null;
       $this->socketConnectResolve = null;
-      $this->socketConnectReject = null;
+      $this->socketConnectReject  = null;
       
-      $this->tlsStatus = ($enableTLS ? true : null);
+      $this->tlsEnabled = ($enableTLS ? null : false);
       $this->Connected = null;
       $this->lastEvent = time ();
       
@@ -590,64 +603,81 @@
      * @access private
      * @return void
      **/
-    private function socketConnectMulti () {
+    private function socketConnectMulti () : void {
       // Check if there are addresses on the queue
-      if (!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0) || ($this->socketAddress !== null))
-        return false;
+      if (
+        !is_array ($this->socketAddresses) ||
+        (count ($this->socketAddresses) == 0) ||
+        ($this->socketAddress !== null)
+      )
+        return;
       
       // Get the next address
       $this->socketAddress = array_shift ($this->socketAddresses);
       
       // Fire a callback for this
-      $this->___callback ('socketTryConnect', $this->socketAddress [0], $this->socketAddress [1], $this->socketAddress [2], $this->socketAddress [3]);
+      $this->___callback (
+        'socketTryConnect',
+        $this->socketAddress ['target'],
+        $this->socketAddress ['hostname'],
+        $this->socketAddress ['port'],
+        $this->socketAddress ['type']
+      );
       
       // Check unreachable-cache
-      if (isset (self::$Unreachables [$Key = $this->socketAddress [1] . ':' . $this->socketAddress [2] . ':' . $this->socketAddress [3]])) {
-        if (time () - self::$Unreachables [$Key] < $this::UNREACHABLE_TIMEOUT)
-          return $this->socketHandleConnectFailed (self::ERROR_NET_UNREACHABLE, 'Destination is marked as unreachable on cache');
+      if (isset (self::$Unreachables [$Key = $this->socketAddress ['hostname'] . ':' . $this->socketAddress ['port'] . ':' . $this->socketAddress ['type']])) {
+        if (time () - self::$Unreachables [$Key] < $this::UNREACHABLE_TIMEOUT) {
+          $this->socketHandleConnectFailed (self::ERROR_NET_UNREACHABLE, 'Destination is marked as unreachable on cache');
+          
+          return;
+        }
         
         unset (self::$Unreachables [$Key]);
       }
       
       // Create new client-socket
-      $URI = ($this->socketAddress [3] === self::TYPE_TCP ? 'tcp' : 'udp') . '://' . $this->socketAddress [1] . ':' . $this->socketAddress [2];
+      $socketUri = ($this->socketAddress ['type'] === self::TYPE_TCP ? 'tcp' : 'udp') . '://' . $this->socketAddress ['hostname'] . ':' . $this->socketAddress ['port'];
       
-      if (($this->socketBindAddress !== null) || ($this->socketBindPort !== null)) {
-        $isIPv6 = $this::isIPv6 ($this->socketBindAddress);
+      if (
+        ($this->socketBindAddress !== null) ||
+        ($this->socketBindPort !== null)
+      ) {
+        $isIPv6 = self::isIPv6 ($this->socketBindAddress);
         
-        $ctx = stream_context_create ([
+        $socketContext = stream_context_create ([
           'socket' => [
             'bindto' => ($isIPv6 ? '[' : '') . $this->socketBindAddress . ($isIPv6 ? ']' : '') . ':' . (int)$this->socketBindPort,
           ]
         ]);
       } else 
-        $ctx = stream_context_create ();
+        $socketContext = stream_context_create ();
       
-      if (!is_resource ($Socket = @stream_socket_client ($URI, $errno, $err, $this::CONNECT_TIMEOUT, \STREAM_CLIENT_ASYNC_CONNECT, $ctx)))
-        return $this->socketHandleConnectFailed (-$errno, 'connect() failed: ' . $err);
+      if (!is_resource ($streamSocket = @stream_socket_client ($socketUri, $errno, $err, $this::CONNECT_TIMEOUT, \STREAM_CLIENT_ASYNC_CONNECT, $socketContext))) {
+        $this->socketHandleConnectFailed (-$errno, 'connect() failed: ' . $err);
+        
+        return;
+      }
       
-      stream_set_blocking ($Socket, false);
+      stream_set_blocking ($streamSocket, false);
       
       // Set our new status
-      if (!$this->setStreamFD ($Socket))
-        return false;
+      if (!$this->setStreamFD ($streamSocket))
+        return;
       
       // Make sure we are watching events
       $this->watchWrite (true);
       $this->isWatching (true);
       
       // Setup our internal buffer-size
-      $this->bufferSize = ($this->socketAddress [3] === self::TYPE_UDP ? self::READ_UDP_BUFFER : self::READ_TCP_BUFFER);
+      $this->bufferSize = ($this->socketAddress ['type'] === self::TYPE_UDP ? self::READ_UDP_BUFFER : self::READ_TCP_BUFFER);
       $this->lastEvent = time ();
       
       // Set our connection-state
-      if ($this->socketAddress [3] !== (self::TYPE_UDP ? true : null)) {
+      if ($this->socketAddress ['type'] !== (self::TYPE_UDP ? true : null)) {
         $this->addHook ('eventWritable', [ $this, 'socketHandleConnected' ], true);
         $this->socketSetupConnectionTimeout ();
       } else
         $this->socketHandleConnected ();
-      
-      return true;
     }
     // }}}
     
@@ -665,7 +695,7 @@
      * @access public
      * @return void
      **/
-    final public function connectServer (Socket\Server $Server, $Remote, $Connection = null, $enableTLS = false) {
+    final public function connectServer (Socket\Server $Server, $Remote, $Connection = null, bool $enableTLS = false) : void {
       // Set our internal buffer-size
       if ($Connection === null) {
         $this->bufferSize = self::READ_UDP_BUFFER;
@@ -680,7 +710,7 @@
         
         // Store the connection
         $this->setStreamFD ($Connection);
-        $this->tlsStatus = !!$enableTLS;
+        $this->tlsEnabled = ($enableTLS ? null : false);
       }
       
       // Store our parent server-handle
@@ -690,10 +720,10 @@
       $p = strrpos ($Remote, ':');
       
       $this->socketAddress = [
-        substr ($Remote, 0, $p),
-        substr ($Remote, 0, $p),
-        intval (substr ($Remote, $p + 1)),
-        ($Connection === null ? self::TYPE_UDP_SERVER : self::TYPE_TCP)
+        'target'   => substr ($Remote, 0, $p),
+        'hostname' => substr ($Remote, 0, $p),
+        'port'     => (int)substr ($Remote, $p + 1),
+        'type'     => ($Connection === null ? self::TYPE_UDP_SERVER : self::TYPE_TCP)
       ];
       
       // Put ourself into connected state
@@ -731,12 +761,14 @@
           else
             $Name = '';
           
-          $this->Type = $this->socketAddress [3];
-          $this->localAddr = substr ($Name, 0, strrpos ($Name, ':'));
-          $this->localPort = (int)substr ($Name, strrpos ($Name, ':') + 1);
-          $this->remoteHost = $this->socketAddress [0];
-          $this->remoteAddr = $this->socketAddress [1];
-          $this->remotePort = $this->socketAddress [2];
+          $this->Type       = $this->socketAddress ['type'];
+          $this->localAddr  = substr ($Name, 0, strrpos ($Name, ':'));
+          $this->localPort  = (int)substr ($Name, strrpos ($Name, ':') + 1);
+          $this->remoteHost = $this->socketAddress ['target'];
+          $this->remoteAddr = $this->socketAddress ['hostname'];
+          $this->remotePort = $this->socketAddress ['port'];
+          
+          $this->tlsOptions ['peer_name'] = $this->remoteHost;
         }
         
         // Free some space now
@@ -744,8 +776,11 @@
         $this->socketAddresses = null;
         
         // Check wheter to enable TLS
-        if (($this->tlsStatus === true) && !$this->isTLS ())
-          return $this->tlsEnable (true)->then (
+        if (
+          ($this->tlsEnabled === null) &&
+          !$this->isTLS ()
+        ) {
+          $this->tlsEnable ()->then (
             function () {
               $this->socketHandleConnected ();
             },
@@ -753,10 +788,17 @@
               $this->socketHandleConnectFailed ($this::ERROR_NET_TLS_FAILED, 'Failed to enable TLS');
             }
           );
+          
+          return;
+        } elseif ($this->isTLS ())
+          $this->tlsEnabled = true;
       }
       
       // Check our TLS-Status and treat as connection failed if required
-      if (($this->tlsStatus === true) && !$this->isTLS ())
+      if (
+        ($this->tlsEnabled !== false) &&
+        !$this->isTLS ()
+      )
         return $this->socketHandleConnectFailed ($this::ERROR_NET_TLS_FAILED, 'Failed to enable TLS');
       
       // Fire custom callback
@@ -790,7 +832,7 @@
         $this->socketAddress = null;
         
         // Mark destination as unreachable
-        $Key = $Address [1] . ':' . $Address [2] . ':' . $Address [3];
+        $Key = $Address ['hostname'] . ':' . $Address ['port'] . ':' . $Address ['type'];
         
         if (!isset (self::$Unreachables [$Key]))
           self::$Unreachables [$Key] = time ();
@@ -802,29 +844,39 @@
                 (strlen ($nat64Prefix) == 0))
           $nat64Prefix = null;
         
-        if (($nat64Prefix !== null) &&
-            (($IPv4 = $this::isIPv4 ($Address [1])) || (strtolower (substr ($Address [1], 0, 8)) == '[::ffff:'))) {
+        if (
+          ($nat64Prefix !== null) &&
+          (
+            ($IPv4 = self::isIPv4 ($Address ['hostname'])) ||
+            (strtolower (substr ($Address ['hostname'], 0, 8)) == '[::ffff:')
+          )
+        ) {
           if ($IPv4) {
-            $IP = explode ('.', $Address [1]);
+            $IP = explode ('.', $Address ['hostname']);
             $IP = sprintf ('[%s%02x%02x:%02x%02x]', $nat64Prefix, (int)$IP [0], (int)$IP [1], (int)$IP [2], (int)$IP [3]);
           } else
-            $IP = '[' . $nat64Prefix . substr ($Address [1], 8);
+            $IP = '[' . $nat64Prefix . substr ($Address ['hostname'], 8);
           
           $this->socketAddresses [] = [
-            $Address [0],
-            $IP,
-            $Address [2],
-            $Address [3]
+            'target'   => $Address ['target'],
+            'hostname' => $IP,
+            'port'     => $Address ['port'],
+            'type'     => $Address ['type']
           ];
         }
         
         // Raise callback
-        $this->___callback ('socketTryConnectFailed', $Address [0], $Address [1], $Address [2], $Address [3], $Error);
+        $this->___callback ('socketTryConnectFailed', $Address ['target'], $Address ['hostname'], $Address ['port'], $Address ['type'], $Error);
       }
       
       // Check if there are more hosts on our list
-      if ((!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0)) &&
-          ($this->Resolving <= 0)) {
+      if (
+        (
+          !is_array ($this->socketAddresses) ||
+          (count ($this->socketAddresses) == 0)
+        ) &&
+        ($this->Resolving <= 0)
+      ) {
         // Fire custom callback
         if ($this->socketConnectReject) {
           static $errorStringMap = [
@@ -853,7 +905,7 @@
       }
       
       // Try the next host
-      return $this->socketConnectMulti ();
+      $this->socketConnectMulti ();
     }
     // }}}
     
@@ -969,7 +1021,13 @@
       // Check if there are no results
       if ((count ($Results) == 0) && ($this->Resolving <= 0)) {
         // Mark connection as failed if there are no addresses pending and no current address
-        if ((!is_array ($this->socketAddresses) || (count ($this->socketAddresses) == 0)) && ($this->socketAddress === null))
+        if (
+          (
+            !is_array ($this->socketAddresses) ||
+            (count ($this->socketAddresses) == 0)
+          ) &&
+          ($this->socketAddress === null)
+        )
           return $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED, 'Failed to resolve destination "' . $Hostname . '"');
         
         return;
@@ -988,7 +1046,12 @@
             $this->socketAddresses = [ ];
           
           $Addrs [] = $Addr = ($Record ['type'] == 'AAAA' ? '[' . $Record ['ipv6'] . ']' : $Record ['ip']);
-          $this->socketAddresses [] = [ $Hostname, $Addr, ($Record ['port'] ?? $Port), $Type ];
+          $this->socketAddresses [] = [
+            'target'   => $Hostname,
+            'hostname' => $Addr,
+            'port'     => ($Record ['port'] ?? $Port),
+            'type'     => $Type,
+          ];
           
         // Handle canonical names
         } elseif ($Record ['type'] == 'CNAME') {
@@ -1036,7 +1099,10 @@
       $this->___callback ('socketResolved', $Hostname, $Addrs, array_keys ($Resolve));
       
       // Check wheter to try to connect
-      if (is_array ($this->socketAddresses) && (count ($this->socketAddresses) > 0))
+      if (
+        is_array ($this->socketAddresses) &&
+        (count ($this->socketAddresses) > 0)
+      )
         $this->socketConnectMulti ();
     }
     // }}}
@@ -1359,13 +1425,16 @@
     /**
      * Set a list of supported TLS-Ciphers
      * 
-     * @param array $Ciphers
+     * @param array $tlsCiphers
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function tlsCiphers (array $Ciphers) {
-      return stream_context_set_option ($this->getReadFD (), 'ssl', 'ciphers', implode (':', $Ciphers));
+    public function tlsCiphers (array $tlsCiphers) : void {
+      $this->tlsOptions ['ciphers'] = implode (':', $tlsCiphers);
+      
+      if ($this->getReadFD ())
+        stream_context_set_option ($this->getReadFD (), [ 'ssl' => $this->tlsOptions ]);
     }
     // }}}
     
@@ -1380,19 +1449,17 @@
      * @param array $sniCerts (optional)
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function tlsCertificate ($certFile, array $sniCerts = [ ]) {
+    public function tlsCertificate (string $certFile, array $sniCerts = null) : void {
+      $this->tlsOptions ['local_cert'] = $certFile;
+      
+      if ($sniCerts !== null)
+        $this->tlsOptions ['SNI_server_certs'] = $sniCerts;
+      
       # TODO: local_pk passphrase
-      return stream_context_set_option (
-        $this->getReadFD (),
-        [
-          'ssl' => [
-            'local_cert' => $certFile,
-            'SNI_server_certs' => $sniCerts,
-          ]
-        ]
-      );
+      if ($this->getReadFD ())
+        stream_context_set_option ($this->getReadFD (), [ 'ssl' => $this->tlsOptions ]);
     }
     // }}}
     
@@ -1400,44 +1467,42 @@
     /**
      * Set verification-options for TLS-secured connections
      * 
-     * @param bool $Verify (optional) Verify the peer (default)
-     * @param bool $VerifyName (optional) Verify peers name (default)
-     * @param bool $SelfSigned (optional) Allow self signed certificates
+     * @param bool $verifyPeer (optional) Verify the peer (default)
+     * @param bool $verifyName (optional) Verify peers name (default)
+     * @param bool $allowSelfSigned (optional) Allow self signed certificates
      * @param string $caFile (optional) File or Directory containing CA-Certificates
-     * @param int $Depth (optional) Verify-Depth
-     * @param string $Fingerprint (optional) Expected fingerprint of peers certificate
+     * @param int $verifyDepth (optional) Verify-Depth
+     * @param string $expectedFingerprint (optional) Expected fingerprint of peers certificate
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function tlsVerify ($Verify = true, $VerifyName = true, $SelfSigned = false, $caFile = null, $Depth = null, $Fingerprint = null) {
-      // Prepare the options
-      $Options = [ ];
+    public function tlsVerify (bool $verifyPeer = true, bool $verifyName = true, bool $allowSelfSigned = false, string $caFile = null, int $verfiyDepth = null, string $expectedFingerprint = null) : void {
+      if ($verifyPeer !== null)
+        $this->tlsOptions ['verify_peer'] = $verifyPeer;
       
-      if ($Verify !== null)
-        $Options ['verify_peer'] = !!$Verify;
+      if ($verifyName !== null)
+        $this->tlsOptions ['verify_peer_name'] = $verifyName;
       
-      if ($VerifyName !== null)
-        $Options ['verify_peer_name'] = !!$VerifyName;
-      
-      if ($SelfSigned !== null)
-        $Options ['allow_self_signed'] = !!$SelfSigned;
+      if ($allowSelfSigned !== null)
+        $this->tlsOptions ['allow_self_signed'] = $allowSelfSigned;
       
       if ($caFile !== null) {
         if (is_dir ($caFile))
-          $Options ['capath'] = $caFile;
+          $this->tlsOptions ['capath'] = $caFile;
         else
-          $Options ['cafile'] = $caFile;
+          $this->tlsOptions ['cafile'] = $caFile;
       }
+
+      if ($verifyDepth !== null)
+        $this->tlsOptions ['verify_depth'] = $verifyDepth;
+
+      if ($expectedFingerprint !== null)
+        $this->tlsOptions ['peer_fingerprint'] = $expcectedFingerprint;
       
-      if ($Depth !== null)
-        $Options ['verify_depth'] = $Depth;
-      
-      if ($Fingerprint !== null)
-        $Options ['peer_fingerprint'] = $Fingerprint;
-      
-      // Forward the options to the stream
-      return stream_context_set_option ($this->getReadFD (), [ 'ssl' => $Options ]);
+      // Forward the options to the stream if there is one
+      if ($this->getReadFD ())
+        stream_context_set_option ($this->getReadFD (), [ 'ssl' => $this->tlsOptions ]);
     }
     // }}}
     
@@ -1445,29 +1510,20 @@
     /**
      * Check/Set TLS on this connection
      * 
-     * @param bool $Toggle (optional) Set the TLS-Status
-     * 
      * @access public
-     * @return bool  
-     **/
-    public function tlsEnable ($enableTLS = null) {
-      // Check wheter only to return the status
-      if ($enableTLS === null) {
-        trigger_error ('Use isTLS() to query TLS-Status', \E_USER_DEPRECATED);
-        
-        return ($this->tlsEnabled == true);
-      }
-      
-      // Clean up the switch
-      $enableTLS = !!$enableTLS;
+     * @return Promise
+     */
+    public function tlsEnable () : Promise {
+      // Check if we are in an unclean status at the moment
+      if (
+        ($this->tlsEnabled === null) &&
+        $this->tlsPromise
+      )
+        return $this->tlsPromise->getPromise ();
       
       // Make sure we have promise for this
       if (!$this->tlsPromise)
-        $this->tlsPromise = new Promise\Defered;
-      
-      // Check if we are in an unclean status at the moment
-      if ($this->tlsEnabled === null)
-        return $this->tlsPromise->getPromise ();
+        $this->tlsPromise = new Promise\Defered ();
       
       # TODO: No clue at the moment how to do this on UDP-Server
       # TODO: Check if this simply works - we are doing this in non-blocking mode,
@@ -1475,30 +1531,10 @@
       if ($this->Type == self::TYPE_UDP_SERVER)
         return Promise::reject ('Unable to negotiate TLS in UDP-Server-Mode');
       
-      // Check wheter to do anything
-      if ($enableTLS === $this->tlsEnabled)
-        return Promise::resolve ();
-      
       // Set internal status
       $this->tlsEnabled = null;
       
-      if ($this->tlsStatus = $enableTLS)
-        stream_context_set_option (
-          $this->getReadFD (),
-          [
-            'ssl' => [
-              // Server-Name-Indication
-              'SNI_enabled' => true,
-              'peer_name' => $this->remoteHost,       // Domainname for SNI
-              'SNI_server_name' => $this->remoteHost, # Deprecated as of PHP 5.6 (replaced by peer_name)
-              
-              // General settings
-              'capture_peer_cert' => false,           # Unused
-              'capture_peer_cert_chain' => false,     # Unused
-              'disable_compression' => true,          // Always disable compression because of CRIME
-            ]
-          ]
-        );
+      stream_context_set_option ($this->getReadFD (), [ 'ssl' => $this->tlsOptions ]);
       
       // Forward the request
       $this->setTLSMode ();
@@ -1514,8 +1550,8 @@
      * @access public
      * @return bool
      **/
-    public function isTLS () {
-      return ($this->tlsEnabled == true);
+    public function isTLS () : bool {
+      return ($this->tlsEnabled === true);
     }
     // }}}
     
@@ -1526,30 +1562,24 @@
      * @access private
      * @return void
      **/
-    private function setTLSMode () {
+    private function setTLSMode () : void {
       // Make sure we know our connection
       if (!is_resource ($fd = $this->getReadFD ()))
-        return false;
+        return;
       
       // Issue the request to enter or leave TLS-Mode
-      if ($this->tlsStatus) {
-        if ($this->serverParent)
-          $Method = \STREAM_CRYPTO_METHOD_TLSv1_0_SERVER | \STREAM_CRYPTO_METHOD_TLSv1_1_SERVER | \STREAM_CRYPTO_METHOD_TLSv1_2_SERVER;
-        else
-          $Method = \STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT | \STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;
-        
-        $tlsRequest = stream_socket_enable_crypto ($fd, $this->tlsStatus, $Method);
-      } else
-        $tlsRequest = stream_socket_enable_crypto ($fd, $this->tlsStatus);
+      if ($this->serverParent)
+        $tlsMethod = STREAM_CRYPTO_METHOD_TLSv1_1_SERVER | STREAM_CRYPTO_METHOD_TLSv1_2_SERVER;
+      else
+        $tlsMethod = STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;
+      
+      $tlsRequest = @stream_socket_enable_crypto ($fd, true, $tlsMethod);
       
       // Check if the request succeeded
       if ($tlsRequest === true) {
-        $this->tlsEnabled = $this->tlsStatus;
+        $this->tlsEnabled = true;
         
-        if ($this->tlsEnabled)
-          $this->___callback ('tlsEnabled');
-        else
-          $this->___callback ('tlsDisabled');
+        $this->___callback ('tlsEnabled');
         
         if ($this->tlsPromise)
           $this->tlsPromise->resolve ();
@@ -1560,8 +1590,17 @@
         
         $this->___callback ('tlsFailed');
         
-        if ($this->tlsPromise)
-          $this->tlsPromise->reject ('Failed to change TLS-Status');
+        if ($this->tlsPromise) {
+          $lastError = error_get_last ();
+          
+          if ($lastError) {
+            if (substr ($lastError ['message'], 0, 31) == 'stream_socket_enable_crypto(): ')
+              $lastError ['message'] = substr ($lastError ['message'], 31);
+            
+            $this->tlsPromise->reject (new Exception\Socket\Encryption ('Failed to enable TLS: ' . $lastError ['message']));
+          } else
+            $this->tlsPromise->reject (new Exception\Socket\Encryption ('Failed to enable TLS'));
+        }
       }
     }
     // }}}
@@ -1838,17 +1877,9 @@
      * @access protected
      * @return void
      **/
-    protected function tlsEnabled () { }
-    // }}}
-    
-    // {{{ tlsDisabled
-    /**
-     * Callback: TLS was disabled
-     * 
-     * @access protected
-     * @return void
-     **/
-    protected function tlsDisabled () { }
+    protected function tlsEnabled () : void {
+      // No-Op
+    }
     // }}}
     
     // {{{ tlsFailed
@@ -1858,7 +1889,9 @@
      * @access protected
      * @return void
      **/
-    protected function tlsFailed () { }
+    protected function tlsFailed () : void {
+      // No-Op
+    }
     // }}}
   }
   // }}}
