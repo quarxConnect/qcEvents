@@ -1,0 +1,66 @@
+variables:
+  DOCKER_IMAGE_BASE: "${CI_REGISTRY_IMAGE}/unittest:php"
+
+build:php-7.3:
+  stage: build
+  variables:
+    PHP_VERSION: "7.3"
+    COMPOSER_VERSION: "latest"
+  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/docker
+  services:
+    - name: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/docker:dind
+      alias: docker
+  script:
+    - docker login -u "${CI_REGISTRY_USER}" -p "${CI_JOB_TOKEN}" "${CI_REGISTRY}"
+    - docker login -u "${CI_DEPENDENCY_PROXY_USER}" -p "${CI_DEPENDENCY_PROXY_PASSWORD}" "${CI_DEPENDENCY_PROXY_SERVER}"
+    - docker pull     "${DOCKER_IMAGE_BASE}-${PHP_VERSION}" || true
+    - docker build -t "${DOCKER_IMAGE_BASE}-${PHP_VERSION}" --build-arg CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX --build-arg PHP_VERSION --build-arg COMPOSER_VERSION .
+    - docker push     "${DOCKER_IMAGE_BASE}-${PHP_VERSION}"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      changes:
+        - Dockerfile
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "push"
+      changes:
+        - .gitlab-ci.yml
+      when: manual
+
+build:php-8.2:
+  stage: build
+  variables:
+    PHP_VERSION: "8.2"
+    COMPOSER_VERSION: "latest"
+  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/docker
+  services:
+    - name: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/docker:dind
+      alias: docker
+  script:
+    - docker login -u "${CI_REGISTRY_USER}" -p "${CI_JOB_TOKEN}" "${CI_REGISTRY}"
+    - docker login -u "${CI_DEPENDENCY_PROXY_USER}" -p "${CI_DEPENDENCY_PROXY_PASSWORD}" "${CI_DEPENDENCY_PROXY_SERVER}"
+    - docker pull     "${DOCKER_IMAGE_BASE}-${PHP_VERSION}" || true
+    - docker build -t "${DOCKER_IMAGE_BASE}-${PHP_VERSION}" --build-arg CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX --build-arg PHP_VERSION --build-arg COMPOSER_VERSION .
+    - docker push     "${DOCKER_IMAGE_BASE}-${PHP_VERSION}"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      changes:
+        - Dockerfile
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "push"
+      changes:
+        - .gitlab-ci.yml
+      when: manual
+
+unittest:php-7.3:
+  stage: test
+  image: "${DOCKER_IMAGE_BASE}-7.3"
+  script:
+    - composer install
+    - composer test
+
+unittest:php-8.2:
+  stage: test
+  image: "${DOCKER_IMAGE_BASE}-7.3"
+  script:
+    - composer install
+    - composer test

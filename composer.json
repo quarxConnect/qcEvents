@@ -19,11 +19,14 @@
     },
     "require" : {
         "php" : ">=7.3",
+        "ext-inotify" : "*",
         "ext-gmp" : "*",
-        "ext-openssl" : "*"
+        "ext-openssl" : "*",
+        "ext-soap" : "*"
     },
     "require-dev" : {
-        "phpunit/phpunit" : "^9"
+        "phpunit/phpunit" : "^9",
+        "ext-zip" : "*"
     },
     "autoload" : {
         "psr-4" : {
