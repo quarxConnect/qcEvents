@@ -60,25 +60,17 @@
       );
       
       // Try to open websocket to our server
-      $serverAddress = $httpServerPool->getLocalName ();
-      $portSeparator = strrpos ($serverAddress, ':');
-      
-      $this->assertGreaterThan (
-        0,
-        $portSeparator
-      );
-      
       $clientSocket = new Events\Socket (Events\Base::singleton ());
       
       $websocketResult = Events\Synchronizer::do (
         Events\Base::singleton (),
         $clientSocket->connect (
-          substr ($serverAddress, 0, $portSeparator),
-          (int)substr ($serverAddress, $portSeparator + 1),
+          '127.0.0.1',
+          $httpServerPool->getLocalPort (),
           $clientSocket::TYPE_TCP
         )->then (
-          function () use ($clientSocket, $serverAddress) {
-            $websocketClient = new Events\Stream\Websocket (Events\Stream\Websocket::TYPE_CLIENT, null, '/websocket', 'http://' . $serverAddress);
+          function () use ($clientSocket, $httpServerPool) {
+            $websocketClient = new Events\Stream\Websocket (Events\Stream\Websocket::TYPE_CLIENT, null, '/websocket', 'http://' . $httpServerPool->getLocalName ());
             
             return $clientSocket->pipeStream ($websocketClient)->then (
               function () use ($websocketClient) {
