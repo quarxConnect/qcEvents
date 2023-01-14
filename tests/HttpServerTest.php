@@ -47,17 +47,13 @@
         }
       );
       
-      // Create a new HTTP-Request to the server
+      // Create a new HTTP-Request to the server and wait for it to finish
       $httpClient = new Events\Client\HTTP (Events\Base::singleton ());
-      $httpClient->request (
-        'http://' . $httpServerPool->getLocalName () . '/'
-      );
       
-      // Wait for the test to be finished
       $httpResult = Events\Synchronizer::do (
         Events\Base::singleton (),
         $httpClient->request (
-          'http://' . $httpServerPool->getLocalName () . '/'
+          'http://127.0.0.1:' . $httpServerPool->getLocalPort () . '/'
         )
       );
       
