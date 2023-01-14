@@ -50,8 +50,11 @@
       
       // Insert compressed data
       $uncompressedData = random_bytes (16);
+      $compressedData = gzcompress ($uncompressedData, -1, ZLIB_ENCODING_DEFLATE);
       
-      $virtualSource->sourceInsert (gzcompress ($uncompressedData, -1, ZLIB_ENCODING_DEFLATE));
+      $this->assertIsString ($compressedData);
+      
+      $virtualSource->sourceInsert ($compressedData);
       
       $uncompressResult = Events\Synchronizer::do (
          $virtualSource->getEventBase (),

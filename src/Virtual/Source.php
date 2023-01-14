@@ -27,7 +27,7 @@
     use Events\Feature\Based;
     
     /* Local buffer of abstract source */
-    private $Buffer = '';
+    private $sourceBuffer = '';
     
     /* Raise events if data is available on the buffer */
     private $raiseEvents = true;
@@ -57,19 +57,19 @@
     /**
      * Insert some data into the abstract source
      * 
-     * @param string $Data
+     * @param string $sourceData
      * @param bool $closeOnDrain (optional)
      * 
      * @access public
      * @return void
      **/
-    public function sourceInsert ($Data, $closeOnDrain = null) {
+    public function sourceInsert (string $sourceData, bool $closeOnDrain = null) : void {
       // Check if we are closed
       if ($this->closed)
         return;
       
       // Append to local buffer
-      $this->Buffer .= $Data;
+      $this->sourceBuffer .= $sourceData;
       
       // Check wheter to raise an event
       if ($this->raiseEvents) {
@@ -92,7 +92,7 @@
      * @return int
      **/
     public function getBufferSize () {
-      return strlen ($this->Buffer);
+      return strlen ($this->sourceBuffer);
     }
     // }}}
     
@@ -105,25 +105,32 @@
      * @access public
      * @return string
      **/
-    public function read (int $readLength = null) : ?string {
+    public function read (int $readLength = null) : string {
       // Get the requested bytes from buffer
-      if ($readLength === null) {
-        $Buffer = $this->Buffer;
-        $this->Buffer = '';
+      if ($readLength !== null) {
+        $readBuffer = substr ($this->sourceBuffer, 0, $readLength);
+        $this->sourceBuffer = substr ($this->sourceBuffer, $readLength);
+        
+        // In PHP <8.0 substr() might return false instead of an empty string
+        if ($readBuffer === false)
+          $readBuffer = '';
+        
+        if ($this->sourceBuffer === false)
+          $this->sourceBuffer = '';
       } else {
-        $Buffer = substr ($this->Buffer, 0, $readLength);
-        $this->Buffer = substr ($this->Buffer, $readLength);
+        $readBuffer = $this->sourceBuffer;
+        $this->sourceBuffer = '';
       }
       
       // Check if we shall close
-      if ($this->closeOnDrain && (strlen ($this->Buffer) == 0)) {
+      if ($this->closeOnDrain && (strlen ($this->sourceBuffer) == 0)) {
         if ($eventBase = $this->getEventBase ())
           $eventBase->forceCallback ([ $this, 'close' ]);
         else
           $this->close ();
       }
       
-      return $Buffer;  
+      return $readBuffer;  
     }
     // }}}
     
@@ -189,7 +196,7 @@
       if (!$this->closed) {
         $this->closed = true;
         $this->___callback ('eventClosed');
-        $this->Buffer = '';
+        $this->sourceBuffer = '';
       }
       
       return Events\Promise::resolve ();
@@ -204,7 +211,7 @@
      * @return void
      **/
     public function raiseRead () {
-      if (strlen ($this->Buffer) == 0)
+      if (strlen ($this->sourceBuffer) == 0)
         return;
       
       $this->___callback ('eventReadable');

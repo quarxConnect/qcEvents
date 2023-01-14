@@ -258,7 +258,10 @@
       }
       
       // Forward to buffer
-      $this->sourceInsert (mb_convert_encoding ($this->bufferData, $this->charsetOut, $this->charsetIn));
+      $convertedData = mb_convert_encoding ($this->bufferData, $this->charsetOut, $this->charsetIn);
+      
+      if ($convertedData)
+        $this->sourceInsert ($convertedData);
       
       // Empty our own buffer
       $this->bufferData = '';
@@ -287,7 +290,11 @@
       }
       
       // Forward to buffer
-      $this->sourceInsert (mb_convert_encoding ($sourceData, $this->charsetOut, $this->charsetIn));
+      $sourceData = mb_convert_encoding ($sourceData, $this->charsetOut, $this->charsetIn);
+      
+      if ($sourceData)
+        $this->sourceInsert ($sourceData);
+      
       unset ($sourceData);
       
       // Truncate our own buffer
