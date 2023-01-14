@@ -224,14 +224,16 @@
      * @return string
      **/
     public function getLocalName () : string {
-      $Local = stream_socket_get_name ($this->Socket, false);
+      $localName = stream_socket_get_name ($this->Socket, false);
       
-      if (substr ($Local, 0, 3) == ':::')
-        $Local = gethostname () . substr ($Local, 2);
-      elseif (substr ($Local, 0, 7) == '0.0.0.0')
-        $Local = gethostname () . substr ($Local, 7);
+      foreach ([ '::', '[::]', '0.0.0.0' ] as $localNeedle)
+        if (substr ($localName, 0, strlen ($localNeedle) + 1) == $localNeedle . ':') {
+          $localName = gethostname () . substr ($localName, strlen ($localNeedle));
+          
+          break;
+        }
       
-      return $Local;
+      return $localName;
     }
     // }}}
     
