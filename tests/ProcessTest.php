@@ -10,7 +10,7 @@
       $eventBase = Events\Base::singleton ();
       $eventProcess = new Events\Process ($eventBase);
       
-      $processPromise = $eventProcess->spawnCommand ('ping', [ '-c', '2', 'google.com' ]);
+      $processPromise = $eventProcess->spawnCommand ('sh', [ __DIR__ . '/ProcessTest.sh' ]);
       $processOutput = 0;
       
       $eventProcess->addHook (
@@ -30,7 +30,7 @@
       
       $this->assertIsInt ($exitCode);
       $this->assertGreaterThan (
-        64,
+        11,
         $processOutput
       );
     }
