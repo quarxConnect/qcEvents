@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - HTTP Client Request
-   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023 Bernd Holzmueller <bernd@innorize.gmbh>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -54,12 +55,12 @@
     /**
      * Create a new HTTP-Request
      * 
-     * @param mixed $requestParameter (optional) Initialize the request with this headers or URL
+     * @param array|string $requestParameter (optional) Initialize the request with this headers or URL
      * 
      * @access friendly
      * @return void
      **/
-    function __construct ($requestParameter = null) {
+    function __construct (/* PHP 8.0 array|string */ $requestParameter = null) {
       // Handle the parameter
       $requestHeader = [ 'GET / HTTP/1.0', 'Connection: keep-alive' ];
       $requestURL = null;

@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - HTTP Header Object
-   * Copyright (C) 2015-2021 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2015-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023 Bernd Holzmueller <bernd@innorize.gmbh>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -72,31 +73,46 @@
     /**
      * Create a new generic HTTP-Header
      * 
-     * @param array $Data
+     * @param array $headerData
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (array $Data) {
+    function __construct (array $headerData) {
       // Check the type of this header
-      $Identifier = array_shift ($Data);
+      if (count ($headerData) < 1)
+        throw new \Exception ('Header requires at least one line');
       
-      if (substr ($Identifier, 0, strlen ($this::$protoName) + 1) == $this::$protoName . '/') {
+      $httpIdentifier = array_shift ($headerData);
+      
+      if (substr ($httpIdentifier, 0, strlen ($this::$protoName) + 1) == $this::$protoName . '/') {
         $this->Type = self::TYPE_RESPONSE;
         
-        $this->Version = substr ($Identifier, 0, ($p = strpos ($Identifier, ' ')));
-        $this->Code = intval (substr ($Identifier, $p + 1, 3));
-        $this->Message = substr ($Identifier, $p + 5);
+        $this->Version = substr ($httpIdentifier, 0, ($p = strpos ($httpIdentifier, ' ')));
+        $this->Code = intval (substr ($httpIdentifier, $p + 1, 3));
+        $this->Message = substr ($httpIdentifier, $p + 5);
       } else {
+        // Validate request-line
+        $methodDelimiter = strpos ($httpIdentifier, ' ');
+        
+        if ($methodDelimiter === false)
+          throw new \Exception ('Invalid request-line (missing separator for protocol and uri)');
+        
+        $versionDelimiter = strrpos ($httpIdentifier, ' ');
+        
+        if ($versionDelimiter == $methodDelimiter)
+          throw new \Exception ('Invalid request-line (missing separator for uri and version)');
+        
+        // Extract informations from request-line
         $this->Type = self::TYPE_REQUEST;
         
-        $this->Method = substr ($Identifier, 0, ($p = strpos ($Identifier, ' ')));
-        $this->Version = substr ($Identifier, ($p2 = strrpos ($Identifier, ' ')) + 1);
-        $this->URI = substr ($Identifier, $p + 1, $p2 - $p - 1);
+        $this->Method = substr ($httpIdentifier, 0, $methodDelimiter);
+        $this->Version = substr ($httpIdentifier, $versionDelimiter + 1);
+        $this->URI = substr ($httpIdentifier, $methodDelimiter + 1, $versionDelimiter - $methodDelimiter - 1);
       }
       
       // Parse all additional lines
-      foreach ($Data as $Line) {
+      foreach ($headerData as $Line) {
         // Check for colon (this should always be present)
         if (($p = strpos ($Line, ':')) === false)
           continue;

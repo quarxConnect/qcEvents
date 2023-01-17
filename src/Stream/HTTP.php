@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - HTTP-Stream Implementation
-   * Copyright (C) 2012-2021 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2012-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -64,7 +65,7 @@
     protected static $remoteHeaderClass = '\quarxConnect\Events\Stream\HTTP\Header';
     
     private $HeaderClass = null;
-    private $Header = null;
+    private $remoteHeader = null;
     
     /* Buffer for our body */
     private $bufferBody = '';
@@ -146,28 +147,40 @@
             
             // Create the header
             if ($this->HeaderClass !== null)
-              $Class = $this->HeaderClass;
+              $remoteHeaderClass = $this->HeaderClass;
             else
-              $Class = $this::$remoteHeaderClass;
+              $remoteHeaderClass = $this::$remoteHeaderClass;
             
-            $this->Header = new $Class ($this->bufferHeader);
+            try {
+              $this->remoteHeader = new $remoteHeaderClass ($this->bufferHeader);
+            } catch (\Throwable $headerError) {
+              $this->___callback ('httpFailed', null, null);
+              
+              $this->httpSetState (self::HTTP_STATE_DISCONNECTED);
+              
+              $this->close ();
+              $this->reset ();
+              
+              return;
+            }
+            
             $this->bufferHeader = [ ];
             
             // Fire a callback for this event
-            $this->___callback ('httpHeaderReady', $this->Header);
+            $this->___callback ('httpHeaderReady', $this->remoteHeader);
             
             // Switch states
-            if (!$this->expectBody () || !$this->Header->hasBody ()) {
+            if (!$this->expectBody () || !$this->remoteHeader->hasBody ()) {
               $this->httpSetState (self::HTTP_STATE_CONNECTED);
               
-              return $this->___callback ('httpFinished', $this->Header, null);
+              return $this->___callback ('httpFinished', $this->remoteHeader, null);
             }
             
             $this->httpSetState ($this::HTTP_STATE_BODY);
             
             // Prepare to retrive the body
-            if ($this->Header->hasField ('transfer-encoding'))
-              $this->bodyEncodings = explode (' ', trim ($this->Header->getField ('transfer-encoding')));
+            if ($this->remoteHeader->hasField ('transfer-encoding'))
+              $this->bodyEncodings = explode (' ', trim ($this->remoteHeader->getField ('transfer-encoding')));
             else
               $this->bodyEncodings = [ 'identity' ];
             
@@ -207,7 +220,7 @@
           }
            
         // Check if there is a content-length givenk
-        } elseif (($Length = $this->Header->getField ('content-length')) !== null) {
+        } elseif (($Length = $this->remoteHeader->getField ('content-length')) !== null) {
           $Length = (int)$Length;
           
           // Check if the buffer is big enough
@@ -447,7 +460,7 @@
       $this->bufferBody = '';
       $this->bufferBodyPos = 0;
       $this->bufferCompleteBody = false;
-      $this->Header = null;
+      $this->remoteHeader = null;
       $this->bodyEncodings = [ ];
       $this->httpSetState ($this->streamSource ? $this::HTTP_STATE_CONNECTED : $this::HTTP_STATE_DISCONNECTED);
     }
@@ -542,7 +555,7 @@
         $this->___callback ('eventClosed');
       }
       
-      $this->___callback ('httpFinished', $this->Header, $this->bufferBody);
+      $this->___callback ('httpFinished', $this->remoteHeader, $this->bufferBody);
     }
     // }}}
     
@@ -555,9 +568,11 @@
      **/
     private function httpUnexpectedClose () {
       // Check if we are processing a request
-      if (($this->httpState != $this::HTTP_STATE_CONNECTED) &&
-          ($this->httpState != $this::HTTP_STATE_DISCONNECTED))
-        $this->___callback ('httpFailed', $this->Header, $this->bufferBody);
+      if (
+        ($this->httpState != $this::HTTP_STATE_CONNECTED) &&
+        ($this->httpState != $this::HTTP_STATE_DISCONNECTED)
+      )
+        $this->___callback ('httpFailed', $this->remoteHeader, $this->bufferBody);
       
       // Reset ourself
       $this->reset ();
