@@ -6,7 +6,7 @@
   use quarxConnect\Events;
   
   final class PromiseTest extends TestCase {
-    public function testSimpleFullfillment () : void {
+    public function testSimpleFulfillment () : void {
       $eventBase = Events\Base::singleton ();
       $eventPromise = new Events\Promise (
         function (callable $resolveFunction) {
@@ -25,7 +25,7 @@
       gc_collect_cycles ();
     }
     
-    public function testFullfillmentWithValue () : void {
+    public function testFulfillmentWithValue () : void {
       $eventBase = Events\Base::singleton ();
       $eventPromise = new Events\Promise (
         function (callable $resolveFunction) {
@@ -45,7 +45,7 @@
       gc_collect_cycles ();
     }
     
-    public function testFullfillmentWithManyValues () : void {
+    public function testFulfillmentWithManyValues () : void {
       $eventBase = Events\Base::singleton ();
       $eventPromise = new Events\Promise (
         function (callable $resolveFunction) {
@@ -82,7 +82,7 @@
       gc_collect_cycles ();
     }
     
-    public function testPassedFullfillment () : void {
+    public function testPassedFulfillment () : void {
       $eventBase = Events\Base::singleton ();
       $eventPromise = new Events\Promise (
         function (callable $resolveFunction, callable $rejectFunction) {
@@ -108,7 +108,7 @@
       gc_collect_cycles ();
     }
     
-    public function testChainedFullfillment () : void {
+    public function testChainedFulfillment () : void {
       $eventBase = Events\Base::singleton ();
       $eventPromise = new Events\Promise (
         function (callable $resolveFunction, callable $rejectFunction) {
@@ -280,10 +280,10 @@
     }
     
     public function testUnhandledException () : void {
-      if (!defined ('QCEVENTS_THROW_UNHANDLED_REJECTIONS'))
-        define ('QCEVENTS_THROW_UNHANDLED_REJECTIONS', true);
+      if (!defined ('EVENTS_THROW_UNHANDLED_REJECTIONS'))
+        define ('EVENTS_THROW_UNHANDLED_REJECTIONS', true);
       else
-        $this->assertTrue (QCEVENTS_THROW_UNHANDLED_REJECTIONS);
+        $this->assertTrue (EVENTS_THROW_UNHANDLED_REJECTIONS);
       
       $rejectedPromise = new Events\Promise (
         function (callable $resolveFunction, callable $rejectFunction) {
@@ -307,15 +307,15 @@
         $eventBase
       );
       
-      $firstFullfillment = false;
+      $firstFulfillment = false;
       $firstRejection = false;
       $secondRejection = false;
       
       Events\Synchronizer::do (
         $eventBase,
         $eventPromise->then (
-          function () use (&$firstFullfillment) {
-            $firstFullfillment = true;
+          function () use (&$firstFulfillment) {
+            $firstFulfillment = true;
           },
           function (\Throwable $error) use (&$firstRejection) {
             $firstRejection = true;
@@ -328,7 +328,7 @@
         )
       );
       
-      $this->assertFalse ($firstFullfillment);
+      $this->assertFalse ($firstFulfillment);
       $this->assertTrue ($firstRejection);
       $this->assertTrue ($secondRejection);
     }

@@ -21,15 +21,17 @@
   declare (strict_types=1);
   
   namespace quarxConnect\Events;
+
+  use Throwable;
   
   class Promise {
     /* Assigned event-base */
     private $eventBase = null;
     
     /* Status-Flags for this promise */
-    protected const STATUS_PENDING    = 0x00;
-    protected const STATUS_FULLFILLED = 0x01;
-    protected const STATUS_REJECTED   = 0x02;
+    protected const STATUS_PENDING   = 0x00;
+    protected const STATUS_FULFILLED = 0x01;
+    protected const STATUS_REJECTED  = 0x02;
     
     private const STATUS_FORWARDED  = 0x80;
     
@@ -40,8 +42,8 @@
     
     /* Registered callbacks */
     private $callbacks = [
-      Promise::STATUS_FULLFILLED => [ ],
-      Promise::STATUS_REJECTED   => [ ],
+      Promise::STATUS_FULFILLED => [ ],
+      Promise::STATUS_REJECTED  => [ ],
     ];
     
     /* Reset callbacks after use */
@@ -52,7 +54,7 @@
      * Create a resolved promise
      * 
      * @param ...
-     * @param Base $Base (optional)
+    b * @param Base $Base (optional)
      * 
      * @access public
      * @return Promise
@@ -106,7 +108,7 @@
      * Create a promise that settles when a whole set of promises have settled
      * 
      * @param Iterable $promiseValues
-     * @param Base $eventBase (optional) Defer execution of callbacks using this eventbase
+     * @param Base $eventBase (optional) Defer execution of callbacks using this event-base
      * 
      * @access public
      * @return Promise
@@ -193,7 +195,7 @@
      * Create a promise that settles if all given promises have settled as well
      * 
      * @param Iterable $promiseValues
-     * @param Base $eventBase (optional) Defer execution of callbacks using this eventbase
+     * @param Base $eventBase (optional) Defer execution of callbacks using this event-base
      * 
      * @access public
      * @return Promise
@@ -281,7 +283,7 @@
      * 
      * @param Iterable $watchPromises
      * @param Base $eventBase (optional)
-     * @param bool $forceSpec (optional) Enforce behaviour along specification, don't fullfill the promise if there are no promises given
+     * @param bool $forceSpec (optional) Enforce behavior along specification, don't fulfill the promise if there are no promises given
      * 
      * @access public
      * @return Promise
@@ -336,7 +338,7 @@
                 if ($promiseDone)
                   return;
                 
-                // Check if we ignore rejections until one was fullfilled
+                // Check if we ignore rejections until one was fulfilled
                 if (--$promiseCountdown > 0)
                   return;
                 
@@ -359,8 +361,8 @@
      * 
      * @param Iterable $watchPromises
      * @param Base $eventBase (optional)
-     * @param bool $ignoreRejections (optional) NON-STANDARD DEPRECATED Ignore rejections as long as one promise fullfills
-     * @param bool $forceSpec (optional) Enforce behaviour along specification, don't fullfill the promise if there are no promises given
+     * @param bool $ignoreRejections (optional) NON-STANDARD DEPRECATED Ignore rejections as long as one promise fulfills
+     * @param bool $forceSpec (optional) Enforce behavior along specification, don't fulfill the promise if there are no promises given
      * 
      * @access public
      * @return Promise
@@ -389,7 +391,7 @@
       
       // Prepare to deprecate this flag
       if ($ignoreRejections)
-        trigger_error ('Please use Promise::any() instead of Promise::race() if you want to ingnore rejections', E_USER_DEPRECATED);
+        trigger_error ('Please use Promise::any() instead of Promise::race() if you want to ignore rejections', E_USER_DEPRECATED);
       
       return new static (
         function (callable $resolveFunction, callable $rejectFunction)
@@ -416,7 +418,7 @@
                 if ($Done)
                   return;
                 
-                // Check if we ignore rejections until one was fullfilled
+                // Check if we ignore rejections until one was fulfilled
                 if ($ignoreRejections && (--$promiseCount > 0))
                   return;
                 
@@ -435,9 +437,9 @@
     
     // {{{ walk
     /**
-     * NON-STANDARD: Walk an array with a callback
+     * NON-STANDARD: Walk an array with a callable
      * 
-     * @param mixed $walkArray
+     * @param iterable $walkArray
      * @param callable $itemCallback
      * @param bool $justSettle (optional) Don't stop on rejections, but enqueue them as result
      * @param Base $eventBase (optional)
@@ -445,65 +447,87 @@
      * @access public
      * @return Promise
      **/
-    public static function walk ($walkArray, callable $itemCallback, $justSettle = false, Base $eventBase = null) : Promise {
-      // Make sure we have an iterator
+    public static function walk (iterable $walkArray, callable $itemCallback, bool $justSettle = false, Base $eventBase = null): Promise {
+      // Make sure we have an iterator-instance
       if (is_array ($walkArray))
         $arrayIterator = new \ArrayIterator ($walkArray);
       elseif ($walkArray instanceof \IteratorAggregate)
         $arrayIterator = $walkArray->getIterator ();
       elseif ($walkArray instanceof \Iterator)
         $arrayIterator = $walkArray;
-      # elseif (is_iterable ($walkArray))
-      #   TODO
-      else
-        return static::reject ('First parameter must be an iterable');
+      
+      // Make sure we have an event-base
+      if (!$eventBase)
+        $eventBase = Base::singleton ();
       
       // Move to start
       $arrayIterator->rewind ();
       
       return new static (
         function (callable $resolveFunction, callable $rejectFunction)
-        use ($arrayIterator, $itemCallback, $justSettle, $eventBase) {
+        use ($arrayIterator, $itemCallback, $justSettle, $eventBase): void {
           $walkResults = [ ];
           $walkItem = null;
-          $walkItem = function () use (&$walkResults, &$walkItem, $arrayIterator, $itemCallback, $justSettle, $eventBase, $resolveFunction, $rejectFunction) {
-            // Check wheter to stop
-            if (!$arrayIterator->valid ())
-              return $resolveFunction ($walkResults);
+          $walkItem = function () use (&$walkResults, &$walkItem, $arrayIterator, $itemCallback, $justSettle, $eventBase, $resolveFunction, $rejectFunction): void {
+            // Check whether to stop
+            if (!$arrayIterator->valid ()) {
+              $resolveFunction ($walkResults);
+
+              return;
+            }
             
             // Invoke the callback
             $itemKey = $arrayIterator->key ();
-            $itemResult = $itemCallback ($arrayIterator->current ());
+
+            try {
+              $itemResult = $itemCallback ($arrayIterator->current ());
+              
+              if (!($itemResult instanceof Promise))
+                $itemResult = Promise::resolve ($itemResult, $eventBase);
+            } catch (Throwable $callbackException) {
+              $itemResult = Promise::reject ($callbackException, $eventBase);
+            }
             
             // Move to next element
             $arrayIterator->next ();
             
             // Process the result
-            if (!($itemResult instanceof Promise))
-              $itemResult = ($eventBase ? Promise::resolve ($itemResult, $eventBase) : Promise::resolve ($itemResult));
-            
-            $itemResult->then (
-              function () use ($itemKey, &$walkResults, &$walkItem) {
+            $itemResult->catch (
+              function () use ($justSettle, $rejectFunction): Promise\Solution {
+                // Process the rejection as a result if requested
+                if ($justSettle)
+                  return new Promise\Solution (func_get_args ());
+                
+                // Or forward the rejection to our initial promise
+                call_user_func_array ($rejectFunction, func_get_args ());
+
+                /**
+                 * Throw an exception just to leave the processing-loop,
+                 * this exception won't be ever seen on the public
+                 **/ 
+                throw new \Exception ('Stopped by rejection');
+              }
+            )->then (
+              function () use ($itemKey, &$walkResults, &$walkItem): void {
+                // Push the result
                 $walkResults [$itemKey] = (func_num_args () == 1 ? func_get_arg (0) : func_get_args ());
+
+                // Process the next array-item
                 $walkItem ();
               },
-              function () use ($justSettle, $itemKey, $rejectFunction, &$walkResults, &$walkItem) {
-                if (!$justSettle)
-                  return call_user_func_array ($rejectFunction, func_get_args ());
-                
-                $walkResults [$itemKey] = (func_num_args () == 1 ? func_get_arg (0) : func_get_args ());
-                $walkItem ();
+              function () {
+                // Mute any rejection the gets here
               }
             );
           };
           
+          // Process first array-item
           $walkItem ();
         },
         $eventBase
       );
     }
     // }}}
-    
     
     // {{{ __construct
     /**
@@ -519,7 +543,7 @@
       // Store the assigned base
       $this->eventBase = $eventBase;
       
-      // Check wheter to invoke the callback
+      // Check whether to invoke the callback
       if ($initCallback === null)
         return;
       
@@ -529,7 +553,7 @@
           call_user_func (
             $initCallback,
             function () {
-              $this->finish ($this::STATUS_FULLFILLED, func_get_args ());
+              $this->finish ($this::STATUS_FULFILLED, func_get_args ());
             },
             function () {
               $this->finish ($this::STATUS_REJECTED,   func_get_args ());
@@ -560,10 +584,10 @@
         return;
       
       // Push this rejection to log
-      if (defined ('\\QCEVENTS_THROW_UNHANDLED_REJECTIONS') && \QCEVENTS_THROW_UNHANDLED_REJECTIONS)
+      if (defined ('EVENTS_THROW_UNHANDLED_REJECTIONS') && EVENTS_THROW_UNHANDLED_REJECTIONS)
         throw $this->result [0];
       
-      if (!defined ('\\QCEVENTS_LOG_REJECTIONS') || \QCEVENTS_LOG_REJECTIONS)
+      if (!defined ('EVENTS_LOG_REJECTIONS') || EVENTS_LOG_REJECTIONS)
         error_log ('Unhandled rejection: ' . $this->result [0]);
     }
     // }}}
@@ -577,9 +601,9 @@
      **/
     public function __debugInfo () : array {
       static $statusMap = [
-        self::STATUS_PENDING    => 'pending',
-        self::STATUS_FULLFILLED => 'fullfilled',
-        self::STATUS_REJECTED   => 'rejected',
+        self::STATUS_PENDING   => 'pending',
+        self::STATUS_FULFILLED => 'fulfilled',
+        self::STATUS_REJECTED  => 'rejected',
       ];
       
       return [
@@ -587,8 +611,8 @@
         'promiseState' => ($statusMap [$this->promiseStatus & 0x0F] ?? 'Unknown (' . ($this->promiseStatus & 0x0F) . ')'),
         'promiseResult' => $this->result,
         'registeredCallbacks' => [
-          'fullfill' => count ($this->callbacks [self::STATUS_FULLFILLED]),
-          'reject'   => count ($this->callbacks [self::STATUS_REJECTED]),
+          'fulfill' => count ($this->callbacks [self::STATUS_FULFILLED]),
+          'reject'  => count ($this->callbacks [self::STATUS_REJECTED]),
         ],
         'resetCallbacks' => $this->resetCallbacks,
       ];
@@ -597,7 +621,7 @@
     
     // {{{ getEventBase
     /**
-     * Retrive the event-base assigned to this promise
+     * Retrieve the event-base assigned to this promise
      * 
      * @access public
      * @return Base
@@ -630,7 +654,7 @@
     
     // {{{ getStatus
     /**
-     * Retrive our state
+     * Retrieve our state
      * 
      * @access protected
      * @return enum
@@ -640,17 +664,17 @@
     }
     // }}}
     
-    // {{{ promiseFullfill
+    // {{{ promiseFulfill
     /**
-     * Trigger a fullfillment of this promise
+     * Trigger a fulfillment of this promise
      * 
      * @param ...
      * 
      * @access protected
      * @return void
      **/
-    protected function promiseFullfill () {
-      return $this->finish ($this::STATUS_FULLFILLED, func_get_args ());
+    protected function promiseFulfill () {
+      return $this->finish ($this::STATUS_FULFILLED, func_get_args ());
     }
     // }}}
     
@@ -688,8 +712,8 @@
       
       if ((count ($result) == 1) && ($result [0] instanceof Promise))
         return $result [0]->then (
-          function () { $this->finish ($this::STATUS_FULLFILLED, func_get_args ()); },
-          function () { $this->finish ($this::STATUS_REJECTED,   func_get_args ()); }
+          function () { $this->finish ($this::STATUS_FULFILLED, func_get_args ()); },
+          function () { $this->finish ($this::STATUS_REJECTED,  func_get_args ()); }
         );
       
       // Make sure first parameter is an exception or error on rejection
@@ -714,15 +738,15 @@
       // Reset callbacks
       if ($this->resetCallbacks)
         $this->callbacks = [
-          Promise::STATUS_FULLFILLED => [ ],
-          Promise::STATUS_REJECTED   => [ ],
+          Promise::STATUS_FULFILLED => [ ],
+          Promise::STATUS_REJECTED  => [ ],
         ];
     }
     // }}}
     
     // {{{ reset
     /**
-     * Reset our interal state
+     * Reset our internal state
      * 
      * @param bool $Deep (optional) Reset child-promises as well
      * 
@@ -759,7 +783,7 @@
       
       // Run the callback
       if ($directCallback) {
-        $resultType = $this::STATUS_FULLFILLED;
+        $resultType = $this::STATUS_FULFILLED;
         
         try {
           $resultValues = call_user_func_array ($directCallback, $this->result);
@@ -774,7 +798,7 @@
         $resultValues = $this->result;
       }
       
-      // Quit if there is no child-promise to fullfill
+      // Quit if there is no child-promise to fulfill
       if (!$childPromise)
         return;
       
@@ -785,30 +809,30 @@
     
     // {{{ then
     /**
-     * Register callbacks for promise-fullfillment
+     * Register callbacks for promise-fulfillment
      * 
-     * @param callable $fullfillCallback (optional)
+     * @param callable $fulfillCallback (optional)
      * @param callable $rejectionCallback (optional)
      * 
      * @access public
      * @return Promise
      **/
-    public function then (callable $fullfillCallback = null, callable $rejectionCallback = null) : Promise {
+    public function then (callable $fulfillCallback = null, callable $rejectionCallback = null) : Promise {
       // Create an empty promise
       $childPromise = new self (null, $this->eventBase);
       
       // Check if we are not already done
       if ((($this->promiseStatus & 0x0F) == $this::STATUS_PENDING) || !$this->resetCallbacks) {
-        $this->callbacks [$this::STATUS_FULLFILLED][] = [ $fullfillCallback, $childPromise ];
-        $this->callbacks [$this::STATUS_REJECTED][] = [ $rejectionCallback, $childPromise ];
+        $this->callbacks [$this::STATUS_FULFILLED][] = [ $fulfillCallback, $childPromise ];
+        $this->callbacks [$this::STATUS_REJECTED][]  = [ $rejectionCallback, $childPromise ];
         
         if (($this->promiseStatus & 0x0F) == $this::STATUS_PENDING)
           return $childPromise;
       }
       
-      // Check if we were fullfilled
-      if (($this->promiseStatus & 0x0F) == $this::STATUS_FULLFILLED)
-        $this->invoke ($fullfillCallback, $childPromise);
+      // Check if we were fulfilled
+      if (($this->promiseStatus & 0x0F) == $this::STATUS_FULFILLED)
+        $this->invoke ($fulfillCallback, $childPromise);
       
       // Check if we were rejected
       elseif (($this->promiseStatus & 0x0F) == $this::STATUS_REJECTED)

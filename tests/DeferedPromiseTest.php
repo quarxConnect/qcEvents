@@ -6,7 +6,7 @@
   use quarxConnect\Events;
   
   final class DeferedPromiseTest extends TestCase {
-    public function testSimpleFullfillment () : void {
+    public function testSimpleFulfillment () : void {
       $eventBase = Events\Base::singleton ();
       $deferedPromise = new Events\Promise\Defered ();
       $deferedPromise->resolve (true);
@@ -22,7 +22,7 @@
       gc_collect_cycles ();
     }
     
-    public function testFullfillmentWithValue () : void {
+    public function testFulfillmentWithValue () : void {
       $eventBase = Events\Base::singleton ();
       $deferedPromise = new Events\Promise\Defered ();
       $deferedPromise->resolve (42);
@@ -39,7 +39,7 @@
       gc_collect_cycles ();
     }
     
-    public function testFullfillmentWithManyValues () : void {
+    public function testFulfillmentWithManyValues () : void {
       $eventBase = Events\Base::singleton ();
       $deferedPromise = new Events\Promise\Defered ();
       $deferedPromise->resolve (42, 23, 19);

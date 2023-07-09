@@ -126,8 +126,8 @@
       // Store our repeat-setting
       $Repeat = $this->Repeat;
       
-      // Fullfill the promise
-      $this->promiseFullfill ();
+      // Fulfill the promise
+      $this->promiseFulfill ();
       
       // Re-Arm the timer
       if ($this->Repeat) {

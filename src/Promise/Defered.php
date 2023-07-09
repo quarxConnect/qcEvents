@@ -47,7 +47,7 @@
     function __construct ($BaseOrPromise = null, callable $Resolve = null, callable $Reject = null) {
       // Check if a promise was given
       if ($BaseOrPromise instanceof Events\Promise) {
-        // Make sure the promise was given with fullfillment-functions
+        // Make sure the promise was given with fulfillment-functions
         if (!$Resolve || !$Reject)
           throw new \InvalidArgumentException ('Promise requires specification of resolve- and reject-functions');
         
