@@ -18,8 +18,7 @@
         ]
     },
     "require" : {
-        "php" : ">=7.4",
-        "ext-inotify" : "*",
+        "php" : ">=8.0",
         "ext-gmp" : "*",
         "ext-openssl" : "*",
         "ext-soap" : "*",
@@ -29,6 +28,9 @@
         "phpunit/phpunit": "^9",
         "quarxconnect/events-test": "^0.0.1@dev",
         "ext-zip": "*"
+    },
+    "suggest": {
+      "quarxconnect/events-inotify": "Support for inotify"
     },
     "minimum-stability": "dev",
     "autoload": {
@@ -44,7 +46,7 @@
   },
   "extra": {
     "branch-alias": {
-      "dev-composer": "0.0.1-dev"
+      "dev-composer": "0.0.2-dev"
     }
   }
 }
