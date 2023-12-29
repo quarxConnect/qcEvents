@@ -21,71 +21,75 @@
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Socket\Factory;
-  use quarxConnect\Events;
+
+  use quarxConnect\Events\ABI;
+  use quarxConnect\Events\Base;
+  use quarxConnect\Events\Emitter;
+  use quarxConnect\Events\Promise;
   
-  class Session extends Events\Hookable implements Events\ABI\Socket\Factory {
+  class Session extends Emitter implements ABI\Socket\Factory {
     private $socketFactory = null;
     
     // {{{ __construct
     /**
-     * Create a new pool-session
+     * Create a new socket-factory-session
      * 
-     * @param Events\ABI\Socket\Factory $socketFactory
+     * @param ABI\Socket\Factory $socketFactory
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (Events\ABI\Socket\Factory $socketFactory) {
+    function __construct (ABI\Socket\Factory $socketFactory) {
       $this->socketFactory = $socketFactory;
     }
     // }}}
     
     // {{{ getEventBase
     /**
-     * Retrive the handle of the current event-loop-handler
+     * Retrieve the instance of our event-base
      * 
      * @access public
-     * @return Events\Base
+     * @return Base
      **/
-    public function getEventBase () : ?Events\Base {
+    public function getEventBase (): ?Base {
       return $this->socketFactory->getEventBase ();
     }
     // }}}
 
     // {{{ setEventBase
     /**
-     * Set the Event-Base of this source
+     * Assign a new event-base
      * 
-     * @param Events\Base $eventBase
+     * @param Base $eventBase
      * 
      * @access public
      * @return void
      **/
-    public function setEventBase (\quarxConnect\Events\Base $eventBase) : void {
+    public function setEventBase (Base $eventBase): void {
       $this->socketFactory->setEventBase ($eventBase);
     }
     // }}}
 
     // {{{ unsetEventBase
     /**
-     * Remove any assigned event-loop-handler
+     * Remove the assigned event-base
      * 
      * @access public
      * @return void
      **/
-    public function unsetEventBase () : void {
+    public function unsetEventBase (): void {
       $this->socketFactory->unsetEventBase ();
     }
     // }}}
     
     // {{{ getSocketFactory
     /**
-     * Retrive the socket-pool of this session
+     * Retrieve the socket-factory of this session
      * 
      * @access public
-     * @return Events\ABI\Socket\Factory
+     * @return ABI\Socket\Factory
      **/
-    public function getSocketFactory () : Events\ABI\Socket\Factory {
+    public function getSocketFactory (): ABI\Socket\Factory {
       return $this->socketFactory;
     }
     // }}}
@@ -101,10 +105,23 @@
      * @param bool $allowReuse (optional)
      * 
      * @access public
-     * @return Events\Promise
+     * @return Promise
      **/
-    public function createConnection ($remoteHost, int $remotePort, int $socketType, bool $useTLS = false, bool $allowReuse = false) : Events\Promise {
-      return $this->socketFactory->createConnection ($remoteHost, $remotePort, $socketType, $useTLS, $allowReuse, $this);
+    public function createConnection (
+      array|string $remoteHost,
+      int $remotePort,
+      int $socketType,
+      bool $useTLS = false,
+      bool $allowReuse = false
+    ): Promise {
+      return $this->socketFactory->createConnection (
+        $remoteHost,
+        $remotePort,
+        $socketType,
+        $useTLS,
+        $allowReuse,
+        $this
+      );
     }
     // }}}
     
@@ -112,12 +129,12 @@
     /**
      * Return a connected socket back to the factory
      * 
-     * @param Events\ABI\Stream $leasedConnection
+     * @param ABI\Stream $leasedConnection
      * 
      * @access public
      * @return void
      **/
-    public function releaseConnection (Events\ABI\Stream $leasedConnection) : void {
+    public function releaseConnection (ABI\Stream $leasedConnection): void {
       $this->socketFactory->releaseConnection ($leasedConnection);
     }
     // }}}
@@ -129,7 +146,7 @@
      * @access public
      * @return void
      **/
-    public function close () : void {
+    public function close (): void {
       $this->socketFactory->removeSession ($this);
     }
     // }}}

@@ -2,7 +2,7 @@
 
   /**
    * quarxConnect Events - Socks Socket Factory
-   * Copyright (C) 2020-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2020-2023 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -21,11 +21,17 @@
   declare (strict_types=1);
   
   namespace quarxConnect\Events\Socket\Factory;
-  use \quarxConnect\Events;
-  use \quarxConnect\Events\ABI;
+
+  use quarxConnect\Events\ABI;
+  use quarxConnect\Events\Base;
+  use quarxConnect\Events\Emitter;
+  use quarxConnect\Events\Feature;
+  use quarxConnect\Events\Promise;
+  use quarxConnect\Events\Socket;
+  use quarxConnect\Events\Stream;
   
-  class Socks extends Events\Hookable implements ABI\Socket\Factory {
-    use Events\Feature\Based;
+  class Socks extends Emitter implements ABI\Socket\Factory {
+    use Feature\Based;
     
     /* Hostname/IP of our SOCKS-Server */
     private $socksHost = '::1';
@@ -37,14 +43,14 @@
     /**
      * Create a new SOCKS-Socket-Factory
      * 
-     * @param Events\Base $eventBase
+     * @param Base $eventBase
      * @param mixed $socksHost
      * @param int $socksPort
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (Events\Base $eventBase, $socksHost, int $socksPort) {
+    function __construct (Base $eventBase, $socksHost, int $socksPort) {
       $this->setEventBase ($eventBase);
       
       $this->socksHost = $socksHost;
@@ -63,21 +69,27 @@
      * @param bool $allowReuse (optional)
      * 
      * @access public
-     * @return Events\Promise
+     * @return Promise
      **/
-    public function createConnection ($remoteHost, int $remotePort, int $socketType, bool $useTLS = false, bool $allowReuse = false) : Events\Promise {
-      // Sanatize parameters
+    public function createConnection (
+      array|string $remoteHost,
+      int $remotePort,
+      int $socketType,
+      bool $useTLS = false,
+      bool $allowReuse = false
+    ): Promise {
+      // Sanitize parameters
       if ($useTLS)
-        return Events\Promise::reject ('No TLS-Support yet');
+        return Promise::reject ('No TLS-Support yet');
       
       if (!is_array ($remoteHost))
         $remoteHost = [ $remoteHost ];
       
       if (count ($remoteHost) < 1)
-        return Events\Promise::reject ('Empty list of hosts');
+        return Promise::reject ('Empty list of hosts');
       
       // Connect to SOCKS-Server
-      $socksSocket = new Events\Socket ($this->getEventBase ());
+      $socksSocket = new Socket ($this->getEventBase ());
       $myHost = array_shift ($remoteHost);
       
       return $sockSocket->connect (
@@ -87,7 +99,7 @@
       )->then (
         function () use ($socksSocket, $myHost, $remoteHost, $remotePort, $socketType) {
           // Negotiate SOCKS-Connection
-          $socksStream = new Events\Stream\Socks ();
+          $socksStream = new Stream\Socks ();
           
           return $socksSocket->pipeStream ($socksStream)->then (
             function () use ($socksStream, $myHost, $remoteHost, $remotePort, $socketType) {
@@ -103,7 +115,7 @@
                     return $this->createConnection ($remoteHost, $remotePort, $socketType, false, false);
                   
                   // Just pass the rejection
-                  throw new Events\Promise\Solution (func_get_args ());
+                  throw new Promise\Solution (func_get_args ());
                 }
               );
             }
@@ -117,12 +129,12 @@
     /**
      * Return a connected socket back to the factory
      * 
-     * @param Events\ABI\Stream $leasedConnection
+     * @param ABI\Stream $leasedConnection
      * 
      * @access public
      * @return void
      **/
-    public function releaseConnection (Events\ABI\Stream $leasedConnection) : void {
+    public function releaseConnection (ABI\Stream $leasedConnection): void {
       
     }
     // }}}

@@ -21,6 +21,7 @@
   declare (strict_types=1);
   
   namespace quarxConnect\Events\Client;
+  
   use quarxConnect\Events\Stream;
   use quarxConnect\Events;
   
@@ -58,12 +59,12 @@
     
     // {{{ getEventBase
     /**
-     * Retrive the handle of the current event-loop-handler
+     * Retrieve the instance of the current event-base
      * 
      * @access public
      * @return Events\Base May be NULL if none is assigned
      **/
-    public function getEventBase () : ?Events\Base {
+    public function getEventBase (): ?Events\Base {
       return $this->socketFactory->getEventBase ();
     }
     // }}}
@@ -75,19 +76,19 @@
      * @access public
      * @return void
      **/
-    public function setEventBase (Events\Base $eventBase) : void {
+    public function setEventBase (Events\Base $eventBase): void {
       $this->socketFactory->setEventBase ($eventBase);
     }
     // }}}
     
     // {{{ getSocketFactory
     /**
-     * Retrive the socket-pool for this client
+     * Retrieve the socket-factory for this client
      * 
      * @access public
      * @return Events\ABI\Socket\Factory
      **/
-    public function getSocketFactory () : Events\ABI\Socket\Factory {
+    public function getSocketFactory (): Events\ABI\Socket\Factory {
       return $this->socketFactory;
     }
     // }}}
@@ -101,7 +102,7 @@
      * @access public
      * @return void
      **/
-    public function setSocketFactory (Events\ABI\Socket\Factory $socketFactory) : void {
+    public function setSocketFactory (Events\ABI\Socket\Factory $socketFactory): void {
       $this->socketFactory = $socketFactory;
     }
     // }}}
@@ -115,7 +116,7 @@
      * @access public
      * @return void
      **/
-    public function setRequestTimeout (float $requestTimeout = null) {
+    public function setRequestTimeout (float $requestTimeout = null): void {
       $this->requestTimeout = $requestTimeout;
     }
     // }}}
@@ -129,7 +130,7 @@
      * @access public
      * @return bool
      **/
-    public function useSessionCookies (bool $setState = null) : bool {
+    public function useSessionCookies (bool $setState = null): bool {
       // Check wheter to return current state
       if ($setState === null)
         return ($this->sessionCookies !== null);
@@ -151,7 +152,7 @@
      * @access public
      * @return array
      **/
-    public function getSessionCookies () : array {
+    public function getSessionCookies (): array {
       if ($this->sessionCookies === null)
         throw new \Exception ('Session-Cookies were not enabled');
       
@@ -168,7 +169,7 @@
      * @access public
      * @return void
      **/
-    public function setSessionCookies (array $sessionCookies) : void {
+    public function setSessionCookies (array $sessionCookies): void {
       if ($this->sessionCookies === null)
         throw new \Exception ('Session-Cookies were not enabled');
       
@@ -190,7 +191,7 @@
      * @access public
      * @return Events\Promise
      **/
-    public function setSessionPath (string $sessionPath) : Events\Promise {
+    public function setSessionPath (string $sessionPath): Events\Promise {
       if ($this->sessionCookies === null)
         return Events\Promise::reject ('Session-Cookies were not enabled');
       
@@ -294,8 +295,8 @@
      * @access public
      * @return Events\Promise
      **/
-    public function request () : Events\Promise {
-      // Process function-arguements
+    public function request (): Events\Promise {
+      // Process function-arguments
       $argv = func_get_args ();
       $argc = count ($argv);
       
@@ -346,7 +347,7 @@
      * @access private
      * @return Events\Promise
      **/
-    private function requestInternal (Events\ABI\Socket\Factory $factorySession, Stream\HTTP\Request $httpRequest, bool $authenticationPreflight, Events\Timer $requestTimer = null) : Events\Promise {
+    private function requestInternal (Events\ABI\Socket\Factory $factorySession, Stream\HTTP\Request $httpRequest, bool $authenticationPreflight, Events\Timer $requestTimer = null): Events\Promise {
       // Validate the request
       if ($httpRequest->getHostname () === null)
         return Events\Promise::reject ('Invalid Url given');
@@ -623,7 +624,7 @@
      * @access public
      * @return Stream\HTTP\Request
      **/
-    public function addNewRequest ($URL, $Method = null, $Headers = null, $Body = null, callable $Callback = null, $Private = null) : Stream\HTTP\Request {
+    public function addNewRequest ($URL, $Method = null, $Headers = null, $Body = null, callable $Callback = null, $Private = null): Stream\HTTP\Request {
       // Make sure we have a request-object
       $Request = new Stream\HTTP\Request ($URL);
       
@@ -925,7 +926,7 @@
           // We treat all attributes in lower-case
           $Name = strtolower ($Name);
           
-          // Sanatize attributes
+          // Sanitize attributes
           if ($Name == 'max-age') {
             // Make sure the age is valid
             if ((strval ((int)$cookieValue) != $cookieValue) || ((int)$cookieValue == 0))

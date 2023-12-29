@@ -148,6 +148,13 @@
     
     /* Counter for DNS-Actions */
     private $Resolving = 0;
+
+    /**
+     * Idle-Timer
+     * 
+     * @var Timer|null
+     **/
+    private Timer|null $idleTimer = null;
     
     // {{{ isIPv4
     /**
@@ -1640,6 +1647,10 @@
      * @return void  
      **/
     final public function raiseRead () {
+      // Check the idle-timer
+      if ($this->idleTimer)
+        $this->idleTimer->restart ();
+
       // Let TLS intercept here
       if ($this->tlsEnabled === null)
         return $this->setTLSMode ();
@@ -1753,6 +1764,50 @@
         $eventBase->updateEvent ($this);
       
       return $Buffer;
+    }
+    // }}}
+
+    // {{{ raiseWrite
+    /**
+     * Callback: The Event-Loop detected a write-event
+     * 
+     * @access public
+     * @return void
+     **/
+    public function raiseWrite (): void {
+      // Check the idle-timer
+      if ($this->idleTimer)
+        $this->idleTimer->restart ();
+
+      // Inherit to our parent for the rest
+      parent::raiseWrite ();
+    }
+    // }}}
+
+    // {{{ setIdleTimeout
+    /**
+     * Set Idle-Timeout for this socket.
+     *
+     * Once a socket was idle for the amount of time set it will be closed automatically.
+     *
+     * @param float $idleTimeout
+     *
+     * @access public
+     * @return Timer
+     **/
+    public function setIdleTimeout (float $idleTimeout): Timer {
+      if ($this->idleTimer === null) {
+        $this->idleTimer = $this->getEventBase ()->addTimeout ($idleTimeout);
+
+        $this->idleTimer->then (
+          fn () => $this->close ()
+        );
+      } else {
+        $this->idleTimer->setInterval ($idleTimeout);
+        $this->idleTimer->restart ();
+      }
+
+      return $this->idleTimer;
     }
     // }}}
     
