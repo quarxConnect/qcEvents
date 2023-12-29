@@ -6,10 +6,10 @@ stages:
 variables:
   DOCKER_IMAGE_BASE: "${CI_REGISTRY_IMAGE}/unittest:php"
 
-build:php-7.3:
+build:php-8.0:
   stage: build
   variables:
-    PHP_VERSION: "7.3"
+    PHP_VERSION: "8.0"
     COMPOSER_VERSION: "latest"
   image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/docker
   services:
@@ -56,9 +56,9 @@ build:php-8.2:
         - .gitlab-ci.yml
       when: manual
 
-unittest:php-7.3:
+unittest:php-8.0:
   stage: test
-  image: "${DOCKER_IMAGE_BASE}-7.3"
+  image: "${DOCKER_IMAGE_BASE}-8.0"
   script:
     - composer install
     - composer test
