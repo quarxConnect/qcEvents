@@ -22,7 +22,7 @@
   require_once ('qcEvents/Trait/Parented.php');
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/File.php');
-  require_once ('qcEvents/Defered.php');
+  require_once ('qcEvents/Deferred.php');
   
   class qcEvents_SysFS_GPIO extends qcEvents_Hookable implements qcEvents_Interface_Loop {
     /* Re-use common functions for our interface */
@@ -308,13 +308,13 @@
       
       // Enqueue the state
       $this->gpioSetState = $Status;
-      $this->gpioStateCallbacks [] = $deferedPromise = new qcEvents_Defered;
+      $this->gpioStateCallbacks [] = $deferredPromise = new qcEvents_Deferred;
       
       // Try to write
       if ($Base = $this->getEventBase ())
         $Base->updateEvent ($this);
       
-      return $deferedPromise->getPromise ();
+      return $deferredPromise->getPromise ();
     }
     // }}}
     
@@ -389,8 +389,8 @@
         $Callbacks = $this->gpioStateCallbacks;
         $this->gpioStateCallbacks = array ();
         
-        foreach ($Callbacks as $deferedPromise)
-          $deferedPromise->resolve ();
+        foreach ($Callbacks as $deferredPromise)
+          $deferredPromise->resolve ();
         
         $this->___callback ('gpioStateChanged', $this->gpioState);
       }

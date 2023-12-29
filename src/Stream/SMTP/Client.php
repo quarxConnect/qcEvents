@@ -587,7 +587,7 @@
         return Events\Promise::reject ('SIZE-constraint failed');
       
       // Enqueue the mail
-      $deferedPromise = new Events\Promise\Defered ();
+      $deferredPromise = new Events\Promise\Deferred ();
       
       $this->mailQueue [] = [
         $mailOriginator,
@@ -595,14 +595,14 @@
         $mailBody,
         $mailReceivers,
         [ ],
-        $deferedPromise,
+        $deferredPromise,
       ];
       
       // Try to run the queue
       $this->runMailQueue ();
       
       // Return the promise
-      return $deferedPromise->getPromise ();
+      return $deferredPromise->getPromise ();
     }
     // }}}
     
@@ -808,13 +808,13 @@
      **/
     private function smtpCommand (string $smtpVerb, array $commandArguments = null, int $requiredState = null, int $setState = null, callable $continuationCallback = null) : Events\Promise {
       // Just push the command to the queue
-      $deferedPromise = new Events\Promise\Defered ();
+      $deferredPromise = new Events\Promise\Deferred ();
       
       $this->queuedCommands [] = [
         $smtpVerb,
         $commandArguments,
         $continuationCallback,
-        $deferedPromise,
+        $deferredPromise,
         $setState,
         $requiredState,
       ];
@@ -822,7 +822,7 @@
       // Try to issue the next command
       $this->smtpExecuteCommand ();
       
-      return $deferedPromise->getPromise ();
+      return $deferredPromise->getPromise ();
     }
     // }}}
     
@@ -920,7 +920,7 @@
           $this->___callback ('smtpConnecting');
           
           // Create a new promise
-          $this->initPromise = new Events\Promise\Defered ();
+          $this->initPromise = new Events\Promise\Deferred ();
           
           return $this->initPromise->getPromise ();
         }

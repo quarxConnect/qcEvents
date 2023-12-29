@@ -378,8 +378,8 @@
       } else
         $orgCookies = null;
       
-      // Create defered promise
-      $deferedPromise = new Events\Promise\Defered ($factorySession->getEventBase ());
+      // Create deferred promise
+      $deferredPromise = new Events\Promise\Deferred ($factorySession->getEventBase ());
       
       // Setup timer for timeouts
       $requestTimeout = false;
@@ -391,9 +391,9 @@
         $requestTimer->restart ();
         
         $requestTimer->then (
-          function () use ($deferedPromise, &$requestTimeout) {
+          function () use ($deferredPromise, &$requestTimeout) {
             $requestTimeout = true;
-            $deferedPromise->reject ('Timeout');
+            $deferredPromise->reject ('Timeout');
           }
         );
       }
@@ -600,11 +600,11 @@
           );
         }
       )->then (
-        [ $deferedPromise, 'resolve' ],
-        [ $deferedPromise, 'reject' ]
+        [ $deferredPromise, 'resolve' ],
+        [ $deferredPromise, 'reject' ]
       );
       
-      return $deferedPromise->getPromise ();
+      return $deferredPromise->getPromise ();
     }
     // }}}
     

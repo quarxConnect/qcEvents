@@ -20,7 +20,7 @@
   
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Hookable.php');
-  require_once ('qcEvents/Defered.php');
+  require_once ('qcEvents/Deferred.php');
   
   class qcEvents_Vendor_LEGO_Gateway extends qcEvents_Hookable implements qcEvents_Interface_Stream_Consumer {
     /* NFC-Actions */
@@ -46,7 +46,7 @@
       qcEvents_Vendor_LEGO_Gateway::PAD_RIGHT => array (),
     );
     
-    /* Defered promise returned by initStreamConsumer() */
+    /* Deferred promise returned by initStreamConsumer() */
     private $initPromise = null;
     
     // {{{ getPadUIDs
@@ -251,7 +251,7 @@
         $this->initPromise->reject ('Replaced by another stream');
       }
       
-      $this->initPromise = new qcEvents_Defered;
+      $this->initPromise = new qcEvents_Deferred;
       $this->sourceStream = $sourceStream;
       
       $this->writeCommand ([ 0xb0, 0x01, 0x28, 0x63, 0x29, 0x20, 0x4c, 0x45, 0x47, 0x4f, 0x20, 0x32, 0x30, 0x31, 0x34 ]);

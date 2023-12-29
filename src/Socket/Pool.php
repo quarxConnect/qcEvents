@@ -182,7 +182,7 @@
         $remoteHost = [ $remoteHost ];
       
       // Push request to queue
-      $deferredPromise = new Promise\Defered ($this->getEventBase ());
+      $deferredPromise = new Promise\Deferred ($this->getEventBase ());
       
       $this->socketQueue [] = [ $remoteHost, $remotePort, $socketType, $useTLS, $allowReuse, $poolSession, $deferredPromise ];
       
@@ -438,7 +438,7 @@
             
             // Try to enable the socket
             $this->socketStatus [$socketIndex] = self::STATUS_ENABLING;
-            $this->socketPromises [$socketIndex] = $deferedPromise;
+            $this->socketPromises [$socketIndex] = $deferredPromise;
             
             // Dispatch event
             $this->dispatch (

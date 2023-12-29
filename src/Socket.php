@@ -1530,7 +1530,7 @@
       
       // Make sure we have promise for this
       if (!$this->tlsPromise)
-        $this->tlsPromise = new Promise\Defered ();
+        $this->tlsPromise = new Promise\Deferred ();
       
       # TODO: No clue at the moment how to do this on UDP-Server
       # TODO: Check if this simply works - we are doing this in non-blocking mode,

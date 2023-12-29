@@ -47,12 +47,12 @@
       
       $eventBase = Events\Base::singleton ();
       $timer = $eventBase->addTimeout ($timerInterval, true);
-      $defered = new Events\Promise\Defered ();
+      $deferred = new Events\Promise\Deferred ();
       $startTime = microtime (true);
       $counter = 0;
       
       $timer->then (
-        function () use (&$counter, $timer, $defered, $doIterations) {
+        function () use (&$counter, $timer, $deferred, $doIterations) {
           if (++$counter < $doIterations)
             return;
           
@@ -60,13 +60,13 @@
             $this->assertTrue (false);
           
           $timer->cancel ();
-          $defered->resolve ();
+          $deferred->resolve ();
         }
       );
       
       Events\Synchronizer::do (
         $eventBase,
-        $defered->getPromise ()
+        $deferred->getPromise ()
       );
       
       $stopTime = microtime (true);
@@ -111,18 +111,18 @@
       
       $eventBase = Events\Base::singleton ();
       $timer = $eventBase->addTimeout ($timerInterval, true);
-      $defered = new Events\Promise\Defered ();
+      $deferred = new Events\Promise\Deferred ();
       $counter = 0;
       
       $timer->then (
-        function () use (&$counter, $doIterations, $eventBase, $timerInterval, $timer, $defered) {
+        function () use (&$counter, $doIterations, $eventBase, $timerInterval, $timer, $deferred) {
           if (++$counter < $doIterations)
             return;
           
           $eventBase->addTimeout ($timerInterval / 2)->then (
-            function () use ($timer, $defered) {
+            function () use ($timer, $deferred) {
               $timer->cancel ();
-              $defered->resolve ();
+              $deferred->resolve ();
             }
           );
         }
@@ -132,7 +132,7 @@
       
       Events\Synchronizer::do (
         $eventBase,
-        $defered->getPromise ()
+        $deferred->getPromise ()
       );
       
       $stopTime = microtime (true);

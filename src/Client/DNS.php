@@ -295,7 +295,7 @@
       }
       
       // Prepare everything
-      $dnsPromise = new Events\Promise\Defered ($this->getEventBase ());
+      $dnsPromise = new Events\Promise\Deferred ($this->getEventBase ());
       $dnsTimer = $this->getEventBase ()->addTimeout (2, true);
       $nameserverIndex = 0;
       

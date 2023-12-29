@@ -1,7 +1,7 @@
 <?php
 
   /**
-   * quarxConnect Events - Defered Execution
+   * quarxConnect Events - Deferred Execution
    * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
@@ -23,8 +23,8 @@
   namespace quarxConnect\Events\Promise;
   use quarxConnect\Events;
   
-  class Defered {
-    /* Promise for this defered execution */
+  class Deferred {
+    /* Promise for this deferred execution */
     private $Promise = null;
     
     /* Resolve-Function of promise */
@@ -35,7 +35,7 @@
     
     // {{{ __construct
     /**
-     * Create a new defered execution
+     * Create a new deferred execution
      * 
      * @param mixed $BaseOrPromise (optional) An event-base to bind a new promise to or a pre-setup promise (requires $Resolve and $Reject)
      * @param callable $Resolve (optional) If $BaseOrPromise, this is a callable to resolve the promise
@@ -81,7 +81,7 @@
     
     // {{{ getPromise
     /**
-     * Retrive the promise for this defered execution
+     * Retrieve the promise for this deferred execution
      * 
      * @access public
      * @return Events\Promise
@@ -93,7 +93,7 @@
     
     // {{{ resolve
     /**
-     * Resolve this defered execution
+     * Resolve this deferred execution
      * 
      * @param ...
      * 
@@ -112,7 +112,7 @@
     
     // {{{ reject
     /**
-     * Reject this defered execution
+     * Reject this deferred execution
      * 
      * @param ...
      * 

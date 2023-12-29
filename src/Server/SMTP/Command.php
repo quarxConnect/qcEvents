@@ -139,7 +139,7 @@
     public function setIntermediateResponse (int $smtpCode, $responseMessage = null, callable $intermediateCallback = null) : Events\Promise {
       $this->smtpCode = $smtpCode;
       $this->responseMessage = $responseMessage;
-      $this->intermediatePromise = new Events\Promise\Defered ();
+      $this->intermediatePromise = new Events\Promise\Deferred ();
       $this->intermediateCallback = $intermediateCallback;
       $this->intermediateData = '';
       

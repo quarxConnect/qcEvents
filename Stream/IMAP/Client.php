@@ -18,7 +18,7 @@
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
   
-  require_once ('qcEvents/Defered.php');
+  require_once ('qcEvents/Deferred.php');
   require_once ('qcEvents/Hookable.php');
   require_once ('qcEvents/Interface/Stream/Consumer.php');
   require_once ('qcEvents/Stream/IMAP/Mailbox.php');
@@ -1548,7 +1548,7 @@
       $this->imapSetState ($this::IMAP_STATE_CONNECTING);
       
       // Create new init-promise
-      $this->initPromise = new qcEvents_Defered;
+      $this->initPromise = new qcEvents_Deferred;
       $this->initPromise->getPromise ()->then (
         function () use ($sourceStream) {
           $this->___callback ('eventPipedStream', $sourceStream);
@@ -1587,16 +1587,16 @@
      **/
     private function imapCommand ($commandName, array $commandArguments = null, callable $continuationCallback = null) : qcEvents_Promise {
       // Create a new promise for this command
-      $deferedPromise = new qcEvents_Defered;
+      $deferredPromise = new qcEvents_Deferred;
       
       // Push command to queue
-      $this->pendingCommands [$this->commandSequence++] = array ($deferedPromise, $commandName, $commandArguments, $continuationCallback, array ());
+      $this->pendingCommands [$this->commandSequence++] = array ($deferredPromise, $commandName, $commandArguments, $continuationCallback, array ());
       
       // Try to start pending command
       $this->imapStartPendingCommand ();
       
       // Return the promise
-      return $deferedPromise->getPromise ();
+      return $deferredPromise->getPromise ();
     }
     // }}}
     

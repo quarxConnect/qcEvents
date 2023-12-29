@@ -90,7 +90,7 @@
     /* Buffer for current response from server */
     private $receiveBuffer = '';
     
-    /* Defered promise for stream-initialization */
+    /* Deferred promise for stream-initialization */
     private $initPromise = null;
     
     /* Our piped source-stream */
@@ -530,8 +530,8 @@
      * @return Events\Promise
      **/
     private function ftpCommand (string $commandName, array $commandParameters = null, callable $intermediateCallback = null, bool $forceNext = false) : Events\Promise {
-      // Create a promse for that
-      $deferredPromise = new Events\Promise\Defered ();
+      // Create a promise for that
+      $deferredPromise = new Events\Promise\Deferred ();
       
       // Append the command to our queue
       $nextCommand = [
@@ -826,7 +826,7 @@
       $this->activeCommand = null;
       $this->pendingCommands = [ ];
       $this->sourceStream = $sourceStream;
-      $this->initPromise = new Events\Promise\Defered ();
+      $this->initPromise = new Events\Promise\Deferred ();
       
       return $this->initPromise->getPromise ();
     }

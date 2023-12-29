@@ -808,7 +808,7 @@
       $this->writeMessage ($this->localKeyExchange = $this->getKeyExchangeInit ());
       
       // Return new promise
-      $this->connectPromise = new Events\Promise\Defered ();
+      $this->connectPromise = new Events\Promise\Deferred ();
       
       return $this->connectPromise->getPromise ();
     }
@@ -876,8 +876,8 @@
      * @return Events\Promise
      **/
     private function writeAuthMessage (SSH\Message $authMessage) : Events\Promise {
-      // Create defered Promise
-      $this->authPromise = new Events\Promise\Defered ();
+      // Create deferred Promise
+      $this->authPromise = new Events\Promise\Deferred ();
       
       // Write out the message
       $this->writeMessage ($authMessage);
@@ -897,21 +897,21 @@
      * @return Events\Promise
      **/
     private function wantReply (SSH\GlobalRequest $sshRequest) : Events\Promise {
-      // Create new defered promise
-      $deferedPromise = new Events\Promise\Defered ();
+      // Create new deferred promise
+      $deferredPromise = new Events\Promise\Deferred ();
       
       // Make sure the reply-bit is set
       $sshRequest->wantReply = true;
       
       // Push to queue
-      $this->sshRequests [] = [ $sshRequest, $deferedPromise ];
+      $this->sshRequests [] = [ $sshRequest, $deferredPromise ];
       
-      // Check wheter to write out the request
+      // Check whether to write out the request
       if (count ($this->sshRequests) == 1)
-        $this->writeMessage ($sshRequest)->catch ([ $deferedPromise, 'reject' ]);
+        $this->writeMessage ($sshRequest)->catch ([ $deferredPromise, 'reject' ]);
       
       // Return the actual promise
-      return $deferedPromise->getPromise ();
+      return $deferredPromise->getPromise ();
     }
     // }}}
     

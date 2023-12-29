@@ -231,8 +231,8 @@
       } else
         return Promise::reject ('Missing pcntl_fork()');
       
-      // Create a new defered promise
-      $this->processPromise = new Promise\Defered ();
+      // Create a new deferred promise
+      $this->processPromise = new Promise\Deferred ();
       
       return $this->processPromise->getPromise ();
     }

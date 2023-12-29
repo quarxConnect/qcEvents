@@ -5,48 +5,48 @@
   use PHPUnit\Framework\TestCase;
   use quarxConnect\Events;
   
-  final class DeferedPromiseTest extends TestCase {
+  final class DeferredPromiseTest extends TestCase {
     public function testSimpleFulfillment () : void {
       $eventBase = Events\Base::singleton ();
-      $deferedPromise = new Events\Promise\Defered ();
-      $deferedPromise->resolve (true);
+      $deferredPromise = new Events\Promise\Deferred ();
+      $deferredPromise->resolve (true);
       
       $this->assertTrue (
         Events\Synchronizer::do (
           $eventBase,
-          $deferedPromise->getPromise ()
+          $deferredPromise->getPromise ()
         )
       );
       
-      unset ($deferedPromise);
+      unset ($deferredPromise);
       gc_collect_cycles ();
     }
     
     public function testFulfillmentWithValue () : void {
       $eventBase = Events\Base::singleton ();
-      $deferedPromise = new Events\Promise\Defered ();
-      $deferedPromise->resolve (42);
+      $deferredPromise = new Events\Promise\Deferred ();
+      $deferredPromise->resolve (42);
 
       $this->assertEquals (
         42,
         Events\Synchronizer::do (
           $eventBase,
-          $deferedPromise->getPromise ()
+          $deferredPromise->getPromise ()
         )
       );
 
-      unset ($deferedPromise);
+      unset ($deferredPromise);
       gc_collect_cycles ();
     }
     
     public function testFulfillmentWithManyValues () : void {
       $eventBase = Events\Base::singleton ();
-      $deferedPromise = new Events\Promise\Defered ();
-      $deferedPromise->resolve (42, 23, 19);
+      $deferredPromise = new Events\Promise\Deferred ();
+      $deferredPromise->resolve (42, 23, 19);
       
       $promiseResult = Events\Synchronizer::doAsArray (
         $eventBase,
-        $deferedPromise->getPromise ()
+        $deferredPromise->getPromise ()
       );
       
       $this->assertCount (
@@ -69,32 +69,32 @@
         $promiseResult [2]
       );
       
-      unset ($deferedPromise);
+      unset ($deferredPromise);
       gc_collect_cycles ();
     }
     
     public function testSimpleRejection () : void {
       $eventBase = Events\Base::singleton ();
-      $deferedPromise = new Events\Promise\Defered ();
-      $deferedPromise->reject ();
+      $deferredPromise = new Events\Promise\Deferred ();
+      $deferredPromise->reject ();
       
       $this->expectException (\Exception::class);
       
       Events\Synchronizer::do (
         $eventBase,
-        $deferedPromise->getPromise ()
+        $deferredPromise->getPromise ()
       );
     }
     
     public function testRejectionWithValue () : void {
       $eventBase = Events\Base::singleton ();
-      $deferedPromise = new Events\Promise\Defered ();
-      $deferedPromise->reject (23);
+      $deferredPromise = new Events\Promise\Deferred ();
+      $deferredPromise->reject (23);
       
       try {
         Events\Synchronizer::do (
           $eventBase,
-          $deferedPromise->getPromise ()
+          $deferredPromise->getPromise ()
         );
         
         $this->assertTrue (false);
@@ -105,18 +105,18 @@
         );
       }
       
-      unset ($deferedPromise);
+      unset ($deferredPromise);
       gc_collect_cycles ();
     }
     
     public function testRejectionWithManyValues () : void {
       $eventBase = Events\Base::singleton ();
-      $deferedPromise = new Events\Promise\Defered ();
-      $deferedPromise->reject (23, 19, 42);
+      $deferredPromise = new Events\Promise\Deferred ();
+      $deferredPromise->reject (23, 19, 42);
       
       // We cannot catch multiple arguments via synchronizer
       $rejectionResult = null;
-      $eventPromise = $deferedPromise->getPromise ()->catch (
+      $eventPromise = $deferredPromise->getPromise ()->catch (
         function () use (&$rejectionResult) {
           $rejectionResult = func_get_args ();
           
@@ -154,7 +154,7 @@
         );
       }
 
-      unset ($eventPromise, $deferedPromise);
+      unset ($eventPromise, $deferredPromise);
       gc_collect_cycles ();
     }
   }

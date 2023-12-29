@@ -621,17 +621,17 @@
       if ($this->State < self::POP3_STATE_CONNECTED)
         return Events\Promise::reject ('Not connected');
       
-      // Create a new defered promise
-      $deferedPromise = new Events\Promise\Defered ();
+      // Create a new deferred promise
+      $deferredPromise = new Events\Promise\Deferred ();
       
       // Put the command on our pipeline
-      $this->pendingCommands [] = [ $deferedPromise, $Keyword, $Args, $Multiline, $intermediateCallback ];
+      $this->pendingCommands [] = [ $deferredPromise, $Keyword, $Args, $Multiline, $intermediateCallback ];
       
-      // Check wheter to issue the next command directly
+      // Check whether to issue the next command directly
       $this->popCommandNext ();
       
       // Always return true
-      return $deferedPromise->getPromise ();
+      return $deferredPromise->getPromise ();
     }
     // }}}
     
@@ -735,7 +735,7 @@
           $this->___callback ('popConnecting');
           
           // Setup init-promise
-          $this->initPromise = new Events\Promise\Defered ();
+          $this->initPromise = new Events\Promise\Deferred ();
           
           $this->initPromise->getPromise ()->then (
             function () {

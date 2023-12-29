@@ -212,7 +212,7 @@
       bool $allowReuse = false,
       ABI\Socket\Factory $factorySession = null
     ): Promise {
-      $requestPromise = new Promise\Defered ();
+      $requestPromise = new Promise\Deferred ();
       
       $this->pendingConnections [] = [
         'promise' => $requestPromise,

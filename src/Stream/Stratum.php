@@ -145,11 +145,11 @@
         'params' => $Parameters,
       ];
       
-      $deferedPromise = new Events\Promise\Defered ();
-      $this->Requests [$Message ['id']] = $deferedPromise;
+      $deferredPromise = new Events\Promise\Deferred ();
+      $this->Requests [$Message ['id']] = $deferredPromise;
       $this->sendMessage ($Message, $Extra);
       
-      return $deferedPromise->getPromise ();
+      return $deferredPromise->getPromise ();
     }
     // }}}
     
@@ -204,10 +204,10 @@
       
       // Push message to the wire
       if (!$this->Stream || !$this->Stream->isConnected ()) {
-        $deferedPromise = new Events\Promise\Defered ();
-        $this->Queue [] = [ $Message, $deferedPromise ];
+        $deferredPromise = new Events\Promise\Deferred ();
+        $this->Queue [] = [ $Message, $deferredPromise ];
         
-        return $deferedPromise->getPromise ();
+        return $deferredPromise->getPromise ();
       }
       
       return $this->Stream->write (json_encode ($Message) . "\n");
@@ -326,14 +326,14 @@
       // Check if there is a request pending
       if (isset ($this->Requests [$Message->id])) {
         // Get the callback
-        $deferedPromise = $this->Requests [$Message->id];
+        $deferredPromise = $this->Requests [$Message->id];
         unset ($this->Requests [$Message->id]);
         
         // Run the callback
         if ($Message->error)
-          $deferedPromise->reject ($Message->error [1] ?? $Message->error);
+          $deferredPromise->reject ($Message->error [1] ?? $Message->error);
         else
-          $deferedPromise->resolve ($Message->result, $Message);
+          $deferredPromise->resolve ($Message->result, $Message);
         
         return;
       }
@@ -366,8 +366,8 @@
      **/
     public function close () : Events\Promise {
       // Cancel pending requests
-      foreach ($this->Requests as $deferedPromise)
-        $deferedPromise->reject ('Stream closing');
+      foreach ($this->Requests as $deferredPromise)
+        $deferredPromise->reject ('Stream closing');
       
       $this->Requests = [ ];
       
@@ -444,8 +444,8 @@
       $this->Buffer = '';
       
       // Cancel pending requests
-      foreach ($this->Requests as $deferedPromise)
-        $deferedPromise->reject ('Removing pipe from consumer');
+      foreach ($this->Requests as $deferredPromise)
+        $deferredPromise->reject ('Removing pipe from consumer');
       
       $this->Requests = [ ];
       

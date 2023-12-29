@@ -108,7 +108,7 @@
       $this->localMaximumPacketSize = $maximumPacketSize;
       
       // Create a connection-promise
-      $this->connectionPromise = new Events\Promise\Defered ();
+      $this->connectionPromise = new Events\Promise\Deferred ();
       
       // Enqueue connection-timeout
       if (
@@ -326,21 +326,21 @@
      * @return Events\Promise
      **/
     private function wantReply (ChannelRequest $sshMessage) : Events\Promise {
-      // Create defered promise
-      $deferedPromise = new Events\Promise\Defered ();
+      // Create deferred promise
+      $deferredPromise = new Events\Promise\Deferred ();
       
       // Make sure the reply-bit is set
       $sshMessage->wantReply = true;
       
       // Push to queue
-      $this->channelRequests [] = [ $sshMessage, $deferedPromise ];
+      $this->channelRequests [] = [ $sshMessage, $deferredPromise ];
       
-      // Check wheter to write out the request
+      // Check whether to write out the request
       if (count ($this->channelRequests) == 1)
-        $this->sshStream->writeMessage ($sshMessage)->catch ([ $deferedPromise, 'reject' ]);
+        $this->sshStream->writeMessage ($sshMessage)->catch ([ $deferredPromise, 'reject' ]);
       
       // Return the promise
-      return $deferedPromise->getPromise ();
+      return $deferredPromise->getPromise ();
     }
     // }}}
     
