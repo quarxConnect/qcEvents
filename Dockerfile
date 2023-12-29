@@ -12,6 +12,7 @@ COPY --from=composer /usr/bin/composer /usr/local/bin/composer
 RUN apt-get update && \
   apt-get install -y libgmp-dev libxml2-dev libzip-dev zip unzip && \
   pecl install inotify && \
+  docker-php-ext-enable inotify && \
   docker-php-ext-install gmp && \
   docker-php-ext-install soap && \
   docker-php-ext-install zip
