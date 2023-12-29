@@ -23,7 +23,7 @@
   namespace quarxConnect\Events\Stream;
   use \quarxConnect\Events;
   
-  class SSH extends Events\Hookable implements Events\ABI\Stream\Consumer, Events\ABI\Socket\Factory {
+  class SSH extends Events\Emitter implements Events\ABI\Stream\Consumer, Events\ABI\Socket\Factory {
     /* State of our stream */
     private const STATE_NONE = 0;
     private const STATE_CONNECT = 1;

@@ -21,10 +21,14 @@
   declare (strict_types=1);
   
   namespace quarxConnect\Events\ABI\Socket;
-  use \quarxConnect\Events;
-  use \quarxConnect\Events\ABI;
+
+  use quarxConnect\Events\ABI;
+  use quarxConnect\Events\Promise;
+
+  use Psr\EventDispatcher\EventDispatcherInterface;
+  use Psr\EventDispatcher\ListenerProviderInterface;
   
-  interface Factory extends ABI\Hookable, ABI\Based {
+  interface Factory extends ABI\Based, EventDispatcherInterface, ListenerProviderInterface {
     // {{{ createConnection
     /**
      * Request a connected socket from this factory
@@ -36,20 +40,26 @@
      * @param bool $allowReuse (optional)
      * 
      * @access public
-     * @return Events\Promise
+     * @return Promise
      **/
-    public function createConnection ($remoteHost, int $remotePort, int $socketType, bool $useTLS = false, bool $allowReuse = false) : Events\Promise;
+    public function createConnection (
+      array|string $remoteHost,
+      int $remotePort,
+      int $socketType,
+      bool $useTLS = false,
+      bool $allowReuse = false
+    ): Promise;
     // }}}
     
     // {{{ releaseConnection
     /**
      * Return a connected socket back to the factory
      * 
-     * @param Events\ABI\Stream $leasedConnection
+     * @param ABI\Stream $leasedConnection
      * 
      * @access public
      * @return void
      **/
-    public function releaseConnection (Events\ABI\Stream $leasedConnection) : void;
+    public function releaseConnection (ABI\Stream $leasedConnection): void;
     // }}}
   }

@@ -21,10 +21,19 @@
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Socket;
-  use quarxConnect\Events;
+
+  use quarxConnect\Events\ABI;
+  use quarxConnect\Events\Base;
+  use quarxConnect\Events\Emitter;
+  use quarxConnect\Events\Feature;
+  use quarxConnect\Events\Promise;
+  use quarxConnect\Events\Socket;
+  use quarxConnect\Events\Socket\Event\Connected as ConnectedEvent;
+  use quarxConnect\Events\Socket\Exception\InvalidPort;
+  use quarxConnect\Events\Socket\Exception\InvalidType;
   
-  class Pool extends Events\Hookable implements Events\ABI\Socket\Factory {
-    use Events\Feature\Based;
+  class Pool extends Emitter implements ABI\Socket\Factory {
+    use Feature\Based;
     
     /* Socket-Pool */
     private $Sockets = [ ];
@@ -43,7 +52,7 @@
     /* Map socket-keys to Socket */
     private $socketMaps = [ ];
     
-    /* Defered Promises when enabling sockets */
+    /* Deferred Promises when enabling sockets */
     private $socketPromises = [ ];
     
     /* Enqueued Socket-Requests */
@@ -62,12 +71,12 @@
     /**
      * Create a new socket-pool
      * 
-     * @param Events\Base $eventBase
+     * @param Base $eventBase
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (Events\Base $eventBase) {
+    function __construct (Base $eventBase) {
       $this->setEventBase ($eventBase);
     }
     // }}}
@@ -144,37 +153,44 @@
      * @param Pool\Session $poolSession (optional)
      * 
      * @access public
-     * @return Events\Promise
+     * @return Promise
      **/
-    public function createConnection ($remoteHost, int $remotePort, int $socketType, bool $useTLS = false, bool $allowReuse = false, Pool\Session $poolSession = null) : Events\Promise {
-      // Sanatize socket-type
+    public function createConnection (
+      array|string $remoteHost,
+      int $remotePort,
+      int $socketType,
+      bool $useTLS = false,
+      bool $allowReuse = false,
+      Pool\Session $poolSession = null
+    ): Promise {
+      // Sanitize socket-type
       if (
-        ($socketType != Events\Socket::TYPE_TCP) &&
-        ($socketType != Events\Socket::TYPE_UDP)
+        ($socketType != Socket::TYPE_TCP) &&
+        ($socketType != Socket::TYPE_UDP)
       )
-        return Events\Promise::reject ('Invalid socket-type given');
+        return Promise::reject (new InvalidType ());
       
-      // Sanatize the port
+      // Sanitize the port
       if (
         ($remotePort < 1) ||
         ($remotePort > 0xffff)
       )
-        return Events\Promise::reject ('Invalid port given');
+        return Promise::reject (new InvalidPort ());
       
       // Make sure remote host is an array
       if (!is_array ($remoteHost))
         $remoteHost = [ $remoteHost ];
       
       // Push request to queue
-      $deferedPromise = new Events\Promise\Defered ($this->getEventBase ());
+      $deferredPromise = new Promise\Defered ($this->getEventBase ());
       
-      $this->socketQueue [] = [ $remoteHost, $remotePort, $socketType, $useTLS, $allowReuse, $poolSession, $deferedPromise ];
+      $this->socketQueue [] = [ $remoteHost, $remotePort, $socketType, $useTLS, $allowReuse, $poolSession, $deferredPromise ];
       
       // Try to run the queue
       $this->checkSocketQueue ($poolSession);
       
       // Return the promise
-      return $deferedPromise->getPromise ();
+      return $deferredPromise->getPromise ();
     }
     // }}}
     
@@ -182,19 +198,18 @@
     /**
      * Mark a socket as enabled/connection established
      * 
-     * @param Events\Socket $Socket
-     * @param Events\ABI\Stream\Consumer $Pipe (optional)
+     * @param Socket $Socket
+     * @param ABI\Stream\Consumer $Pipe (optional)
      * 
      * @access public
      * @return void
      **/
-    public function enableSocket (Events\Socket $Socket, Events\ABI\Stream\Consumer $Pipe = null) {
+    public function enableSocket (Socket $Socket, ABI\Stream\Consumer $Pipe = null): void {
       // Try to find the socket on pool
-      if (($socketIndex = array_search ($Socket, $this->Sockets, true)) === false) {
-        trigger_error ('Trying to enable unknown socket');
-        
-        return false;
-      }
+      $socketIndex = array_search ($Socket, $this->Sockets, true);
+
+      if ($socketIndex === false)
+        return;
       
       // Check the status
       if ($this->socketStatus [$socketIndex] != self::STATUS_ENABLING)
@@ -219,12 +234,12 @@
     /**
      * Return a connected socket back to the factory
      * 
-     * @param Events\ABI\Stream $leasedConnection
+     * @param ABI\Stream $leasedConnection
      * 
      * @access public
      * @return void
      **/
-    public function releaseConnection (Events\ABI\Stream $leasedConnection) : void {
+    public function releaseConnection (ABI\Stream $leasedConnection): void {
       // Try to find the socket on pool
       if (($socketIndex = array_search ($leasedConnection, $this->Sockets, true)) === false)
         return;
@@ -251,9 +266,11 @@
       $releasedSocket = $this->Sockets [$socketIndex];
       unset ($this->Sockets [$socketIndex]);
       
-      // Check wheter to run a failed-callback
-      if (($this->socketStatus [$socketIndex] == self::STATUS_ENABLING) &&
-          isset ($this->socketPromises [$socketIndex]))
+      // Check whether to run a failed-callback
+      if (
+        ($this->socketStatus [$socketIndex] == self::STATUS_ENABLING) &&
+        isset ($this->socketPromises [$socketIndex])
+      )
         $this->socketPromises [$socketIndex]->reject ('Socket was released');
       
       // Call close
@@ -307,7 +324,7 @@
           $useTLS = $queueInfo [3];
           $allowReuse = $queueInfo [4];
           $poolSession = $queueInfo [5];
-          $deferedPromise = $queueInfo [6];
+          $deferredPromise = $queueInfo [6];
           
           if ($forSession && ($forSession !== $poolSession))
             continue;
@@ -330,7 +347,7 @@
             unset ($this->socketQueue [$queueIndex]);
             
             // Push the socket
-            $deferedPromise->resolve ($this->Sockets [$socketIndex], $this->socketPipes [$socketIndex]);
+            $deferredPromise->resolve ($this->Sockets [$socketIndex], $this->socketPipes [$socketIndex]);
             
             // Move to next queued socket
             continue (2);
@@ -366,7 +383,7 @@
         $useTLS = $queueInfo [3];
         $allowReuse = $queueInfo [4];
         $poolSession = $queueInfo [5];
-        $deferedPromise = $queueInfo [6];
+        $deferredPromise = $queueInfo [6];
         
         if ($forSession && ($forSession !== $poolSession))
           continue;
@@ -378,17 +395,17 @@
         
         // Request event-base
         if (!is_object ($eventBase = $this->getEventBase ())) {
-          $deferedPromise->reject ('No event-base assigned');
+          $deferredPromise->reject ('No event-base assigned');
           
           continue;
         }
         
         // Create a new socket
-        $this->Sockets [] = $newSocket = new Events\Socket ($eventBase);
+        $this->Sockets [] = $newSocket = new Socket ($eventBase);
         
         // Get index of new socket
         if (($socketIndex = array_search ($newSocket, $this->Sockets, true)) === false) {
-          $deferedPromise->reject ('Just lost a socket... Strange!');
+          $deferredPromise->reject ('Just lost a socket... Strange!');
           
           continue;
         }
@@ -407,14 +424,14 @@
         
         // Try to connect
         $newSocket->connect ($remoteHost, $remotePort, $socketType, $useTLS)->then (
-          function () use ($newSocket, $socketKey, $socketIndex, $deferedPromise) {
-            // Check wheter to further setup the socket
+          function () use ($newSocket, $socketKey, $socketIndex, $deferredPromise) {
+            // Check whether to further setup the socket
             if (count ($this->getHooks ('socketConnected')) == 0) {
-              // Mark the socket as aquired
+              // Mark the socket as acquired
               $this->socketStatus [$socketIndex] = self::STATUS_ACQUIRED;
               
               // Push socket to promise
-              $deferedPromise->resolve ($newSocket, null);
+              $deferredPromise->resolve ($newSocket, null);
               
               return;
             }
@@ -423,10 +440,12 @@
             $this->socketStatus [$socketIndex] = self::STATUS_ENABLING;
             $this->socketPromises [$socketIndex] = $deferedPromise;
             
-            // Fire the callback
-            $this->___callback ('socketConnected', $newSocket);
+            // Dispatch event
+            $this->dispatch (
+              new ConnectedEvent ($newSocket)
+            );
           },
-          function () use ($newSocket, $socketKey, $socketIndex, $deferedPromise, $poolSession) {
+          function () use ($newSocket, $socketKey, $socketIndex, $deferredPromise, $poolSession) {
             // Quickly de-register the socket
             unset (
               $this->Sockets [$socketIndex],
@@ -445,14 +464,14 @@
                 
                 $this->socketStatus [$socketIndex] = self::STATUS_ACQUIRED;
                 
-                $deferedPromise->resolve ($this->Sockets [$socketIndex], $this->socketPipes [$socketIndex]);
-                $deferedPromise = null;
+                $deferredPromise->resolve ($this->Sockets [$socketIndex], $this->socketPipes [$socketIndex]);
+                $deferredPromise = null;
               }
             } else
               unset ($this->socketMaps [$socketKey]);
             
-            if ($deferedPromise)
-              call_user_func_array ([ $deferedPromise, 'reject' ], func_get_args ());
+            if ($defreredPromise)
+              call_user_func_array ([ $deferredPromise, 'reject' ], func_get_args ());
             
             // Check if we could connect queued sockets
             $this->checkSocketQueue ($poolSession);
@@ -476,18 +495,5 @@
           }
         );
     }
-    // }}}
-    
-    
-    // {{{ socketConnected
-    /**
-     * Callback: A new socket on the pool has connected to its destination
-     * 
-     * @param Events\Socket $Socket
-     * 
-     * @access protected
-     * @return void
-     **/
-    protected function socketConnected (Events\Socket $Socket) { }
     // }}}
   }

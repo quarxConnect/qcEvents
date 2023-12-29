@@ -2,7 +2,7 @@
 
   /**
    * quarxConnect Events - Limited Socket Factory
-   * Copyright (C) 2020-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2020-2023 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -21,12 +21,15 @@
   declare (strict_types=1);
   
   namespace quarxConnect\Events\Socket\Factory;
-  use \quarxConnect\Events;
-  use \quarxConnect\Events\ABI;
-  
-  class Limited extends Events\Hookable implements ABI\Socket\Factory {
+
+  use quarxConnect\Events\ABI;
+  use quarxConnect\Events\Base;
+  use quarxConnect\Events\Emitter;
+  use quarxConnect\Events\Promise;
+
+  class Limited extends Emitter implements ABI\Socket\Factory {
     /* Instance of socket-factory we should add limits to */
-    private $socketFactory = null;
+    private ABI\Socket\Factory $socketFactory;
     
     /* Collection of pending connection-requests */
     private $pendingConnections = [ ];
@@ -60,56 +63,51 @@
     
     // {{{ getEventBase
     /**
-     * Retrive the handle of the current event-loop-handler
+     * Retrieve the instance of our event-base
      * 
      * @access public
-     * @return Events\Base
+     * @return Base
      **/
-    public function getEventBase () : ?Events\Base {
+    public function getEventBase (): ?Base {
       return $this->socketFactory->getEventBase ();
     }
     // }}}
     
     // {{{ setEventBase
     /**
-     * Set the Event-Base of this source
+     * Set the event-base of this source
      * 
-     * @param Events\Base $eventBase
+     * @param Base $eventBase
      * 
      * @access public
      * @return void
      **/
-    public function setEventBase (\quarxConnect\Events\Base $eventBase) : void {
+    public function setEventBase (Base $eventBase): void {
       $this->socketFactory->setEventBase ($eventBase);
     }
     // }}}
     
     // {{{ unsetEventBase
     /**
-     * Remove any assigned event-loop-handler
+     * Remove the assigned event-base
      * 
      * @access public
      * @return void
      **/
-    public function unsetEventBase () : void {
+    public function unsetEventBase (): void {
       $this->socketFactory->unsetEventBase ();
     }
     // }}}
-    
-    // {{{ setMaxConnections
+
+    // {{{ getSocketFactory
     /**
-     * Set the maximum of parallel leased connections
-     * 
-     * @param int $maxConnections
-     * 
+     * Retrieve instance of our parent socket-factory
+     *
      * @access public
-     * @return void
+     * @return ABI\Socket\Factory
      **/
-    public function setMaxConnections (int $maxConnections) : void {
-      if ($maxConnections < 1)
-        throw new \RangeException ('Connection-Limit must not be lower than one');
-      
-      $this->maxConnections = $maxConnections;
+    public function getSocketFactory (): ABI\Socket\Factory {
+      return $this->socketFactory;
     }
     // }}}
     
@@ -120,7 +118,7 @@
      * @access public
      * @return ABI\Socket\Factory
      **/
-    public function getSession () : ABI\Socket\Factory {
+    public function getSession (): ABI\Socket\Factory {
       return (new Session ($this));
     }
     // }}}
@@ -134,8 +132,61 @@
      * @access public
      * @return void
      **/
-    public function removeSession (ABI\Socket\Factory $factorySession) : void {
+    public function removeSession (ABI\Socket\Factory $factorySession): void {
       $this->checkPendingConnections ();
+    }
+    // }}}
+
+    // {{{ setMaxConnections
+    /**
+     * Set the maximum of parallel leased connections
+     * 
+     * @param int $maxConnections
+     * 
+     * @access public
+     * @return void
+     **/
+    public function setMaxConnections (int $maxConnections): void {
+      if ($maxConnections < 1)
+        throw new \RangeException ('Connection-Limit must not be lower than one');
+      
+      $this->maxConnections = $maxConnections;
+    }
+    // }}}
+    
+    // {{{ pendingConnections
+    /**
+     * Retrieve number of pending connections
+     * 
+     * @access public
+     * @return int
+     **/
+    public function pendingConnections (): int {
+      return count ($this->pendingConnections);
+    }
+    // }}}
+
+    // {{{ activeConnections
+    /**
+     * Retrieve number of active connections
+     * 
+     * @access public
+     * @return int
+     **/
+    public function activeConnections (): int {
+      return count ($this->activeConnections);
+    }
+    // }}}
+
+    // {{{ totalConnections
+    /**
+     * Retrieve number of total connections here
+     * 
+     * @access public
+     * @return int
+     **/
+    public function totalConnections (): int {
+      return count ($this->pendingConnections) + count ($this->activeConnections);
     }
     // }}}
     
@@ -151,12 +202,27 @@
      * @param ABI\Socket\Factory $factorySession (optional)
      * 
      * @access public
-     * @return Events\Promise
+     * @return Promise
      **/
-    public function createConnection ($remoteHost, int $remotePort, int $socketType, bool $useTLS = false, bool $allowReuse = false, ABI\Socket\Factory $factorySession = null) : Events\Promise {
-      $requestPromise = new Events\Promise\Defered ();
+    public function createConnection (
+      array|string $remoteHost,
+      int $remotePort,
+      int $socketType,
+      bool $useTLS = false,
+      bool $allowReuse = false,
+      ABI\Socket\Factory $factorySession = null
+    ): Promise {
+      $requestPromise = new Promise\Defered ();
       
-      $this->pendingConnections [] = [ $requestPromise, $remoteHost, $remotePort, $socketType, $useTLS, $allowReuse, $factorySession ];
+      $this->pendingConnections [] = [
+        'promise' => $requestPromise,
+        'host' => $remoteHost,
+        'port' => $remotePort,
+        'type' => $socketType,
+        'tls' => $useTLS,
+        'reuse' => $allowReuse,
+        'session' => $factorySession,
+      ];
       
       $this->checkPendingConnections ($factorySession);
       
@@ -173,12 +239,12 @@
      * @access public
      * @return void
      **/
-    public function releaseConnection (ABI\Stream $leasedConnection) : void {
+    public function releaseConnection (ABI\Stream $leasedConnection): void {
       // Make sure we know this connection
       $connectionIndex = null;
       
       foreach ($this->activeConnections as $activeIndex=>$activeConnection)
-        if ($activeConnection [0] === $leasedConnection) {
+        if ($activeConnection ['connection'] === $leasedConnection) {
           $connectionIndex = $activeIndex;
           
           break;
@@ -196,7 +262,7 @@
       $this->socketFactory->releaseConnection ($leasedConnection);
       
       // Check for pending connections
-      $this->checkPendingConnections ($connectionMeta [6], $connectionMeta);
+      $this->checkPendingConnections ($connectionMeta ['session'], $connectionMeta);
     }
     // }}}
     
@@ -210,28 +276,28 @@
      * @access private
      * @return void
      **/
-    private function checkPendingConnections (ABI\Socket\Factory $factorySession = null, array $connectionMeta = null) : void {
+    private function checkPendingConnections (ABI\Socket\Factory $factorySession = null, array $connectionMeta = null): void {
       while (
         (count ($this->pendingConnections) > 0) &&
         (count ($this->activeConnections) < $this->maxConnections)
       ) {
-        // Find best next connection-request
+        // Check if there is a pending connection matching a released connection
         $nextRequest = null;
         
         if (
           $connectionMeta &&
-          $connectionMeta [5] &&
-          is_callable ([ $connectionMeta [0], 'isConnected' ]) &&
-          $connectionMeta [0]->isConnected ()
+          $connectionMeta ['reuse'] &&
+          is_callable ([ $connectionMeta ['connection'], 'isConnected' ]) &&
+          $connectionMeta ['connection']->isConnected ()
         ) {
           foreach ($this->pendingConnections as $pendingIndex=>$pendingConnection)
             if (
-              ($connectionMeta [1] == $pendingConnection [1]) &&
-              ($connectionMeta [2] == $pendingConnection [2]) &&
-              ($connectionMeta [3] == $pendingConnection [3]) &&
-              ($connectionMeta [4] == $pendingConnection [4]) &&
-              ($connectionMeta [5] == $pendingConnection [5]) &&
-              (!$factorySession || ($pendingConnection [6] === $factorySession))
+              ($connectionMeta ['host'] == $pendingConnection ['host']) &&
+              ($connectionMeta ['port'] == $pendingConnection ['port']) &&
+              ($connectionMeta ['type'] == $pendingConnection ['type']) &&
+              ($connectionMeta ['tls'] == $pendingConnection ['tls']) &&
+              ($connectionMeta ['reuse'] == $pendingConnection ['reuse']) &&
+              (!$factorySession || ($pendingConnection ['session'] === $factorySession))
             ) {
               $nextRequest = $pendingConnection;
               
@@ -243,14 +309,16 @@
         }
         
         if ($factorySession && !$nextRequest) {
+          // Check if there is a pending request for current session
           foreach ($this->pendingConnections as $pendingIndex=>$pendingConnection)
-            if ($pendingConnection [6] === $factorySession) {
+            if ($pendingConnection ['session'] === $factorySession) {
               $nextRequest = $pendingConnection;
               
               unset ($this->pendingConnections [$pendingIndex]);
               break;
             }
           
+          // Try again without session on next loop
           if (!$nextRequest) {
             $this->getEventBase ()->forceCallback (
               function () {
@@ -262,6 +330,7 @@
           }
         }
         
+        // Just pick next request from pending connections
         if (!$nextRequest)
           $nextRequest = array_shift ($this->pendingConnections);
         
@@ -270,14 +339,14 @@
         
         // Request the connection at our parent
         $this->socketFactory->createConnection (
-          $nextRequest [1],
-          $nextRequest [2],
-          $nextRequest [3],
-          $nextRequest [4],
-          $nextRequest [5]
+          $nextRequest ['host'],
+          $nextRequest ['port'],
+          $nextRequest ['type'],
+          $nextRequest ['tls'],
+          $nextRequest ['reuse']
         )->then (
           function (ABI\Stream $activeConnection) use ($nextRequest) {
-            // Replace promise with active connection
+            // Find request on active connections
             if (($requestIndex = array_search ($nextRequest, $this->activeConnections, true)) === false) {
               trigger_error ('Connection-Request not found on active connections - this should never happen', E_USER_WARNING);
               
@@ -285,8 +354,11 @@
             }
             
             // Replace promise with stream on active connections
-            $requestPromise = $this->activeConnections [$requestIndex][0];
-            $this->activeConnections [$requestIndex][0] = $activeConnection;
+            $requestPromise = $this->activeConnections [$requestIndex]['promise'];
+
+            $this->activeConnections [$requestIndex]['connection'] = $activeConnection;
+
+            unset ($this->activeConnections [$requestIndex]['promise']);
             
             // Resolve the promise
             $requestPromise->resolve ($activeConnection);
@@ -302,7 +374,7 @@
               trigger_error ('Connection-Request not found on active connections - this should never happen', E_USER_WARNING);
             
             // Forward the rejection
-            call_user_func_array ([ $nextRequest [0], 'reject' ], func_get_args ());
+            call_user_func_array ([ $nextRequest ['promise'], 'reject' ], func_get_args ());
             
             // Check for additional pending connections
             $this->checkPendingConnections ();
