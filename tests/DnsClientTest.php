@@ -13,6 +13,14 @@
     public function testResolverWithExisting ($dnsDomain, $dnsType) {
       $eventBase = Events\Base::singleton ();
       $dnsClient = new Events\Client\DNS ($eventBase);
+      $dnsEvent = null;
+
+      $dnsClient->addEventListener (
+        Events\Client\DNS\Event\Result::class,
+        function ($theEvent) use (&$dnsEvent): void {
+          $dnsEvent = $theEvent;
+        }
+      );
       
       $this->assertIsObject (
         $dnsRecordset = Events\Synchronizer::do (
@@ -34,6 +42,17 @@
       foreach ($dnsRecordset as $dnsRecord)
         if (isset ($typeClasses [$dnsType]))
           $this->assertInstanceOf ($typeClasses [$dnsType], $dnsRecord);
+      
+      $this->assertIsObject (
+        $dnsEvent,
+        'DNS-Result-Event was received'
+      );
+
+      $this->assertEquals (
+        $dnsDomain,
+        $dnsEvent->getHostname (),
+        'Hostname on Event is the same as the queried one'
+      );
     }
     
     /**
@@ -55,7 +74,7 @@
       $eventBase = Events\Base::singleton ();
       $dnsClient = new Events\Client\DNS ($eventBase);
       $dnsClient->useSystemNameserver ();
-      
+
       // Insert non-sense nameserver
       $dnsNameservers = $dnsClient->getNameservers ();
       
@@ -70,6 +89,7 @@
       );
       
       $dnsClient->setNameservers ($dnsNameservers);
+      $dnsClient->setTimeout (1.0);
       
       // Try to resolve an existing record
       $this->assertIsObject (
@@ -82,6 +102,54 @@
       $this->assertGreaterThan (
         0,
         count ($dnsRecordset)
+      );
+    }
+
+    public function testTimeout () : void {
+      $eventBase = Events\Base::singleton ();
+      $dnsClient = new Events\Client\DNS ($eventBase);
+      $dnsEvent = null;
+
+      $dnsClient->addEventListener (
+        Events\Client\DNS\Event\Timeout::class,
+        function ($theEvent) use (&$dnsEvent): void {
+          $dnsEvent = $theEvent;
+        }
+      );
+      
+      // Insert non-sense nameserver
+      $dnsNameservers = [
+        [ 'ip' => '127.255.255.254' ],
+        [ 'ip' => '1fff::53' ],
+      ];
+      
+      $dnsClient->setNameservers ($dnsNameservers);
+      $dnsClient->setTimeout (1.0);
+      
+      // Try to resolve an existing record
+      try {
+        $dnsRecordset = Events\Synchronizer::do (
+          $eventBase,
+          $dnsClient->resolve ('x.microsoft.com', DNS\Message::TYPE_A)
+        );
+
+        $this->assertTrue (
+          false,
+          'An exception was received'
+        );
+      } catch (\Throwable $dnsError) {
+        // No-Op
+      }
+      
+      $this->assertIsObject (
+        $dnsEvent,
+        'DNS-Result-Event was received'
+      );
+
+      $this->assertEquals (
+        'x.microsoft.com',
+        $dnsEvent->getHostname (),
+        'Hostname on Event is the same as the queried one'
       );
     }
     

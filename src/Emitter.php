@@ -57,7 +57,7 @@
                 fn (string $leftEventClass, string $rightEventClass): int => is_subclass_of ($leftEventClass, $rightEventClass) ? 1 : -1
             );
 
-            return call_user_func_array ('array_merge', $allListeners);
+            return call_user_func_array ('array_merge', array_values ($allListeners));
         }
         // }}}
 

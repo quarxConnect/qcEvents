@@ -58,6 +58,20 @@
       return $this->dataSource;
     }
     // }}}
+
+    // {{{ setTimeout
+    /**
+     * Set timeout for DNS-Questions
+     *
+     * @param float $queryTimeout
+     *
+     * @access public
+     * @return void
+     **/
+    public function setTimeout (float $queryTimeout): void {
+      $this->dnsTimeout = $queryTimeout;
+    }
+    // }}}
     
     // {{{ dnsParseMessage
     /**
