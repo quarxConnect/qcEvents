@@ -21,7 +21,6 @@
         "php" : ">=8.0",
         "ext-gmp" : "*",
         "ext-openssl" : "*",
-        "ext-soap" : "*",
         "psr/event-dispatcher": "^1.0"
     },
     "require-dev" : {
@@ -30,7 +29,8 @@
         "ext-zip": "*"
     },
     "suggest": {
-      "quarxconnect/events-inotify": "Support for inotify"
+      "quarxconnect/events-inotify": "Support for inotify",
+      "quarxconnect/events-soap": "Support for SOAP"
     },
     "minimum-stability": "dev",
     "autoload": {
