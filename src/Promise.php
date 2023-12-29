@@ -54,7 +54,7 @@
      * Create a resolved promise
      * 
      * @param ...
-    b * @param Base $Base (optional)
+     * @param Base $Base (optional)
      * 
      * @access public
      * @return Promise

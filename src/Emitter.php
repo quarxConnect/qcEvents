@@ -40,12 +40,12 @@
         /**
          * Retrieve a list of all listeners for a given Event
          * 
-         * @param Event $theEvent An event for which to return the relevant listeners.
+         * @param object $theEvent An event for which to return the relevant listeners.
          * 
          * @access public
          * @return iterable<callable> An iterable (array, iterator, or generator) of callables. Each callable MUST be type-compatible with $event.
          **/
-        public function getListenersForEvent (Event $theEvent): iterable {
+        public function getListenersForEvent (object $theEvent): iterable {
             $allListeners = [];
 
             foreach ($this->eventListeners as $eventClass=>$eventListeners)
@@ -218,7 +218,7 @@
          * @access public
          * @return Promise Resolves to the Event that was passed, now modified by listeners.
          **/
-        public function dispatch (Event $theEvent): Promise {
+        public function dispatch (object $theEvent): Promise {
             return Promise::walk (
                 $this->getListenersForEvent ($theEvent),
                 function (callable $listenerCallback) use ($theEvent): ?Promise {
@@ -236,7 +236,7 @@
                     return ($listenerResult instanceof Promise ? $listenerResult : null);
                 }
             )->then (
-                fn (): Event => $theEvent
+                fn (): object => $theEvent
             );
         }
         // }}}
