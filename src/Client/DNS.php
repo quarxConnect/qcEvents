@@ -492,7 +492,7 @@
               fn (): Promise => $this->dispatch (
                 new DNS\Event\Timeout ($dnsQuery)
               )->then (
-                fn () => throw new \Exception ('Query timed out')
+                fn () => throw new DNS\Exception\Timeout ()
               )
             )
           ])->finally (

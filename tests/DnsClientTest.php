@@ -2,77 +2,75 @@
 
   declare (strict_types=1);
   
-  use PHPUnit\Framework\TestCase;
   use quarxConnect\Events;
+  use quarxConnect\Events\Promise;
+  use quarxConnect\Events\Client\DNS\Event;
+  use quarxConnect\Events\Client\DNS\Exception\Timeout;
   use quarxConnect\Events\Stream\DNS;
+  use quarxConnect\Events\Test\TestCase;
   
-  final class DnsClientTest extends TestCase {
+  class DnsClientTest extends TestCase {
     /**
      * @dataProvider existingRecordsProvider
      **/
-    public function testResolverWithExisting ($dnsDomain, $dnsType) {
-      $eventBase = Events\Base::singleton ();
-      $dnsClient = new Events\Client\DNS ($eventBase);
+    public function testResolverWithExisting (string $dnsDomain, int $dnsType): Promise {
+      $dnsClient = new Events\Client\DNS ($this->getEventBase ());
       $dnsEvent = null;
 
       $dnsClient->addEventListener (
-        Events\Client\DNS\Event\Result::class,
+        Event\Result::class,
         function ($theEvent) use (&$dnsEvent): void {
           $dnsEvent = $theEvent;
         }
       );
-      
-      $this->assertIsObject (
-        $dnsRecordset = Events\Synchronizer::do (
-          $eventBase,
-          $dnsClient->resolve ($dnsDomain, $dnsType)
-        )
-      );
-      
-      $this->assertGreaterThan (
-        0,
-        count ($dnsRecordset)
-      );
-      
-      static $typeClasses = [
-        DNS\Message::TYPE_A    => DNS\Record\A::class,
-        DNS\Message::TYPE_AAAA => DNS\Record\AAAA::class,
-      ];
-      
-      foreach ($dnsRecordset as $dnsRecord)
-        if (isset ($typeClasses [$dnsType]))
-          $this->assertInstanceOf ($typeClasses [$dnsType], $dnsRecord);
-      
-      $this->assertIsObject (
-        $dnsEvent,
-        'DNS-Result-Event was received'
-      );
 
-      $this->assertEquals (
-        $dnsDomain,
-        $dnsEvent->getHostname (),
-        'Hostname on Event is the same as the queried one'
+      return $dnsClient->resolve ($dnsDomain, $dnsType)->then (
+        function (DNS\Recordset $dnsRecordSet) use (&$dnsEvent, $dnsDomain, $dnsType): void {
+          // Make sure there was something found
+          $this->assertGreaterThan (
+            0,
+            count ($dnsRecordSet)
+          );
+
+          // Make sure classes are correct
+          static $typeClasses = [
+            DNS\Message::TYPE_A    => DNS\Record\A::class,
+            DNS\Message::TYPE_AAAA => DNS\Record\AAAA::class,
+          ];
+
+          foreach ($dnsRecordSet as $dnsRecord)
+            if (isset ($typeClasses [$dnsType]))
+              $this->assertInstanceOf ($typeClasses [$dnsType], $dnsRecord);
+
+          // Check the event
+          $this->assertIsObject (
+            $dnsEvent,
+            'DNS-Result-Event was received'
+          );
+
+          $this->assertEquals (
+            $dnsDomain,
+            $dnsEvent->getHostname (),
+            'Hostname on Event is the same as the queried one'
+          );
+        }
       );
+      
     }
     
     /**
      * @dataProvider missingRecordsProvider
      **/
-    public function testResolverWithMissing ($dnsDomain, $dnsType) : void {
-      $eventBase = Events\Base::singleton ();
-      $dnsClient = new Events\Client\DNS ($eventBase);
+    public function testResolverWithMissing ($dnsDomain, $dnsType): Promise {
+      $dnsClient = new Events\Client\DNS ($this->getEventBase ());
       
       $this->expectException (\Exception::class);
       
-      $dnsRecordset = Events\Synchronizer::do (
-        $eventBase,
-        $dnsClient->resolve ($dnsDomain, $dnsType)
-      );
+      return $dnsClient->resolve ($dnsDomain, $dnsType);
     }
     
-    public function testUnreachableResolver () : void {
-      $eventBase = Events\Base::singleton ();
-      $dnsClient = new Events\Client\DNS ($eventBase);
+    public function testUnreachableResolver (): Promise {
+      $dnsClient = new Events\Client\DNS ($this->getEventBase ());
       $dnsClient->useSystemNameserver ();
 
       // Insert non-sense nameserver
@@ -92,26 +90,23 @@
       $dnsClient->setTimeout (1.0);
       
       // Try to resolve an existing record
-      $this->assertIsObject (
-        $dnsRecordset = Events\Synchronizer::do (
-          $eventBase,
-          $dnsClient->resolve ('microsoft.com', DNS\Message::TYPE_A)
-        )
-      );
-      
-      $this->assertGreaterThan (
-        0,
-        count ($dnsRecordset)
+      return $dnsClient->resolve ('microsoft.com', DNS\Message::TYPE_A)->then (
+        function (DNS\Recordset $dnsRecordSet): void {
+          // Make sure there was something found
+          $this->assertGreaterThan (
+            0,
+            count ($dnsRecordSet)
+          );
+        }
       );
     }
 
-    public function testTimeout () : void {
-      $eventBase = Events\Base::singleton ();
-      $dnsClient = new Events\Client\DNS ($eventBase);
+    public function testTimeout (): Promise {
+      $dnsClient = new Events\Client\DNS ($this->getEventBase ());
       $dnsEvent = null;
 
       $dnsClient->addEventListener (
-        Events\Client\DNS\Event\Timeout::class,
+        Event\Timeout::class,
         function ($theEvent) use (&$dnsEvent): void {
           $dnsEvent = $theEvent;
         }
@@ -127,33 +122,33 @@
       $dnsClient->setTimeout (1.0);
       
       // Try to resolve an existing record
-      try {
-        $dnsRecordset = Events\Synchronizer::do (
-          $eventBase,
-          $dnsClient->resolve ('x.microsoft.com', DNS\Message::TYPE_A)
-        );
-
-        $this->assertTrue (
+      return $dnsClient->resolve ('x.microsoft.com', DNS\Message::TYPE_A)->then (
+        fn () => $this->assertTrue (
           false,
           'An exception was received'
-        );
-      } catch (\Throwable $dnsError) {
-        // No-Op
-      }
-      
-      $this->assertIsObject (
-        $dnsEvent,
-        'DNS-Result-Event was received'
-      );
-
-      $this->assertEquals (
-        'x.microsoft.com',
-        $dnsEvent->getHostname (),
-        'Hostname on Event is the same as the queried one'
+        ),
+        function (Throwable $dnsError) use (&$dnsEvent): void {
+          $this->assertInstanceOf (
+            Timeout::class,
+            $dnsError,
+            'Exception indicates it was a timeout'
+          );
+          
+          $this->assertIsObject (
+            $dnsEvent,
+            'DNS-Result-Event was received'
+          );
+    
+          $this->assertEquals (
+            'x.microsoft.com',
+            $dnsEvent->getHostname (),
+            'Hostname on Event is the same as the queried one'
+          );
+        }
       );
     }
     
-    public function existingRecordsProvider () : array {
+    public function existingRecordsProvider (): array {
       return [
         'google.com:a'      => [ 'google.com', DNS\Message::TYPE_A ],
         'google.com:aaaa'   => [ 'google.com', DNS\Message::TYPE_AAAA ],
@@ -161,7 +156,7 @@
       ];
     }
     
-    public function missingRecordsProvider () : array {
+    public function missingRecordsProvider (): array {
       return [
         'missing.quarxconnect.de:a' => [ 'missing.quarxconnect.de', DNS\Message::TYPE_A ],
       ];
