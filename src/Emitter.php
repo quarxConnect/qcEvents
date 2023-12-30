@@ -201,7 +201,7 @@
                     ($theListener === $eventListener) ||
                     ($theListener->getCallable () === $eventListener)
                 ) {
-                    unset ($the->eventListeners [$eventClass][$listenerIndex]);
+                    unset ($this->eventListeners [$eventClass][$listenerIndex]);
 
                     if ($theListener === $eventListener)
                         return;
