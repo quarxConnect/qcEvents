@@ -22,6 +22,7 @@
 
     namespace quarxConnect\Events;
 
+    use quarxConnect\Events\Promise;
     use quarxConnect\Events\ABI\Event;
     use quarxConnect\Events\ABI\Event\Stoppable as StoppableEvent;
 
@@ -179,6 +180,32 @@
                 }
                 // }}}
             };
+        }
+        // }}}
+
+        // {{{ addEventPromise
+        /**
+         * Add a promise that is fulfilled for a given event-class
+         * 
+         * @param string $eventClass Class-Name of the event to listen to
+         * @param bool $preventClassCheck (optional) Don't check if the given event-class is a valid event
+         * 
+         * @access public
+         * @return void
+         * 
+         * @throws Exception\InvalidClass
+         **/
+        public function addEventPromise (string $eventClass, bool $preventClassCheck = false): Promise {
+            $deferredPromise = new Promise\Deferred ();
+
+            $this->addEventListener (
+                $eventClass,
+                fn ($theEvent) => $deferredPromise->resolve ($theEvent),
+                true,
+                $preventClassCheck
+            );
+
+            return $deferredPromise->getPromise ();
         }
         // }}}
 

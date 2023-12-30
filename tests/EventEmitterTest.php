@@ -185,4 +185,24 @@
             );
         }
         // }}}
+
+        // {{{ testEventPromise
+        /**
+         * Test to register a promise that fulfills once for our event
+         *
+         * @access public
+         * @return Promise
+         **/
+        public function testEventPromise (): Promise {
+            $this->assertAsynchronousResult (true);
+
+            $thePromise = $this->theEmitter->addEventPromise ($this->theEvent::class)->then (
+                fn () => true
+            );
+
+            $this->theEmitter->dispatch ($this->theEvent);
+
+            return $thePromise;
+        }
+        // }}}
     }
