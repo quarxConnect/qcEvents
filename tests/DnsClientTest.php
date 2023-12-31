@@ -114,8 +114,8 @@
       
       // Insert non-sense nameserver
       $dnsNameservers = [
-        [ 'ip' => '127.255.255.254' ],
-        [ 'ip' => '1fff::53' ],
+        [ 'ip' => '1fff::54' ],
+        [ 'ip' => '127.255.255.253' ],
       ];
       
       $dnsClient->setNameservers ($dnsNameservers);
@@ -133,7 +133,7 @@
             $dnsError,
             'Exception indicates it was a timeout'
           );
-          
+
           $this->assertIsObject (
             $dnsEvent,
             'DNS-Result-Event was received'
