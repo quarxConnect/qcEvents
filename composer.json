@@ -19,7 +19,6 @@
     },
     "require" : {
         "php" : ">=8.0",
-        "ext-gmp" : "*",
         "ext-openssl" : "*",
         "psr/event-dispatcher": "^1.0"
     },
@@ -30,7 +29,9 @@
     },
     "suggest": {
       "quarxconnect/events-inotify": "Support for inotify",
-      "quarxconnect/events-soap": "Support for SOAP"
+      "quarxconnect/events-soap": "Support for SOAP",
+      "quarxconnect/events-ssh": "SSH-Client-Implementation for Events",
+      "quarxconnect/events-stratum": "Stratum-Protocol-Support for Events"
     },
     "minimum-stability": "dev",
     "autoload": {
