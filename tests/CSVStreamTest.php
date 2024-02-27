@@ -35,7 +35,7 @@
       $virtualSource = $pipeEndpoints [0];
       $csvStream = $pipeEndpoints [1];
       
-      $headerPromise = $csvStream->once ('csvHeaderRecevied');
+      $headerPromise = $csvStream->once ('csvHeaderReceived');
       $recordPromise = $csvStream->once ('csvRecordReceived');
       
       $virtualSource->sourceInsert ('Column 1,"Column 2","Column,3"' . "\r\n");
