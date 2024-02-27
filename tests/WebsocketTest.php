@@ -38,7 +38,6 @@
                   // Push message back
                   $websocketServer->sendMessage (
                     new Events\Stream\Websocket\Message (
-                      $websocketServer,
                       $websocketMessage->getOpcode (),
                       'PONG: ' . $websocketMessage->getData ()
                     )
@@ -82,7 +81,6 @@
           function (Events\Stream\Websocket $websocketClient) {
             $websocketClient->sendMessage (
               new Events\Stream\Websocket\Message (
-                $websocketClient,
                 Events\Stream\Websocket::OPCODE_TEXT,
                 'Websocket-Test'
               )
