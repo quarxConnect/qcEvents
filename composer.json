@@ -28,6 +28,8 @@
         "ext-zip": "*"
     },
     "suggest": {
+      "ext-pcntl": "*",
+      "ext-posix": "*",
       "quarxconnect/events-inotify": "Support for inotify",
       "quarxconnect/events-soap": "Support for SOAP",
       "quarxconnect/events-ssh": "SSH-Client-Implementation for Events",
@@ -47,7 +49,7 @@
   },
   "extra": {
     "branch-alias": {
-      "dev-composer": "0.0.2-dev"
+      "dev-composer": "0.0.4-dev"
     }
   }
 }
