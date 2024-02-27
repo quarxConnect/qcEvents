@@ -2,26 +2,28 @@
 
   /**
    * quarxConnect Events - I/O-Stream Handler
-   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events;
-  
+
+  use ValueError;
+
   abstract class IOStream extends Virtual\Pipe implements ABI\Loop, ABI\Stream, ABI\Stream\Consumer {
     use Feature\Based;
     
@@ -87,50 +89,59 @@
     // {{{ setStreamFD
     /**
      * Set the used stream-file-descriptor
-     * 
-     * @param resource $fd
-     * 
+     *
+     * @param resource $streamDescriptor
+     *
      * @access protected
-     * @return bool
+     * @return void
      **/
-    protected function setStreamFD ($fd) {
-      if (!is_resource ($fd))
-        return false;
-      
-      $this->readFD = $fd;
-      $this->writeFD = $fd;
-      
-      if ($eventBase = $this->getEventBase ())
+    protected function setStreamFD (/* resource */ $streamDescriptor): void {
+      // Check the parameter
+      if (!is_resource ($streamDescriptor))
+        throw new ValueError ('Stream-Descriptor must be a resource');
+
+      // Store the descriptor
+      $this->readFD = $streamDescriptor;
+      $this->writeFD = $streamDescriptor;
+
+      // Update at our event-base
+      $eventBase = $this->getEventBase ();
+
+      if ($eventBase !== null)
         $eventBase->updateEvent ($this);
-      
-      return true;
     }
     // }}}
-    
+
     // {{{ setStreamFDs
     /**
      * Setup stream-descriptors separately
-     * 
-     * @param resource $readFD
-     * @param resource $writeFD
-     * 
+     *
+     * @param resource $readDescriptor
+     * @param resource $writeDescriptor
+     *
      * @access protected
-     * @return bool
+     * @return void
      **/
-    protected function setStreamFDs ($readFD, $writeFD) {
-      if (!is_resource ($readFD) || !is_resource ($writeFD))
-        return false;
+    protected function setStreamFDs (/* resource */ $readDescriptor, /* resource */ $writeDescriptor): void {
+      // Check the parameters
+      if (is_resource ($readDescriptor) === false)
+        throw new ValueError ('Read-Descriptor must be a resource');
       
-      $this->readFD = $readFD;
-      $this->writeFD = $writeFD;
-      
-      if ($eventBase = $this->getEventBase ())
+      if (is_resource ($writeDescriptor) === false)
+        throw new ValueError ('Write-Descriptor must be a resource');
+
+      // Store the descriptors
+      $this->readFD = $readDescriptor;
+      $this->writeFD = $writeDescriptor;
+
+      // Update at our event-base
+      $eventBase = $this->getEventBase ();
+
+      if ($eventBase !== null)
         $eventBase->updateEvent ($this);
-      
-      return true;
     }
     // }}}
-    
+
     
     /*****************************************************************
      * Stream reading                                                *
