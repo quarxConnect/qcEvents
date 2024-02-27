@@ -292,12 +292,12 @@
         }
         
         // Create a new message
-        $Message = $this->readMessage = Websocket\Message::factory ($this, $Opcode);
+        $Message = $this->readMessage = Websocket\Message::factory ($Opcode);
         $this->___callback ('websocketMessageStart', $Message);
       
-      // Create an unfragmented message
+      // Create an un-fragmented message
       } elseif (!$this->readMessage && $Finished) {
-        $Message = Websocket\Message::factory ($this, $Opcode);
+        $Message = Websocket\Message::factory ($Opcode);
         $this->___callback ('websocketMessageStart', $Message);
       
       // Update framgented message
