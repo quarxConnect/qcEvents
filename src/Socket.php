@@ -86,7 +86,7 @@
     /* Bind local socket to this port */
     private $socketBindPort = null;
     
-    /* Set of addresses we are trying to connectl to */
+    /* Set of addresses we are trying to connect to */
     private $socketAddresses = null;
     
     /* The current address we are trying to connect to */
@@ -668,9 +668,12 @@
       stream_set_blocking ($streamSocket, false);
       
       // Set our new status
-      if (!$this->setStreamFD ($streamSocket))
-        return;
-      
+      try {
+        $this->setStreamFD ($streamSocket);
+      } catch (Throwable $streamError) {
+        $this->socketHandleConnectFailed (self::ERROR_NET_UNKNOWN, 'setStreamFD() failed: ' . $streamError->getMessage ());
+      }
+
       // Make sure we are watching events
       $this->watchWrite (true);
       $this->isWatching (true);
@@ -678,7 +681,7 @@
       // Setup our internal buffer-size
       $this->bufferSize = ($this->socketAddress ['type'] === self::TYPE_UDP ? self::READ_UDP_BUFFER : self::READ_TCP_BUFFER);
       $this->lastEvent = time ();
-      
+
       // Set our connection-state
       if ($this->socketAddress ['type'] !== (self::TYPE_UDP ? true : null)) {
         $this->addHook ('eventWritable', [ $this, 'socketHandleConnected' ], true);
@@ -719,7 +722,7 @@
         $this->setStreamFD ($Connection);
         $this->tlsEnabled = ($enableTLS ? null : false);
       }
-      
+
       // Store our parent server-handle
       $this->serverParent = $Server;
       
