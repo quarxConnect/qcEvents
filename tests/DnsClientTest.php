@@ -115,7 +115,7 @@
       // Insert non-sense nameserver
       $dnsNameservers = [
         [ 'ip' => '1fff::54' ],
-        [ 'ip' => '127.255.255.253' ],
+        [ 'ip' => '240.255.255.253' ],
       ];
       
       $dnsClient->setNameservers ($dnsNameservers);
