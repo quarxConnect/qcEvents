@@ -329,11 +329,13 @@
       
       // Process special messages
       if ($Message instanceof Websocket\Ping) {
-        $Response = new Websocket\Pong ($this, null, $Message->getData ());
+        $Response = new Websocket\Pong (null, $Message->getData ());
         
         $this->sendMessage ($Response);
       } elseif ($Message instanceof Websocket\Close)
-        $this->sendMessage (new Websocket\Close ($this))->then (
+        $this->sendMessage (
+          new Websocket\Close ()
+        )->then (
           function () {
             $this->close ();
           }
