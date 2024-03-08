@@ -90,11 +90,12 @@
      * @param string $columnSeparator (optional) Separator-Character on stream
      * @param string $valueEnclosure (optional) Enclosure-Character on stream
      * @param string $lineEnd (optional) Line-Ending-Character on stream
+     * @param array|bool $withHeader (optional) Treat first record as header (default)
      *
      * @access friendly
      * @return void
      **/
-    public function __construct (string $columnSeparator = null, string $valueEnclosure = null, string $lineEnd = null) {
+    public function __construct (string $columnSeparator = null, string $valueEnclosure = null, string $lineEnd = null, array|bool $withHeader = null) {
       if ($columnSeparator !== null)
         $this->csvSeparator = $columnSeparator;
 
@@ -103,6 +104,9 @@
 
       if ($lineEnd !== null)
         $this->csvLineEnding = $lineEnd;
+
+      if ($withHeader !== null)
+        $this->csvHeader = (is_array ($withHeader) ? array_values ($withHeader) : $withHeader);
     }
     // }}}
 
@@ -120,6 +124,7 @@
       // Append to internal buffer
       $this->csvBuffer .= $sourceData;
       $this->csvBufferLength += strlen ($sourceData);
+
       unset ($sourceData);
 
       $csvOffset = 0;
