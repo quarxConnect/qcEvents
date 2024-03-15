@@ -22,11 +22,15 @@
 
   namespace quarxConnect\Events\Stream;
 
-  use quarxConnect\Events\Hookable;
-  use quarxConnect\Events\Promise;
   use quarxConnect\Events\ABI;
+  use quarxConnect\Events\Emitter;
+  use quarxConnect\Events\Feature;
+  use quarxConnect\Events\Promise;
 
-  class CSV extends Hookable implements ABI\Consumer, ABI\Stream\Consumer {
+  class CSV extends Emitter implements ABI\Consumer, ABI\Stream\Consumer
+  {
+    use Feature\Hookable;
+
     /**
      * Source-Stream for CSV-Reader
      *
@@ -54,6 +58,13 @@
      * @var string
      **/
     private string $csvLineEnding = "\r\n";
+
+    /**
+     * Escape-Character
+     * 
+     * @var string
+     **/
+    private string $csvEscapeChar = "\\";
 
     /**
      * Use CSV-Header
@@ -95,7 +106,8 @@
      * @access friendly
      * @return void
      **/
-    public function __construct (string $columnSeparator = null, string $valueEnclosure = null, string $lineEnd = null, array|bool $withHeader = null) {
+    public function __construct (string $columnSeparator = null, string $valueEnclosure = null, string $lineEnd = null, array|bool $withHeader = null)
+    {
       if ($columnSeparator !== null)
         $this->csvSeparator = $columnSeparator;
 
@@ -120,7 +132,8 @@
      * @access public
      * @return void
      **/
-    public function consume ($sourceData, ABI\Source $dataSource): void {
+    public function consume ($sourceData, ABI\Source $dataSource): void
+    {
       // Append to internal buffer
       $this->csvBuffer .= $sourceData;
       $this->csvBufferLength += strlen ($sourceData);
@@ -131,6 +144,7 @@
       $csvSeparatorLength = strlen ($this->csvSeparator);
       $csvLineEndLength = strlen ($this->csvLineEnding);
       $csvEnclosureLength = strlen ($this->csvEnclosure);
+      $csvEscapeLength = strlen ($this->csvEscapeChar);
 
       while ($csvOffset < $this->csvBufferLength) {
         // Check if the field is escaped
@@ -150,6 +164,10 @@
               $csvEnclosureOffset += $csvEnclosureLength + $csvEnclosureLength;
 
               continue;
+            } elseif (substr ($this->csvBuffer, $csvEnclosureOffset - $csvEscapeLength, $csvEscapeLength) === $this->csvEscapeChar) {
+              $csvEnclosureOffset += $csvEnclosureLength;
+
+              continue;
             }
 
             break;
@@ -160,11 +178,13 @@
             break;
 
           // Read the entire field
-          $this->csvRecord [] = str_replace (
+          $csvColumn = str_replace (
             $this->csvEnclosure . $this->csvEnclosure,
             $this->csvEnclosure,
             substr ($this->csvBuffer, $csvOffset + $csvEnclosureLength, $csvEnclosureOffset - $csvOffset - $csvEnclosureLength)
           );
+
+          $this->csvRecord [] = $csvColumn;
 
           // Move the pointer
           $csvOffset = $csvEnclosureOffset + $csvEnclosureLength;
@@ -223,7 +243,8 @@
      * @access private
      * @return void
      **/
-    private function csvPushRecord (): void {
+    private function csvPushRecord (): void
+    {
       // Peek the record and reset
       $csvRecord = $this->csvRecord; 
       $this->csvRecord = [];
@@ -234,11 +255,30 @@
       if ($recordLength == 0)
         return;
 
+      // Remove escaping
+      $csvRecord = array_map (
+        function (string $csvCell): string
+        {
+          $csvEscapeLength = strlen ($this->csvEscapeChar);
+          $escapeOffset = strpos ($csvCell, $this->csvEscapeChar);
+
+          while ($escapeOffset !== false) {
+            $csvCell = substr ($csvCell, 0, $escapeOffset) . substr ($csvCell, $escapeOffset + $csvEscapeLength);
+            $escapeOffset = strpos ($csvCell, $this->csvEscapeChar, $escapeOffset + 1);
+          }
+
+          return $csvCell;
+        },
+        $csvRecord
+      );
+
       // Check whether to use this as a header
       if ($this->csvHeader === true) {
         $this->csvHeader = $csvRecord;
 
-        $this->___callback ('csvHeaderReceived', $this->csvHeader);
+        $this->dispatch (
+          new CSV\Event\Header ($this->csvHeader)
+        );
 
         return;
       }
@@ -262,8 +302,10 @@
         $csvRecord = array_combine ($this->csvHeader, $csvRecord);
       }
 
-      // Run the callback
-      $this->___callback ('csvRecordReceived', $csvRecord);
+      // Dispatch event
+      $this->dispatch (
+        new CSV\Event\Record ($csvRecord)
+      );
     }
     // }}}
 
@@ -276,7 +318,8 @@
      * @access public
      * @return Promise
      **/
-    public function initConsumer (ABI\Source $dataSource): Promise {
+    public function initConsumer (ABI\Source $dataSource): Promise
+    {
       // Assign the source
       $this->dataSource = $dataSource;
 
@@ -294,7 +337,8 @@
      * @access public
      * @return Promise
      **/
-    public function initStreamConsumer (ABI\Stream $dataSource): Promise {
+    public function initStreamConsumer (ABI\Stream $dataSource): Promise
+    {
       // Assign the source
       $this->dataSource = $dataSource;
 
@@ -312,7 +356,8 @@
      * @access public
      * @return Promise
      **/
-    public function deInitConsumer (ABI\Source $dataSource): Promise {
+    public function deInitConsumer (ABI\Source $dataSource): Promise
+    {
       // Remove the source
       $this->dataSource = null;
 
@@ -335,7 +380,8 @@
      * @access public
      * @return Promise
      **/
-    public function close (): Promise {
+    public function close (): Promise
+    {
       if ($this->csvBufferLength > 0)
         $this->consume ($this->csvLineEnding, $this->dataSource);
 
@@ -352,30 +398,9 @@
      * @access protected
      * @return void
      **/
-    protected function eventClosed (): void { }
-    // }}}
-
-    // {{{ csvHeaderReceived
-    /**
-     * The header (first record) of a csv was received from stream
-     *
-     * @param array $csvHeader Indexed array with header
-     *
-     * @access protected
-     * @return void
-     **/
-    protected function csvHeaderReceived (array $csvHeader): void { }
-    // }}}
-
-    // {{{ csvRecordReceived
-    /**
-     * A record was received from stream
-     *
-     * @param array $csvRecord Associative array with csv-values
-     *
-     * @access protected
-     * @return void
-     **/
-    protected function csvRecordReceived (array $csvRecord): void { }
+    protected function eventClosed (): void
+    {
+      // No-Op
+    }
     // }}}
   }

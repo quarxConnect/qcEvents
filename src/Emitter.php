@@ -44,7 +44,7 @@
          * @param object $theEvent An event for which to return the relevant listeners.
          * 
          * @access public
-         * @return iterable<callable> An iterable (array, iterator, or generator) of callables. Each callable MUST be type-compatible with $event.
+         * @return iterable<callable> An iterable (array, iterator, or generator) of callable. Each callable MUST be type-compatible with $event.
          **/
         public function getListenersForEvent (object $theEvent): iterable {
             $allListeners = [];
