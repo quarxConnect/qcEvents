@@ -31,22 +31,22 @@
     /**
      * @depends testPipeSource
      **/
-    public function testCSVParser (array $pipeEndpoints) : void {
+    public function testCSVParser (array $pipeEndpoints): void
+    {
       $virtualSource = $pipeEndpoints [0];
       $csvStream = $pipeEndpoints [1];
-      
-      $headerPromise = $csvStream->once ('csvHeaderReceived');
-      $recordPromise = $csvStream->once ('csvRecordReceived');
-      
+
+      $headerPromise = $csvStream->addEventPromise (Events\Stream\CSV\Event\Header::class);
+      $recordPromise = $csvStream->addEventPromise (Events\Stream\CSV\Event\Record::class);
+
       $virtualSource->sourceInsert ('Column 1,"Column 2","Column,3"' . "\r\n");
       $virtualSource->sourceInsert ('hello,world;,"	tab white,comma"' . "\r\n");
-      
+
       $csvHeader = Events\Synchronizer::do (
         $virtualSource->getEventBase (),
         $headerPromise
       );
-      
-      $this->assertIsArray ($csvHeader);
+
       $this->assertCount (3, $csvHeader);
       $this->assertEquals (
         [
@@ -54,15 +54,14 @@
           'Column 2',
           'Column,3',
         ],
-        $csvHeader
+        iterator_to_array ($csvHeader)
       );
-      
+
       $csvRecord = Events\Synchronizer::do (
         $virtualSource->getEventBase (),
         $recordPromise
       );
-      
-      $this->assertIsArray ($csvRecord);
+
       $this->assertCount (3, $csvRecord);
       $this->assertEquals (
         [
@@ -70,7 +69,7 @@
           'Column 2' => 'world;',
           'Column,3' => '	tab white,comma',
         ],
-        $csvRecord
+        iterator_to_array ($csvRecord)
       );
     }
   }
