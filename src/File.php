@@ -152,7 +152,7 @@
       // Forward the read/write-status
       $this->watchRead ($Read);
       
-      // Check wheter to truncate
+      // Check whether to truncate
       if ($Write && $Truncate)
         $this->truncate ();
     }
@@ -160,7 +160,7 @@
     
     // {{{ getFilename
     /**
-     * Retrive the filename of this stream
+     * Retrieve the filename of this stream
      * 
      * @access public
      * @return string
@@ -174,7 +174,7 @@
     /**
      * Raise close on the stream if End-of-File was reached
      * 
-     * @param bool $Toggle (optional) Change the behaviour
+     * @param bool $Toggle (optional) Change the behavior
      * 
      * @access public
      * @return bool
@@ -260,11 +260,11 @@
      * @return bool
      **/
     protected function ___close ($closeFD = null) : bool {
-      // Retrive our descriptor and close it
+      // Retrieve our descriptor and close it
       if ($closeFD && !fclose ($closeFD))
         return false;
       
-      // Check wheter to set modification-time
+      // Check whether to set modification-time
       if ($this->modificationTime !== null)
         touch ($this->getFilename (), $this->modificationTime);
       

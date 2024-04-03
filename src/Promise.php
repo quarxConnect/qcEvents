@@ -22,6 +22,9 @@
   
   namespace quarxConnect\Events;
 
+  use ArrayIterator;
+  use Iterator;
+  use IteratorAggregate;
   use Throwable;
   
   class Promise {
@@ -214,7 +217,7 @@
           
           if (!$eventBase)
             $eventBase = $promiseValue->eventBase;
-        } elseif ($promiseValue instanceof \Throwable) {
+        } elseif ($promiseValue instanceof Throwable) {
           $resultValues [$promiseIndex]->status = 'rejected';
           $resultValues [$promiseIndex]->reason = $promiseValue;
           $resultValues [$promiseIndex]->args = [ $promiseValue ];
@@ -256,7 +259,7 @@
                 // Forward the result
                 call_user_func ($resolveFunction, $resultValues);
               },
-              function (\Throwable $errorReason)
+              function (Throwable $errorReason)
               use (&$resultValues, &$promisePending, $promiseIndex, $resolveFunction) {
                 // Push to results
                 $resultValues [$promiseIndex]->status = 'rejected';
@@ -330,7 +333,7 @@
                 // Forward the result
                 call_user_func_array ($resolveFunction, func_get_args ());
               },
-              function (\Throwable $promiseRejection) use (&$promiseDone, &$promiseCountdown, &$promiseRejections, $rejectFunction) {
+              function (Throwable $promiseRejection) use (&$promiseDone, &$promiseCountdown, &$promiseRejections, $rejectFunction) {
                 // Collect the rejection
                 $promiseRejections [] = $promiseRejection;
                 
@@ -438,34 +441,36 @@
     // {{{ walk
     /**
      * NON-STANDARD: Walk an array with a callable
-     * 
+     *
      * @param iterable $walkArray
      * @param callable $itemCallback
      * @param bool $justSettle (optional) Don't stop on rejections, but enqueue them as result
      * @param Base $eventBase (optional)
-     * 
+     *
      * @access public
      * @return Promise
      **/
-    public static function walk (iterable $walkArray, callable $itemCallback, bool $justSettle = false, Base $eventBase = null): Promise {
+    public static function walk (iterable $walkArray, callable $itemCallback, bool $justSettle = false, Base $eventBase = null): Promise
+    {
       // Make sure we have an iterator-instance
       if (is_array ($walkArray))
-        $arrayIterator = new \ArrayIterator ($walkArray);
-      elseif ($walkArray instanceof \IteratorAggregate)
+        $arrayIterator = new ArrayIterator ($walkArray);
+      elseif ($walkArray instanceof IteratorAggregate)
         $arrayIterator = $walkArray->getIterator ();
-      elseif ($walkArray instanceof \Iterator)
+      elseif ($walkArray instanceof Iterator)
         $arrayIterator = $walkArray;
-      
+
       // Make sure we have an event-base
       if (!$eventBase)
         $eventBase = Base::singleton ();
-      
+
       // Move to start
       $arrayIterator->rewind ();
-      
-      return new static (
+
+      return new Promise (
         function (callable $resolveFunction, callable $rejectFunction)
-        use ($arrayIterator, $itemCallback, $justSettle, $eventBase): void {
+        use ($arrayIterator, $itemCallback, $justSettle, $eventBase): void
+        {
           $walkResults = [ ];
           $walkItem = null;
           $walkItem = function () use (&$walkResults, &$walkItem, $arrayIterator, $itemCallback, $justSettle, $eventBase, $resolveFunction, $rejectFunction): void {
@@ -559,15 +564,15 @@
               $this->finish ($this::STATUS_REJECTED,   func_get_args ());
             }
           );
-        } catch (\Throwable $errorException) {
+        } catch (Throwable $errorException) {
           $this->finish ($this::STATUS_REJECTED, ($errorException instanceof Promise\Solution ? $errorException->getParameters () : [ $errorException ]));
         }
       };
       
       if ($eventBase)
-        return $eventBase->forceCallback ($invokeCallback);
-      
-      $invokeCallback ();
+        $eventBase->forceCallback ($invokeCallback);
+      else
+        $invokeCallback ();
     }
     // }}}
     

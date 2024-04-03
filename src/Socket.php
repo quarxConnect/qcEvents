@@ -1,36 +1,30 @@
 <?php
 
   /**
-   * quarxConnect Events - Asyncronous Sockets
-   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * quarxConnect Events - Asynchronous Sockets
+   * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events;
-  
-  /**
-   * Event Socket
-   * ------------
-   * Generic implementation to handle internet-based connections
-   * 
-   * @class Socket
-   * @package quarxConnect\Events
-   * @revision 03
-   **/
+
+  use Exception;
+  use InvalidArgumentException;
+
   class Socket extends IOStream {
     /* Error-types */
     public const ERROR_NET_UNKNOWN     =  0;
@@ -75,7 +69,7 @@
     private $Connected = false;
     
     /* Socket-Type of this connection */
-    private $Type = self::TYPE_TCP;
+    private int $socketType = self::TYPE_TCP;
     
     /* Any assigned server-handle */
     private $serverParent = null;
@@ -771,7 +765,7 @@
           else
             $Name = '';
           
-          $this->Type       = $this->socketAddress ['type'];
+          $this->socketType       = $this->socketAddress ['type'];
           $this->localAddr  = substr ($Name, 0, strrpos ($Name, ':'));
           $this->localPort  = (int)substr ($Name, strrpos ($Name, ':') + 1);
           $this->remoteHost = $this->socketAddress ['target'];
@@ -1154,7 +1148,7 @@
         return true;
       
       // Check wheter to terminate the connection at any parent entity
-      if ($this->Type == self::TYPE_UDP_SERVER) {
+      if ($this->socketType === self::TYPE_UDP_SERVER) {
         if (!is_object ($this->serverParent))
           return false;
         
@@ -1222,19 +1216,23 @@
       return ($this->Connected === true);
     }
     // }}}
-    
+
     // {{{ isUDP
     /**
      * Check if this is an UDP-Socket
-     * 
+     *
      * @access public
      * @return bool
      **/
-    public function isUDP () {
-      return (($this->Type == self::TYPE_UDP) || ($this->Type == self::TYPE_UDP_SERVER));
+    public function isUDP (): bool
+    {
+      return (
+        ($this->socketType === self::TYPE_UDP) ||
+        ($this->socketType === self::TYPE_UDP_SERVER)
+      );
     }
     // }}}
-    
+
     // {{{ isServer
     /**
      * Check if this is a Server-Socket
@@ -1246,7 +1244,19 @@
       return ($this->serverParent !== null);
     }
     // }}}
-    
+
+    // {{{ getType
+    /**
+     * Retrieve the type of this socket
+     *
+     * @return integer
+     **/
+    public function getType (): int
+    {
+      return $this->socketType;
+    }
+    // }}}
+
     // {{{ getLocalName
     /**
      * Retrive the local name of our socket
@@ -1327,95 +1337,74 @@
       return $this->remoteHost . ':' . $this->remotePort;
     }
     // }}}
-    
-    
-    // {{{ mwrite
-    /**
-     * Write multiple messages to our connection
-     *    
-     * @param string ...
-     * 
-     * @access public
-     * @return Promise
-     **/
-    public function mwrite () : Promise {
-      // Just pass single chunks in UDP-Mode
-      if ($this->Type == self::TYPE_UDP) {
-        foreach (func_get_args () as $Message)
-          if (!$this->write ($Message))
-            return false;
-        
-        return true;
-      }
-      
-      // Write out the whole in one large packet
-      return $this->write (implode ('', func_get_args ()));
-    }
-    // }}}
-    
+
     // {{{ write
     /**
      * Write data to this sink
-     * 
+     *
      * @param string $writeData The data to write to this sink
-     * 
+     *
      * @access public
      * @return Promise
      **/
-    public function write (string $writeData) : Promise {
+    public function write (string $writeData): Promise
+    {
       // Bypass write-buffer in UDP-Server-Mode
-      if ($this->Type == self::TYPE_UDP_SERVER) {
+      if ($this->socketType === self::TYPE_UDP_SERVER) {
         if ($this->___write ($writeData) === false)
           return Promise::reject ('Write failed');
-        
+
         # TODO: We don't honor length here
-        
+
         return Promise::resolve ();
       }
-      
+
       // Let our parent class handle the write-stuff
       return parent::write ($writeData);
     }
     // }}}
-    
+
     // {{{ ___write
     /**
      * Forward data for writing to our socket
-     * 
+     *
      * @param string $writeData
-     * 
+     *
      * @access private
-     * @return int Number of bytes written
+     * @return int|null Number of bytes written
      **/
-    protected function ___write (string $writeData) : ?int {
+    protected function ___write (string $writeData): ?int
+    {
       // Make sure we have a socket available
-      if (
-        (($this->Type == self::TYPE_UDP_SERVER) && (!is_object ($this->serverParent) || !is_resource ($fd = $this->serverParent->getWriteFDforClient ($this)))) ||
-        (($this->Type != self::TYPE_UDP_SERVER) && !is_resource ($fd = $this->getWriteFD ()))
-      )
+      if ($this->socketType !== self::TYPE_UDP_SERVER)
+        $socketDescriptor = $this->getWriteFD ();
+      elseif (is_object ($this->serverParent))
+        $socketDescriptor = $this->serverParent->getWriteFDforClient ($this);
+
+      if (!is_resource ($socketDescriptor))
         return null;
-      
+
       // Perform a normal unbuffered write
       $this->lastEvent = time ();
-      
-      if ($this->Type == self::TYPE_UDP_SERVER)
-        $writeLength = stream_socket_sendto ($fd, $writeData, 0, $this->remoteName);
+
+      if ($this->socketType === self::TYPE_UDP_SERVER)
+        $writtenLength = stream_socket_sendto ($socketDescriptor, $writeData, 0, $this->remoteName);
       else
-        $writeLength = fwrite ($fd, $writeData);
-      
+        $writtenLength = fwrite ($socketDescriptor, $writeData);
+
       if (
         (
-          ($writeLength === false) ||
-          ($writeLength === 0)
+          ($writtenLength === false) ||
+          ($writtenLength === 0)
         ) &&
-        feof ($fd)
+        feof ($socketDescriptor)
       )
         $this->close (true);
-      
-      if ($writeLength === false)
+
+      if ($writtenLength === false)
         return null;
-      
-      return $writeLength;
+
+      return $writtenLength;
     }
     // }}}
     
@@ -1538,7 +1527,7 @@
       # TODO: No clue at the moment how to do this on UDP-Server
       # TODO: Check if this simply works - we are doing this in non-blocking mode,
       #       so it might be possible to distinguish by normal peer-multiplexing
-      if ($this->Type == self::TYPE_UDP_SERVER)
+      if ($this->socketType === self::TYPE_UDP_SERVER)
         return Promise::reject ('Unable to negotiate TLS in UDP-Server-Mode');
       
       // Set internal status
@@ -1691,20 +1680,24 @@
     // {{{ readUDPServer
     /**
      * Receive Data from an UDP-Server-Class 
-     * 
-     * @param string $Data
-     * @param Socket\Server $Server
-     * 
+     *
+     * @param string $readData
+     * @param Socket\Server $parentServer
+     *
      * @access public
      * @return void
      **/
-    public function readUDPServer ($Data, Socket\Server $Server) {
+    public function readUDPServer (string $readData, Socket\Server $parentServer): void
+    {
       // Validate the incoming request
-      if (($this->Type !== self::TYPE_UDP_SERVER) || ($Server !== $this->serverParent))
-        return false;
-      
+      if ($this->socketType !== self::TYPE_UDP_SERVER)
+        throw new Exception ('Not an UDP-Server-Socket');
+
+      if ($parentServer !== $this->serverParent)
+        throw new InvalidArgumentException ('Invalid parent UDP-Server');
+
       // Forward internally
-      $this->receiveInternal ($Data);
+      $this->receiveInternal ($readData);
     }  
     // }}}
     

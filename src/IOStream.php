@@ -224,21 +224,20 @@
      * @return bool
      **/
     public function watchRead ($setState = null) {
-      // Check wheter to change the status
+      // Check whether to change the status
       if ($setState !== null) {
-        // Change the status, remember the old
-        $originalSetting = $this->watchReads;
-        $this->watchReads = !!$setState;
+        if ($setState === $this->watchReads)
+          return true;
         
+        // Change the state
+        $this->watchReads = !!$setState;
+
         // Update the event-loop if there were changes
-        if (($eventBase = $this->getEventBase ()) &&
-            ($originalSetting != $this->watchReads) &&
-            !$eventBase->updateEvent ($this)) {
-          $this->watchReads = $originalSetting;
-          
-          return false;
-        }
-       
+        $eventBase = $this->getEventBase ();
+
+        if ($eventBase)
+          $eventBase->updateEvent ($this);
+
         return true;
       } 
       

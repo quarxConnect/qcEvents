@@ -22,8 +22,11 @@
   
   namespace quarxConnect\Events\Socket\Event;
 
-  use quarxConnect\Events\ABI\Event;
+  use InvalidArgumentException;
+
   use quarxConnect\Events\Socket;
+  use quarxConnect\Events\ABI\Event;
+  use quarxConnect\Events\ABI\Consumer\Common as Consumer;
   
   class Connected implements Event {
     /**
@@ -32,6 +35,13 @@
      * @var Socket
      **/
     protected Socket $theSocket;
+
+    /**
+     * Any consumer the socket was finally piped to
+     *
+     * @var Consumer|null
+     **/
+    public Consumer|null $theConsumer = null;
 
     // {{{ __construct
     /**
@@ -42,8 +52,9 @@
      * @access friendly
      * @return void
      */
-    public function __construct (Socket $theSocket) {
-        $this->theSocket = $theSocket;
+    public function __construct (Socket $theSocket)
+    {
+      $this->theSocket = $theSocket;
     }
     // }}}
 
@@ -56,11 +67,12 @@
      * @access public
      * @return mixed
      **/
-    public function __get (string $propertyName): mixed {
-        if (!property_exists ($this, $propertyName))
-            throw new \OutOfRangeException ('Invalid property: ' . $propertyName);
+    public function __get (string $propertyName): mixed
+    {
+      if (!property_exists ($this, $propertyName))
+        throw new InvalidArgumentException ('Invalid property: ' . $propertyName);
 
-        return $this->$propertyName;
+      return $this->$propertyName;
     }
     // }}}
   }
