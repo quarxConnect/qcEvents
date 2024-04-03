@@ -1674,6 +1674,15 @@
       
       // Forward this internally
       $this->receiveInternal ($Data);
+
+      if ($this->readBufferLength > 0) {
+        $eventBase = $this->getEventBase ();
+
+        if ($eventBase)
+          $eventBase->forceCallback (
+            fn () => $this->___callback ('eventReadable')
+          );
+      }
     }
     // }}}
     
