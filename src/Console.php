@@ -65,7 +65,7 @@
      * @return int The number of bytes that have been written
      **/
     protected function ___write (string $writeData) : ?int {
-      return $this->___writeGeneric ($binaryData);
+      return $this->___writeGeneric ($writeData);
     }
     // }}}
     

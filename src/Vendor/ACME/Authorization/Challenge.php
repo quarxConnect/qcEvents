@@ -64,8 +64,9 @@
      * @access public
      * @return Challenge
      **/
-    public static function fromJSON (Events\Vendor\ACME $ACME, object $JSON) : Challenge {
-      $Instance = new static ($ACME, $JSON->url);
+    public static function fromJSON (Events\Vendor\ACME $ACME, object $JSON): Challenge
+    {
+      $Instance = new Challenge ($ACME, $JSON->url);
       $Instance->Type = $JSON->type;
       $Instance->Status = $JSON->status;
       
@@ -73,7 +74,7 @@
         $Instance->Token = $JSON->token;
       
       if (isset ($JSON->validated))
-        $Instnace->Validated = $JSON->validated;
+        $Instance->Validated = $JSON->validated;
       
       if (isset ($JSON->error))
         $Instance->Error = $JSON->error;
@@ -126,8 +127,9 @@
      * @access public
      * @return bool
      **/
-    public function isType (string $challengeType) : bool {
-      return (strcasecmp ($this->Type, $Type) == 0);
+    public function isType (string $challengeType): bool
+    {
+      return (strcasecmp ($this->Type, $challengeType) === 0);
     }
     // }}}
     

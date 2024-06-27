@@ -2,119 +2,119 @@
 
   /**
    * quarxConnect Events - DNS Resource Record
-   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Stream\DNS\Record;
+
+  use InvalidArgumentException;
+  use LengthException;
   use quarxConnect\Events\Stream\DNS;
-  
-  class SOA extends DNS\Record {
+
+  class SOA extends DNS\Record
+  {
     protected const DEFAULT_TYPE = 0x06;
-    
-    private $Nameserver = '';
-    private $Mailbox = '';
-    private $Serial = 0;
-    private $Refresh = 0;
-    private $Retry = 0;
-    private $Expire = 0;
-    private $Minimum = 0;
-    
+
+    private DNS\Label $Nameserver;
+    private DNS\Label $Mailbox;
+    private int $Serial = 0;
+    private int $Refresh = 0;
+    private int $Retry = 0;
+    private int $Expire = 0;
+    private int $Minimum = 0;
+
     // {{{ __toString
     /**
      * Create a human-readable representation from this
-     * 
+     *
      * @access friendly
      * @return string  
      **/
-    function __toString () {
+    public function __toString (): string
+    {
       return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' SOA ' . $this->Nameserver . ' ' . $this->Mailbox . ' ' . $this->Serial . ' ' . $this->Refresh . ' ' . $this->Retry . ' ' . $this->Expire . ' ' . $this->Minimum;
     }
     // }}}
-    
-    public function setNameserver ($Nameserver) {
+
+    public function setNameserver (DNS\Label $Nameserver): void
+    {
       $this->Nameserver = $Nameserver;
-      
-      return true;
     }
-    
-    public function setMailbox ($Mailbox) {
-      $this->Mailbox = str_replace ('@', '.', $Mailbox);
-      
-      return true;
+
+    public function setMailbox (DNS\Label|string $Mailbox): void
+    {
+      if (is_string ($Mailbox)) {
+        $Mailbox = new DNS\Label (explode ('.', str_replace ('@', '.', $Mailbox)));
+      }
+
+      $this->Mailbox = $Mailbox;
     }
-    
-    public function setSerial ($Serial) {
-      $this->Serial = (int)$Serial;
-      
-      return true;
+
+    public function setSerial (int $Serial): void
+    {
+      $this->Serial = $Serial;
     }
-    
-    public function setRefresh ($Refresh) {
-      $this->Refresh = (int)$Refresh;
-      
-      return true;
+
+    public function setRefresh (int $Refresh): void
+    {
+      $this->Refresh = $Refresh;
     }
-    
-    public function setRetry ($Retry) {
-      $this->Retry = (int)$Retry;
-      
-      return true;
+
+    public function setRetry (int $Retry): void
+    {
+      $this->Retry = $Retry;
     }
-    
-    public function setExpire ($Expire) {
-      $this->Expire = (int)$Expire;
-      
-      return true;
+
+    public function setExpire (int $Expire): void
+    {
+      $this->Expire = $Expire;
     }
-    
-    public function setMinimum ($Minimum) {
+
+    public function setMinimum (int $Minimum): void
+    {
       $this->Minimum = $Minimum;
-      
-      return true;
     }
-    
-    
+
     // {{{ parsePayload
     /**
      * Parse a given payload
-     * 
+     *
      * @param string $dnsData
      * @param int $dataOffset
-     * @param int $dataLength (optional)
-     * 
+     * @param int|null $dataLength (optional)
+     *
      * @access public
      * @return void
-     * @throws \LengthException
-     * @throws \UnexpectedValueException
+     *
+     * @throws LengthException
+     * @throws InvalidArgumentException
      **/
-    public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
+    public function parsePayload (string $dnsData, int &$dataOffset, int $dataLength = null): void
+    {
       if ($dataLength === null)
         $dataLength = strlen ($dnsData);
-      
-      if (!($Nameserver = DNS\Message::getLabel ($dnsData, $dataOffset)))
-        throw new \UnexpectedValueException ('Failed to read Nameserver-Label of DNS-Record (SOA)');
-      
-      if (!($Mailbox = DNS\Message::getLabel ($dnsData, $dataOffset)))
-        throw new \UnexpectedValueException ('Failed to read Mailbox-Label of DNS-Record (SOA)');
-      
+
+      $Nameserver = DNS\Message::getLabel ($dnsData, $dataOffset);
+      $Mailbox = DNS\Message::getLabel ($dnsData, $dataOffset);
+
       if ($dataLength < $dataOffset + 20)
-        throw new \LengthException ('DNS-Record too short (SOA)');
-      
+        throw new LengthException ('DNS-Record too short (SOA)');
+
       $this->Nameserver = $Nameserver;
       $this->Mailbox    = $Mailbox;
       $this->Serial     = self::parseInt32 ($dnsData, $dataOffset, $dataLength);
@@ -124,21 +124,22 @@
       $this->Minimum    = self::parseInt32 ($dnsData, $dataOffset, $dataLength);
     }
     // }}}
-    
+
     // {{{ buildPayload
     /**
-     * Retrive the payload of this record
-     * 
-     * @param int $Offset
-     * @param array &$Labels
-     * 
+     * Retrieve the payload of this record
+     *
+     * @param int $dataOffset
+     * @param array &$dnsLabels
+     *
      * @access public
      * @return string
      **/
-    public function buildPayload ($Offset, &$Labels) {
-      $Nameserver = DNS\Message::setLabel ($this->Nameserver, $Offset, $Labels);
-      $Mailbox = DNS\Message::setLabel ($this->Mailbox, $Offset + strlen ($Nameserver), $Labels);
-      
+    public function buildPayload (int $dataOffset, array &$dnsLabels): string
+    {
+      $Nameserver = DNS\Message::setLabel ($this->Nameserver, $dataOffset, $dnsLabels);
+      $Mailbox = DNS\Message::setLabel ($this->Mailbox, $dataOffset + strlen ($Nameserver), $dnsLabels);
+
       return
         $Nameserver .
         $Mailbox .

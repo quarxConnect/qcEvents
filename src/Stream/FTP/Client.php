@@ -140,8 +140,11 @@
           $this->ftpState = self::STATE_AUTHENTICATING;
           
           // Write out the password if it is required
-          if ($responseCode == 331)
-            return $this->writeCommand ('PASS', [ $userPassword ]);
+          if ($responseCode == 331) {
+            $this->writeCommand ('PASS', [ $userPassword ]);
+
+            return;
+          }
           
           // Check for a protocoll-violation
           if ($responseCode != 332)
@@ -151,7 +154,9 @@
           if ($userAccount === null)
             return false;
           
-          return $this->writeCommand ('ACCT', [ $userAccount ]);
+          $this->writeCommand ('ACCT', [ $userAccount ]);
+
+          return;
         }
       )->then (
         function (int $responseCode, string $responseText) use ($userName, $userAccount) {
@@ -221,16 +226,15 @@
      * @param string $forPath (optional) Pathname for file
      * 
      * @access public
-     * @return Events\Promise
+     * @return Events\Promise<string>
      **/
-    public function getStatus (string $forPath = null) : Events\Promise {
-      return $this->runFTPCommand (
+    public function getStatus (string $forPath = null) : Events\Promise
+    {
+      return $this->ftpCommand (
         'STAT',
         ($forPath ? [ $forPath ] : null)
       )->then (
-        function (int $responseCode, string $responseText) {
-          return $responseText;
-        }
+        fn (int $responseCode, string $responseText): string => $responseText
       );
     }
     // }}}

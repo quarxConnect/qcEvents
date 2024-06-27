@@ -221,9 +221,10 @@
      * Retrive a nonce for the next request
      * 
      * @access public
-     * @return Events\Promise
+     * @return Events\Promise<string>
      **/
-    public function getNonce () : Events\Promise {
+    public function getNonce (): Events\Promise
+    {
       // Check wheter to use a cached nonce
       if ($this->replayNonce !== null) {
         $storedNonce = $this->replayNonce;
@@ -240,8 +241,8 @@
             throw new \Exception ('Missing URL for newNonce on directory');
           
           // Request a new nonce
-          return $this->request ($Directory->newNonce, false, null, 'HEAD')->then (
-            function () {
+          return $this->request ($serviceDirectory->newNonce, false, null, 'HEAD')->then (
+            function (): string {
               // Make sure we found a new nonce
               if ($this->replayNonce === null)
                 throw new \Exception ('Failed to get a new nonce');
@@ -586,7 +587,7 @@
           
           // Check for an error-response
           if ($rejectError && $responseHeader->isError ())
-            throw new \Exception ('Errornous response received' . (is_object ($responseBody) && isset ($responseBody->detail) ? ': ' . $Body->detail : ''));
+            throw new \Exception ('Errornous response received' . (is_object ($responseBody) && isset ($responseBody->detail) ? ': ' . $responseBody->detail : ''));
           
           // Forward the result
           return new Events\Promise\Solution ([ $responseBody, $responseHeader ]);

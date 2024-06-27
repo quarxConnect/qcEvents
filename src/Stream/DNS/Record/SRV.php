@@ -2,233 +2,256 @@
 
   /**
    * quarxConnect Events - DNS Resource Record
-   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Stream\DNS\Record;
+
+  use LengthException;
   use quarxConnect\Events\Stream\DNS;
-  
-  class SRV extends DNS\Record {
+  use quarxConnect\Events\Stream\DNS\Label;
+  use RangeException;
+  use UnexpectedValueException;
+
+  class SRV extends DNS\Record
+  {
     protected const DEFAULT_TYPE = 0x21;
-    
+
     /* Priority of this record */
-    private $Priority = null;
-    
+    private int $Priority = 0;
+
     /* Weight of this record */
-    private $Weight = null;
-    
+    private int $Weight = 0;
+
     /* Any Port assigned to this record */
-    private $Port = null;
-    
+    private int $Port = 0;
+
     /* The hostname assigned to this record */
-    private $destinationHost = null;
-    
+    private ?DNS\Label $destinationHost = null;
+
     // {{{ __toString
     /**
      * Create a human-readable representation from this
-     * 
+     *
      * @access friendly
-     * @return string  
+     * @return string
      **/
-    function __toString () {
+    public function __toString (): string
+    {
       return $this->getLabel () . ' ' . $this->getTTL () . ' ' . $this->getClassName () . ' SRV ' . $this->Priority . ' ' . $this->Weight . ' ' . $this->Port . ' ' . $this->destinationHost;
     }
     // }}}
-    
+
     // {{{ getPriority
     /**
-     * Retrive a priority assigned to this record
-     * 
+     * Retrieve a priority assigned to this record
+     *
      * @access public
      * @return int   
      **/
-    public function getPriority () {
+    public function getPriority (): int
+    {
       return $this->Priority;
     }
     // }}}
-    
+
     // {{{ setPriority
     /**
      * Set the priority of this record
-     * 
+     *
      * @param int $Priority
-     * 
+     *
      * @access public
-     * @return bool
+     * @return void
+     *
+     * @throws RangeException
      **/
-    public function setPriority ($Priority) {
+    public function setPriority (int $Priority): void
+    {
       if (($Priority < 1) || ($Priority > 0xFFFF))
-        return false;
-      
-      $this->Priority = (int)$Priority;
-      
-      return true;
+        throw new RangeException ('Value must be an unsigned 16-bit integer');
+
+      $this->Priority = $Priority;
     }
     // }}}
-    
+
     // {{{ getWeight
     /**
-     * Retrive the weight of this record
-     * 
+     * Retrieve the weight of this record
+     *
      * @access public
-     * @return int   
+     * @return int
      **/
-    public function getWeight () {
+    public function getWeight (): int
+    {
       return $this->Weight;
     }
     // }}}
-    
+
     // {{{ setWeight
     /**
      * Set the weight of this record
-     * 
+     *
      * @param int $Weight
-     * 
+     *
      * @access public
-     * @return bool
+     * @return void
+     *
+     * @throws RangeException
      **/
-    public function setWeight ($Weight) {
+    public function setWeight (int $Weight): void
+    {
       if (($Weight < 1) || ($Weight > 0xFFFF))
-        return false;
-      
-      $this->Weight = (int)$Weight;
-      
-      return true;
+        throw new RangeException ('Value must be an unsigned 16-bit integer');
+
+      $this->Weight = $Weight;
     }
     // }}}
-    
+
     // {{{ getPort
     /**
-     * Retrive a port assigned to this record
-     * 
+     * Retrieve a port assigned to this record
+     *
      * @access public
      * @return int   
      **/
-    public function getPort () {
+    public function getPort (): int
+    {
       return $this->Port;
     }
     // }}}
-    
+
     // {{{ setPort
     /**
      * Assign a new port to this record
-     * 
+     *
      * @param int $Port
-     * 
+     *
      * @access public
-     * @return bool
+     * @return void
+     *
+     * @throws RangeException
      **/
-    public function setPort ($Port) {
+    public function setPort (int $Port): void
+    {
       if (($Port < 1) || ($Port > 0xFFFF))
-        return false;
-      
-      $this->Port = (int)$Port;
-      
-      return true;
+        throw new RangeException ('Value must be an unsigned 16-bit integer');
+
+      $this->Port = $Port;
     }
     // }}}
-    
+
     // {{{ getHostname
     /**
-     * Retrive the hostname assigned to this record
-     * 
+     * Retrieve the hostname assigned to this record
+     *
      * @access public
-     * @return string
+     * @return Label
      **/
-    public function getHostname () {
+    public function getHostname (): Label
+    {
       return $this->destinationHost;
     }  
     // }}}
-      
+
     // {{{ setHostname
     /**
      * Store a hostname on this record
-     * 
-     * @param string $destinationHost 
+     *
+     * @param Label|string $destinationHost
      * 
      * @access public
      * @return void
      **/
-    public function setHostname ($destinationHost) {
+    public function setHostname (Label|string $destinationHost): void
+    {
+      if (!($destinationHost instanceof Label))
+        $destinationHost = new Label (explode ('.', $destinationHost));
+
       $this->destinationHost = $destinationHost;
     }
     // }}}
-    
+
     // {{{ parsePayload
     /**
      * Parse a given payload
      * 
      * @param string $dnsData
      * @param int $dataOffset
-     * @param int $dataLength (optional)
-     * 
+     * @param int|null $dataLength (optional)
+     *
      * @access public
      * @return void
-     * @throws \LengthException
-     * @throws \UnexpectedValueException
+     *
+     * @throws LengthException
+     * @throws UnexpectedValueException
      **/
-    public function parsePayload (&$dnsData, &$dataOffset, $dataLength = null) {
+    public function parsePayload (string $dnsData, int &$dataOffset, int $dataLength = null): void
+    {
       // Make sure we know the length of our input-buffer
       if ($dataLength === null)
         $dataLength = strlen ($dnsData);
-      
+
       // Make sure we have enough data to read
       if ($dataLength < $dataOffset + 6) {
         $Priority = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
         $Weight   = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
         $Port     = self::parseInt16 ($dnsData, $dataOffset, $dataLength);
-        
+
         if (!($destinationHost = DNS\Message::getLabel ($dnsData, $dataOffset)))
-          throw new \UnexpectedValueException ('Failed to read label of DNS-Record (SRV)');
-        
+          throw new UnexpectedValueException ('Failed to read label of DNS-Record (SRV)');
+
         $this->Priority = $Priority;
         $this->Weight = $Weight;
         $this->Port = $Port;
         $this->destinationHost = $destinationHost;
-      
+
       // Check for empty record
-      } elseif ($dataLength == $dataOffset)
-        $this->destinationHost = $this->Priority = $this->Weight = $this->Port = null;
-      
-      else
-        throw new \LengthException ('DNS-Record has invalid size (SRV)');
+      } elseif ($dataLength == $dataOffset) {
+        $this->destinationHost = null;
+        $this->Priority = 0;
+        $this->Weight = 0;
+        $this->Port = 0;
+      } else
+        throw new LengthException ('DNS-Record has invalid size (SRV)');
     }
     // }}}
-    
+
     // {{{ buildPayload
     /**
-     * Retrive the payload of this record
-     * 
-     * @param int $Offset
-     * @param array &$Labels
-     * 
+     * Retrieve the payload of this record
+     *
+     * @param int $dataOffset
+     * @param array &$dnsLabels
+     *
      * @access public
      * @return string
      **/
-    public function buildPayload ($Offset, &$Labels) {
+    public function buildPayload (int $dataOffset, array &$dnsLabels): string
+    {
       if ($this->destinationHost === null)
         return '';
-      
+
       return
         self::buildInt16 ($this->Priority) .
         self::buildInt16 ($this->Weight) .
         self::buildInt16 ($this->Port) .
-        DNS\Message::setLabel ($this->destinationHost, $Offset + 6, $Labels);
+        DNS\Message::setLabel ($this->destinationHost, $dataOffset + 6, $dnsLabels);
     }
     // }}}
   }

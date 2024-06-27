@@ -2,7 +2,7 @@
 
   /**
    * quarxConnect Events - Not Found Exception for Cache
-   * Copyright (C) 2014-2023 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -22,9 +22,14 @@
   
   namespace quarxConnect\Events\Cache\Exception;
 
+  use Exception;
+  use OutOfRangeException;
   use Throwable;
-  
-  class NotFound extends \Exception {
+
+  /**
+   * @property string $lookupKey
+   **/
+  class NotFound extends Exception {
     /**
      * The key used for lookup
      * 
@@ -38,7 +43,7 @@
      *
      * @param string $errorMessage
      * @param string $lookupKey
-     * @param Throwable $previousError (optional)
+     * @param Throwable|null $previousError (optional)
      *
      * @access friendly
      * @return void
@@ -61,7 +66,7 @@
      **/
     public function __get (string $propertyName): mixed {
       if (!property_exists ($this, $propertyName))
-          throw new \OutOfRangeException ('Invalid property: ' . $propertyName);
+          throw new OutOfRangeException ('Invalid property: ' . $propertyName);
 
       return $this->$propertyName;
     }

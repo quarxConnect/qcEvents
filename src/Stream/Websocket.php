@@ -438,7 +438,7 @@
           // Forward to the wire
           if ($Closed = $Message->isClosed ())
             $this->sendFrame (
-              ($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()),
+              ($Written ? $this::OPCODE_CONTINUE : $Message->getOpcode ()),
               $Message->read (),
               true
             )->then (
@@ -446,7 +446,7 @@
               $this->writeMessage [2]
             );
           else
-            $this->sendFrame (($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()), $Message->read (), false);
+            $this->sendFrame (($Written ? $this::OPCODE_CONTINUE : $Message->getOpcode ()), $Message->read (), false);
           
           // Mark as written
           $Written = true;
@@ -459,7 +459,7 @@
           // Forward to the wire
           if (!$Closed)
             $this->sendFrame (
-              ($Written ? $this::OPCODE_OPCODE_CONTINUE : $Message->getOpcode ()),
+              ($Written ? $this::OPCODE_CONTINUE : $Message->getOpcode ()),
               $Message->getData (),
               true
             )->then (

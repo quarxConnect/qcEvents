@@ -73,8 +73,9 @@
      * @access public
      * @return Order
      **/
-    public static function fromJSON (Events\Vendor\ACME $ACME, string $URI, object $JSON) : Order {
-      $orderInstance = new static ($ACME, $URI);
+    public static function fromJSON (Events\Vendor\ACME $ACME, string $URI, object $JSON): Order
+    {
+      $orderInstance = new Order ($ACME, $URI);
       $orderInstance->updateFromJSON ($JSON);
       
       return $orderInstance;

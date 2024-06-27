@@ -692,7 +692,7 @@
             if (count ($this->mailCurrent [3]) > 0) {
               $nextReceiver = array_shift ($this->mailCurrent [3]);
               
-              return $this->addReceiver ($Receiver)->then ($receiverAdded, $receiverError);
+              return $this->addReceiver ($nextReceiver)->then ($receiverAdded, $receiverError);
             }
             
             // Check if the server accepted any receiver
@@ -957,12 +957,14 @@
     /**
      * Consume a set of data
      * 
-     * @param mixed $streamData  
-     * 
+     * @param string $streamData
+     * @param Events\ABI\Source $sourceStream
+     *
      * @access public
-     * @return void  
+     * @return void
      **/
-    public function consume (string $streamData) : void {
+    public function consume ($streamData, Events\ABI\Source $sourceStream): void
+    {
       // Append data to internal buffer
       $this->streamBuffer .= $streamData;
       unset ($streamData);

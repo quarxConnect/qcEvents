@@ -22,6 +22,8 @@
 
     namespace quarxConnect\Events;
 
+    use Throwable;
+
     use quarxConnect\Events\Promise;
     use quarxConnect\Events\ABI\Event;
     use quarxConnect\Events\ABI\Event\Stoppable as StoppableEvent;
@@ -44,9 +46,9 @@
          * @param object $theEvent An event for which to return the relevant listeners.
          * 
          * @access public
-         * @return iterable<callable> An iterable (array, iterator, or generator) of callable. Each callable MUST be type-compatible with $event.
+         * @return callable[] An iterable (array, iterator, or generator) of callable. Each callable MUST be type-compatible with $event.
          **/
-        public function getListenersForEvent (object $theEvent): iterable {
+        public function getListenersForEvent (object $theEvent): array {
             $allListeners = [];
 
             foreach ($this->eventListeners as $eventClass=>$eventListeners)

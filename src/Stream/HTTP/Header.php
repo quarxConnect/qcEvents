@@ -22,6 +22,7 @@
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Stream\HTTP;
+  use InvalidArgumentException;
   use quarxConnect\Events;
   
   /**
@@ -182,18 +183,19 @@
     /**
      * Set the method of a request-header
      * 
-     * @param enum $Method
+     * @param string $Method
      * 
      * @access public
      * @return bool
+     *
+     * @throws InvalidArgumentException
      **/
-    public function setMethod ($Method) {
+    public function setMethod (string $Method): void
+    {
       if (!in_array ($Method, $this::$Methods))
-        return false;
-      
+        throw new InvalidArgumentException ('Unsupported Method');
+
       $this->Method = $Method;
-      
-      return true;
     }
     // }}}
     
@@ -402,9 +404,10 @@
      * @param bool $allowMulti (optional)
      * 
      * @access public
-     * @return string
+     * @return string|array|null
      **/
-    public function getField ($Field, $allowMulti = false) {
+    public function getField ($Field, $allowMulti = false): string|array|null
+    {
       // Retrive the key for that field
       $Key = strtolower ($Field);
       
@@ -427,6 +430,8 @@
       
       if ($allowMulti)
         return $Values;
+      
+      return null;
     }
     // }}}
     

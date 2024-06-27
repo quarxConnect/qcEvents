@@ -63,8 +63,9 @@
      * @access public
      * @return Authorization
      **/
-    public static function fromJSON (Events\Vendor\ACME $ACME, string $URI, object $JSON) : Authorization {
-      $Instance = new static ($ACME, $URI);
+    public static function fromJSON (Events\Vendor\ACME $ACME, string $URI, object $JSON): Authorization
+    {
+      $Instance = new Authorization ($ACME, $URI);
       $Instance->Identifier = $JSON->identifier;
       $Instance->Status = $JSON->status;
       

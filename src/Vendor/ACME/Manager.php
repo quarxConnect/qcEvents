@@ -156,7 +156,7 @@
                 
                 // Activate the challenge
                 $this->Challenges [$authChallenge->getToken ()] = $acmeOrder;
-                $authPromises [] = $acmeChallenge->activate ();
+                $authPromises [] = $authChallenge->activate ();
                 
                 // Proceed to net authorization
                 continue (2);
@@ -167,7 +167,7 @@
             }
             
             // Wait for pending challenges
-            return Events\Promise::all ($acmePromises)->then (
+            return Events\Promise::all ($authPromises)->then (
               function () {
                 return $this->getEventBase ()->addTimeout ($this::ORDER_PENDING_TIMEOUT);
               }
@@ -205,10 +205,13 @@
         
         // Try to finalize the order
         $acmeOrder->finalize ($signingRequest)->then (
-          function () use ($acmeOrder) {
+          function () use ($acmeOrder): void {
             // Try to process a new state
-            if (!$acmeOrder->isReady ())
-              return $this->processOrder ($acmeOrder);
+            if (!$acmeOrder->isReady ()) {
+              $this->processOrder ($acmeOrder);
+              
+              return;
+            }
             
             # TODO: Set timeout to check order again
             trigger_error ('TODO: Order still ready after finalize');
@@ -400,7 +403,7 @@
       // Enqueue the renew
       $this->getEventBase ()->addTimeout ($renewIn)->then (
         function () use ($certificateKey) {
-          return $this->startOrder ($certificateKey);
+          $this->startOrder ($certificateKey);
         }
       );
     }

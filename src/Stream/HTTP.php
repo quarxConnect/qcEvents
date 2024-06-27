@@ -215,8 +215,11 @@
             
             $this->bufferRead = substr ($this->bufferRead, $p + $Length + 4);
             
-            if ($Length == 0)
-              return $this->httpBodyReceived ();
+            if ($Length == 0) {
+              $this->httpBodyReceived ();
+              
+              return;
+            }
           }
            
         // Check if there is a content-length givenk
@@ -231,8 +234,9 @@
           $this->httpBodyAppend (substr ($this->bufferRead, 0, $Length));
           $this->bufferRead = substr ($this->bufferRead, $Length);   
           
-          return $this->httpBodyReceived ();
-        
+          $this->httpBodyReceived ();
+          
+          return;
         // Wait until connection is closed
         } else {
           $this->bufferCompleteBody = true;
@@ -413,11 +417,14 @@
      * Retrive the hostname of the remote party
      * 
      * @access public
-     * @return string
+     * @return string|null
      **/
-    public function getRemoteHost () {
+    public function getRemoteHost (): ?string
+    {
       if ($this->streamSource instanceof Events\Socket)
         return $this->streamSource->getRemoteHost ();
+
+      return null;
     }
     // }}}
 
@@ -428,9 +435,12 @@
      * @access public
      * @return int
      **/
-    public function getRemotePort () {
+    public function getRemotePort (): ?int
+    {
       if ($this->streamSource instanceof Events\Socket)
         return $this->streamSource->getRemotePort ();
+
+      return null;
     }
     // }}}
     
@@ -487,12 +497,12 @@
       $this->httpSetState ($this::HTTP_STATE_HEADER);
       
       return $this->streamSource->write (strval ($Header))->then (
-        function () use ($Header) {
+        function () use ($Header): void {
           // Run the callback
           $this->___callback ('httpHeadersSent', $Header);
         },
-        function () {
-          return $this->httpUnexpectedClose ();
+        function (): void {
+          $this->httpUnexpectedClose ();
         }
       );
     }
@@ -590,8 +600,14 @@
       # TODO: Sanity-Check the socket
       
       // Check if the stream closes as expected
-      if (!$this->bufferCompleteBody || ($this->httpState != $this::HTTP_STATE_BODY))
-        return $this->httpUnexpectedClose ();
+      if (
+        !$this->bufferCompleteBody ||
+        ($this->httpState != $this::HTTP_STATE_BODY)
+      ) {
+        $this->httpUnexpectedClose ();
+
+        return;
+      }
       
       // Finish the request
       $this->httpBodyReceived ();

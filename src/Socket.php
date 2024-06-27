@@ -24,6 +24,8 @@
 
   use Exception;
   use InvalidArgumentException;
+  use Throwable;
+  use quarxConnect\Events\Exception\Socket as SocketException;
 
   class Socket extends IOStream {
     /* Error-types */
@@ -521,7 +523,7 @@
             return;
           
           // Perform asyncronous resolve
-          return $this->socketResolveDo ($Host, $Port, $Type);
+          $this->socketResolveDo ($Host, $Port, $Type);
         }
       );
     }
@@ -584,15 +586,25 @@
           $this->___callback ('socketResolve', [ $Label ], [ Stream\DNS\Message::TYPE_SRV ]);
           
           // Do the DNS-Lookup
-          if (!is_array ($Result = dns_get_record ($Label, \DNS_SRV, $AuthNS, $Addtl)) || (count ($Result) == 0))
-            return $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED, 'Failed to resolve destination (SRV) with dns_get_record()');
+          $Result = dns_get_record ($Label, \DNS_SRV, $AuthNS, $Addtl);
+
+          if (
+            !is_array ($Result) ||
+            (count ($Result) == 0)
+          ) {
+            $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED, 'Failed to resolve destination (SRV) with dns_get_record()');
+
+            return;
+          }
           
           // Forward the result
-          return $this->socketResolverResultArray ($Result, $Addtl, $Domain, \DNS_SRV, null, $Type);
+          $this->socketResolverResultArray ($Result, $Addtl, $Domain, \DNS_SRV, null, $Type);
+          
+          return;
         }
         
         // Perform asyncronous lookup
-        return $this->socketResolveDo ($Label, null, $Type, Stream\DNS\Message::TYPE_SRV);
+        $this->socketResolveDo ($Label, null, $Type, Stream\DNS\Message::TYPE_SRV);
       });
     }
     // }}}
@@ -802,8 +814,11 @@
       if (
         ($this->tlsEnabled !== false) &&
         !$this->isTLS ()
-      )
-        return $this->socketHandleConnectFailed ($this::ERROR_NET_TLS_FAILED, 'Failed to enable TLS');
+      ) {
+        $this->socketHandleConnectFailed ($this::ERROR_NET_TLS_FAILED, 'Failed to enable TLS');
+
+        return;
+      }
       
       // Fire custom callback
       if ($this->socketConnectResolve) {
@@ -948,7 +963,7 @@
       foreach ($Types as $rType)
         self::$dnsResolver->resolve ($Hostname, $rType)->then (
           function (Stream\DNS\Recordset $Answers, Stream\DNS\Recordset $Authorities, Stream\DNS\Recordset $Additional, Stream\DNS\Message $Response)
-          use ($Hostname, $Port, $Type, $rType) {
+          use ($Hostname, $Port, $Type, $rType): void {
             // Decrese counter
             $this->Resolving--;
             
@@ -960,16 +975,16 @@
             $this->lastEvent = time ();
             
             // Convert the result
-            $Result = self::$dnsResolver->dnsConvertPHP ($Response, $AuthNS, $Addtl);
+            $Result = self::$dnsResolver->dnsConvertPHP ($Response, $Authorities, $Additional);
             
             // Forward
-            return $this->socketResolverResultArray ($Result, $Addtl, $Hostname, $rType, $Port, $Type);
+            $this->socketResolverResultArray ($Result, $Additional, $Hostname, $rType, $Port, $Type);
           },
-          function () use ($Hostname, $Port, $Type, $rType) {
+          function () use ($Hostname, $Port, $Type, $rType): void {
             // Decrese counter
             $this->Resolving--;
             
-            return $this->socketResolverResultArray ([ ], [ ], $Hostname, $rType, $Port, $Type);
+            $this->socketResolverResultArray ([ ], [ ], $Hostname, $rType, $Port, $Type);
           }
         );
       
@@ -1021,7 +1036,8 @@
      * @access private
      * @return void
      **/
-    private function socketResolverResultArray ($Results, $Addtl, $Hostname, $rType, $Port, $Type) {
+    private function socketResolverResultArray (array $Results, array $Addtl, string $Hostname, int $rType, int $Port, int $Type): void
+    {
       // Check if there are no results
       if ((count ($Results) == 0) && ($this->Resolving <= 0)) {
         // Mark connection as failed if there are no addresses pending and no current address
@@ -1032,7 +1048,7 @@
           ) &&
           ($this->socketAddress === null)
         )
-          return $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED, 'Failed to resolve destination "' . $Hostname . '"');
+          $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED, 'Failed to resolve destination "' . $Hostname . '"');
         
         return;
       }
@@ -1476,7 +1492,8 @@
      * @access public
      * @return void
      **/
-    public function tlsVerify (bool $verifyPeer = true, bool $verifyName = true, bool $allowSelfSigned = false, string $caFile = null, int $verfiyDepth = null, string $expectedFingerprint = null) : void {
+    public function tlsVerify (bool $verifyPeer = true, bool $verifyName = true, bool $allowSelfSigned = false, string $caFile = null, int $verifyDepth = null, string $expectedFingerprint = null): void
+    {
       if ($verifyPeer !== null)
         $this->tlsOptions ['verify_peer'] = $verifyPeer;
       
@@ -1497,7 +1514,7 @@
         $this->tlsOptions ['verify_depth'] = $verifyDepth;
 
       if ($expectedFingerprint !== null)
-        $this->tlsOptions ['peer_fingerprint'] = $expcectedFingerprint;
+        $this->tlsOptions ['peer_fingerprint'] = $expectedFingerprint;
       
       // Forward the options to the stream if there is one
       if ($this->getReadFD ())
@@ -1596,9 +1613,9 @@
             if (substr ($lastError ['message'], 0, 31) == 'stream_socket_enable_crypto(): ')
               $lastError ['message'] = substr ($lastError ['message'], 31);
             
-            $this->tlsPromise->reject (new Exception\Socket\Encryption ('Failed to enable TLS: ' . $lastError ['message']));
+            $this->tlsPromise->reject (new SocketException\Encryption ('Failed to enable TLS: ' . $lastError ['message']));
           } else
-            $this->tlsPromise->reject (new Exception\Socket\Encryption ('Failed to enable TLS'));
+            $this->tlsPromise->reject (new SocketException\Encryption ('Failed to enable TLS'));
         }
       }
     }
@@ -1644,8 +1661,11 @@
         $this->idleTimer->restart ();
 
       // Let TLS intercept here
-      if ($this->tlsEnabled === null)
-        return $this->setTLSMode ();
+      if ($this->tlsEnabled === null) {
+        $this->setTLSMode ();
+
+        return;
+      }
       
       // Check if our buffer reached the watermark
       if ($this->readBufferLength >= $this::READ_BUFFER_SIZE) {
@@ -1657,8 +1677,11 @@
       
       // Read incoming data from socket
       if ((($Data = fread ($this->getReadFD (), $this->bufferSize)) === '') || ($Data === false)) {
-        if ($this->isConnecting ())
-          return $this->socketHandleConnectFailed ($this::ERROR_NET_REFUSED, 'Connection refused');
+        if ($this->isConnecting ()) {
+          $this->socketHandleConnectFailed ($this::ERROR_NET_REFUSED, 'Connection refused');
+
+          return;
+        }
         
         // Check if the socket is really closed
         if (!feof ($this->getReadFD ()))

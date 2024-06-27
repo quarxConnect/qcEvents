@@ -108,7 +108,7 @@
       static $primaryInstance = null;
 
       if (!$primaryInstance)
-        $primaryInstance = new static ();
+        $primaryInstance = new Base ();
 
       return $primaryInstance;
     }
@@ -207,7 +207,7 @@
       if (in_array ($eventHandler, $this->eventHandlers, true))
         return $this->updateEvent ($eventHandler);
 
-      // Set ourself as event-loop on the event
+      // Set ourselves as event-loop on the event
       $eventHandler->setEventBase ($this);
 
       // Append to local storage
@@ -333,11 +333,14 @@
      *
      * @access public
      * @return string
+     *
+     * @throws Exception
      **/
     public function getDataPath (): string
     {
       // Check if we can get user-settings
       if (function_exists ('posix_getpwuid')) {
+        /** @noinspection PhpComposerExtensionStubsInspection */
         $pw = posix_getpwuid (posix_geteuid ());
         $Path = $pw ['dir'];
 
@@ -345,14 +348,19 @@
       } elseif (isset ($_ENV ['HOME']))
         $Path = $_ENV ['HOME'];
       else
-        return null;
+        throw new Exception ('Unable to locate users root-directory');
 
-      // Append ourself to path
+      // Append ourselves to path
       $Path .= '/.qcEvents';
 
       // Make sure our path exists
-      if (is_dir ($Path) || mkdir ($Path, 0700))
-        return $Path;
+      if (
+        !is_dir ($Path) &&
+        !mkdir ($Path, 0700)
+      )
+        throw new Exception ('Failed to create data-path');
+      
+      return $Path;
     }
     // }}}
 
@@ -365,7 +373,8 @@
      * @access public
      * @return void
      **/
-    public function forceCallback (callable $Callback) {
+    public function forceCallback (callable $Callback): void
+    {
       $this->forcedEvents [] = $Callback;
     }
     // }}}
@@ -374,13 +383,13 @@
     /**
      * Enqueue a timeout
      *
-     * @param mixed $timerDuration The timeout to wait (may be in seconds or array (seconds, microseconds))
+     * @param array|int|float $timerDuration The timeout to wait (might be in seconds or array (seconds, microseconds))
      * @param bool $timerRepeat (optional)
      *
      * @access public
      * @return Timer Timer-Promise is fulfilled once the timeout was reached and never rejected
      **/
-    public function addTimeout ($timerDuration, $timerRepeat = false): Timer
+    public function addTimeout (array|int|float $timerDuration, bool $timerRepeat = false): Timer
     {
       if (is_array ($timerDuration))
         $timerDuration = $timerDuration [0] + $timerDuration [1] / 1000000;
@@ -391,9 +400,9 @@
 
     // {{{ addTimer
     /**
-     * Setup a new timer
+     * Set up a new timer
      *
-     * @param Timer $Timer
+     * @param Timer $newTimer
      *
      * @access public
      * @return void
@@ -496,6 +505,8 @@
      *
      * @access public
      * @return void
+     *
+     * @throws Exception
      **/
     public function loop (bool $loopSingle = false, bool $singleWait = false): void
     {
@@ -565,7 +576,7 @@
         } else
           $microSeconds = 5000000;
 
-        // Check wether to select or just wait
+        // Check whether to select or just wait
         if (
           (count ($readDescriptors) === 0) &&
           (count ($writeDescriptors) === 0) &&
@@ -688,7 +699,7 @@
       // Get the current time
       $Now = $this->getTimer ();
 
-      // Check wether to run timers
+      // Check whether to run timers
       if (
         ($this->timerNext [0] > $Now [0]) ||
         (($this->timerNext [0] == $Now [0]) && ($this->timerNext [1] > $Now [1]))
@@ -727,7 +738,7 @@
           }
 
           // Remove this distinct usec from queue
-          // We do this already here because $Timer->run() might re-enqueue timers
+          // We do this already here because $Timer->run() might re-enqueue timers,
           // so they have to be removed before
           unset ($this->activeTimers [$Second][$uSecond]);
 
@@ -748,7 +759,7 @@
           unset ($this->activeTimers [$Second]);
       }
 
-      // Check wether to dequeue the timer
+      // Check whether to dequeue the timer
       if (count ($this->activeTimers) == 0)
         $this->timerNext = null;
       elseif (
@@ -773,9 +784,9 @@
      * @param ...
      *
      * @access private
-     * @return mixed
+     * @return void
      **/
-    private function invoke (callable $invokeCallback): mixed
+    private function invoke (callable $invokeCallback): void
     {
       // Prepare parameters
       $invokeParameters = func_get_args ();
@@ -783,11 +794,9 @@
 
       // Try to run
       try {
-        return call_user_func_array ($invokeCallback, $invokeParameters);
+        call_user_func_array ($invokeCallback, $invokeParameters);
       } catch (Throwable $errorException) {
         error_log ('Uncaught ' . $errorException);
-
-        return $errorException;
       }
     }
     // }}}

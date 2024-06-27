@@ -78,7 +78,7 @@
       static $myInstance = null;
 
       if ($myInstance === null)
-        $myInstance = new static (static::RESULT_FIRST);
+        $myInstance = new Synchronizer (static::RESULT_FIRST);
 
       return call_user_func_array ($myInstance, func_get_args ());
     }
@@ -100,7 +100,7 @@
       static $myInstance = null;
 
       if ($myInstance === null)
-        $myInstance = new static (static::RESULT_AS_ARRAY);
+        $myInstance = new Synchronizer (static::RESULT_AS_ARRAY);
 
       return call_user_func_array ($myInstance, func_get_args ());
     }
@@ -117,7 +117,7 @@
      * @access friendly
      * @return void
      **/
-    function __construct (int $resultMode = null, bool $storeResult = null, bool $throwExceptions = null)
+    public final function __construct (int $resultMode = null, bool $storeResult = null, bool $throwExceptions = null)
     {
       if ($resultMode !== null)
         $this->resultMode = $resultMode;
@@ -318,6 +318,8 @@
 
       elseif ($resultCount > 0)
         return $resultData [0];
+
+      return null;
     }
     // }}}
 

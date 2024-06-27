@@ -72,12 +72,15 @@
      * @param mixed $Index
      * 
      * @access public
-     * @return Record
+     * @return Record|null
      **/
     #[\ReturnTypeWillChange]
-    public function offsetGet ($Index) {
+    public function offsetGet ($Index): ?Record
+    {
       if (isset ($this->dnsRecords [$Index]))
         return $this->dnsRecords [$Index];
+
+      return null;
     }
     // }}}
     
@@ -214,7 +217,10 @@ EOF;
       }
       
       // Isolate all signatures
-      $Signatures = $this->getRecords (Record\RRSIG::DEFAULT_TYPE);
+      $Signatures = array_filter (
+        $this->getRecords (),
+        fn (Record $dnsRecord): bool => $dnsRecord instanceof Record\RRSIG
+      );
       
       if (count ($Signatures) == 0)
         return null;

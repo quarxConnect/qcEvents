@@ -22,6 +22,7 @@
 
   namespace quarxConnect\Events;
 
+  use InvalidArgumentException;
   use ValueError;
 
   abstract class IOStream extends Virtual\Pipe implements ABI\Loop, ABI\Stream, ABI\Stream\Consumer {
@@ -191,25 +192,30 @@
     // {{{ ___readGeneric
     /**
      * Use generic fread()-Function to read
-     * 
-     * @param int $readLength (optional)
-     * 
+     *
+     * @param int|null $readLength (optional)
+     *
      * @access protected
-     * @return string
+     * @return string|null
+     *
+     * @throws InvalidArgumentException
      **/
-    protected function ___readGeneric (int $readLength = null) : ?string {
-      // Retrive our descriptor
-      if (!is_resource ($readFD = $this->getReadFD ()))
-        throw new \Exception ('No read-fd on this I/O-Stream');
-      
-      // Check wheter to use the default read-length
+    protected function ___readGeneric (int $readLength = null): ?string
+    {
+      // Retrieve our descriptor
+      $readFD = $this->getReadFD ();
+
+      if (!is_resource ($readFD))
+        throw new InvalidArgumentException ('No read-fd on this I/O-Stream');
+
+      // Check whether to use the default read-length
       if ($readLength === null)
         $readLength = $this::DEFAULT_READ_LENGTH;
 
       // Try to read from file
       if (($readData = fread ($readFD, $readLength)) === false)
         return null;
-      
+
       return $readData;
     }
     // }}}
@@ -319,25 +325,32 @@
     // {{{ ___writeGeneric
     /**
      * Use generic fwrite()-Function to write
-     * 
+     *
      * @param string $writeData
-     * 
+     *
      * @access protected
-     * @return int
+     * @return int|null
+     *
+     * @throws InvalidArgumentException
      **/
-    protected function ___writeGeneric (string $writeData) : ?int {
-      // Retrive our descriptor
-      if (!is_resource ($writeFD = $this->getWriteFD ()))
-        throw new \Exception ('No write-fd on this I/O-Stream');
-    
+    protected function ___writeGeneric (string $writeData): ?int
+    {
+      // Retrieve our descriptor
+      $writeFD = $this->getWriteFD ();
+
+      if (!is_resource ($writeFD))
+        throw new InvalidArgumentException ('No write-fd on this I/O-Stream');
+
       // Just write out and return
-      if (($writeLength = fwrite ($writeFD, $writeData)) === false)
+      $writeLength = fwrite ($writeFD, $writeData);
+
+      if ($writeLength === false)
         return null;
-      
+
       return $writeLength;
     }
     // }}}
-    
+
     // {{{ watchWrite
     /**
      * Set/Retrive the current event-watching status

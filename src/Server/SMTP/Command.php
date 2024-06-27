@@ -113,7 +113,7 @@
         throw new \Error ('Use setIntermediateResponse() for intermediate responses');
       
       if ($this->intermediatePromise)
-        $this->intermediatePromise-reject ('setResponse() before callback finished');
+        $this->intermediatePromise->reject ('setResponse() before callback finished');
       
       $this->smtpCode = $smtpCode;
       $this->responseMessage = $responseMessage;

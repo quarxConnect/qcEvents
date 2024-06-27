@@ -92,7 +92,7 @@
       $socksSocket = new Socket ($this->getEventBase ());
       $myHost = array_shift ($remoteHost);
       
-      return $sockSocket->connect (
+      return $socksSocket->connect (
         $this->socksHost,
         $this->socksPort,
         $socksSocket::TYPE_TCP

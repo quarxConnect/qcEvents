@@ -2,58 +2,60 @@
 
   /**
    * qcEvents - FTP-Client
-   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2019-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Client;
-  use \quarxConnect\Events;
-  use \quarxConnect\Events\ABI;
-  use \quarxConnect\Events\Stream;
-  
-  class FTP extends Events\Hookable {
+
+  use quarxConnect\Events;
+  use quarxConnect\Events\Stream;
+
+  class FTP extends Events\Hookable
+  {
     use Events\Feature\Based;
     
     /* Number of parallel FTP-Streams to use */
-    private $maxStreams = 5;
-    
+    private int $maxStreams = 5;
+
     /* FTP-Connection-Information */
-    private $Hostname = '';
-    private $Port = 21;
-    private $Username = '';
-    private $Password = '';
-    private $Account = null;
-    private $Ready = false;
-    
+    private string $Hostname = '';
+    private int $Port = 21;
+    private string $Username = '';
+    private string $Password = '';
+    private string|null $Account = null;
+    private bool $Ready = false;
+
     /* Cached Streams */
-    private $pendingStreams = [ ];
-    private $availableStreams = [ ];
-    private $blockedStreams = [ ];
-    
+    private array $pendingStreams = [];
+    private array $availableStreams = [];
+    private array $blockedStreams = [];
+
     // {{{ __construct
     /**
      * Create a new FTP-Client
-     * 
+     *
      * @param Events\Base $eventBase
-     * 
+     *
      * @access friendly
      * @return void
      **/
-    function __construct (Events\Base $eventBase) {
+    public function __construct (Events\Base $eventBase)
+    {
       // Assign our event-base
       $this->setEventBase ($eventBase);
     }
@@ -62,17 +64,18 @@
     // {{{ connect
     /**
      * Connect to foreign FTP-Server
-     * 
+     *
      * @param string $Hostname Hostname of FTP-Server
      * @param string $Username Username to authenticate with
      * @param string $Password Password to authenticate with
-     * @param string $Account (optional) Account to authenticate with
-     * @param int $Port (optional) FTP-Port to use
-     * 
+     * @param string|null $Account (optional) Account to authenticate with
+     * @param int|null $Port (optional) FTP-Port to use
+     *
      * @access public
      * @return Events\Promise
      **/
-    public function connect (string $Hostname, string $Username, string $Password, string $Account = null, int $Port = null) : Events\Promise {
+    public function connect (string $Hostname, string $Username, string $Password, string $Account = null, int $Port = null) : Events\Promise
+    {
       // Internally store the data
       $this->Hostname = $Hostname;
       $this->Port = $Port ?? 21;
@@ -80,39 +83,40 @@
       $this->Password = $Password;
       $this->Account = $Account;
       $this->Ready = false;
-      
+
       // Try to acquire a new stream
       return $this->requestStream ()->then (
-        function (Stream\FTP\Client $ftpStream) use ($Hostname, $Username, $Account) {
+        function (Stream\FTP\Client $ftpStream) use ($Hostname, $Username, $Account): void {
           // Release the stream again
           $this->releaseStream ($ftpStream);
-          
+
           // Fire the final callbacks
           $this->___callback ('ftpConnected', $Hostname, $Username, $Account);
         },
-        function () {
+        function (): void {
           $this->Hostname = $this->Username = $this->Password = '';
           $this->Account = null;
-          
+
           throw new Events\Promise\Solution (func_get_args ());
         }
       );
     }
     // }}}
-    
+
     // {{{ getFilenames
     /**
-     * Retrive all filenames existant at a given path or the current one
-     * 
-     * @param string $onDirectory (optional) The path to use, if NULL the current one will be used
-     * 
+     * Retrieve all filenames existent at a given path or the current one
+     *
+     * @param string|null $onDirectory (optional) The path to use, if NULL the current one will be used
+     *
      * @access public
      * @return Events\Promise
      **/
-    public function getFilenames (string $onDirectory = null) : Events\Promise {
+    public function getFilenames (string $onDirectory = null): Events\Promise
+    {
       // Acquire an FTP-Stream
       return $this->requestStream ()->then (
-        function (Stream\FTP\Client $ftpStream) use ($onDirectory) {
+        function (Stream\FTP\Client $ftpStream) use ($onDirectory): Events\Promise {
           // Forward the request
           return $ftpStream->getFilenames ($onDirectory)->finally (
             function () use ($ftpStream) {
@@ -124,24 +128,23 @@
     }
     // }}}
     
-    // {{{ retriveFileStream
+    // {{{ retrieveFileStream
     /**
      * Download a file from the server, return a stream-handle for further processing
-     * 
+     *
      * @param string $fileName Path of the file to download
-     * 
+     *
      * @access public
      * @return Events\Promise
      **/
-    public function retriveFileStream ($fileName) : Events\Promise {
+    public function retrieveFileStream (string $fileName): Events\Promise
+    {
       return $this->requestStream ()->then (
-        function (Stream\FTP\Client $ftpStream) use ($fileName) {
-          return $ftpStream->retriveFileStream ($fileName)->finally (
-            function () use ($ftpStream) {
-              $this->releaseStream ($ftpStream);
-            }
-          );
-        }
+        fn (Stream\FTP\Client $ftpStream): Events\Promise => $ftpStream->retriveFileStream ($fileName)->finally (
+          function () use ($ftpStream) {
+            $this->releaseStream ($ftpStream);
+          }
+        )
       );
     }
     // }}}
@@ -150,20 +153,18 @@
     /**
      * Download a File from FTP-Server to local buffer
      * 
-     * @param string $remotePath Path of file to retrive
+     * @param string $remotePath Path of file to retrieve
      * 
      * @access public
      * @return Events\Promise
      **/
     public function downloadFileBuffered (string $remotePath) : Events\Promise {
       return $this->requestStream ()->then (
-        function (Stream\FTP\Client $ftpStream) use ($remotePath) {
-          return $Stream->downloadFileBuffered ($remotePath)->finally (
-            function () use ($ftpStream) {
-              $this->releaseStream ($ftpStream);
-            }
-          );
-        }
+        fn (Stream\FTP\Client $ftpStream): Events\Promise => $ftpStream->downloadFileBuffered ($remotePath)->finally (
+          function () use ($ftpStream) {
+            $this->releaseStream ($ftpStream);
+          }
+        )
       );
     }
     // }}}
@@ -223,7 +224,7 @@
       return $ftpSocket->connect ($this->Hostname, $this->Port, $ftpSocket::TYPE_TCP)->then (
         function () use ($ftpSocket, $Key, $Stream) {
           // Connect Stream with socket
-          return $ftpSocket->pipeStream ($Stream, true);
+          return $ftpSocket->pipeStream ($Stream);
         }
       )->then (
         // FTP-Connection was established
@@ -234,13 +235,13 @@
       )->then (
         // FTP-Connection was authenticated
         function () use ($Stream, $Key) {
-          // Clearify that we are ready
+          // Clarify that we are ready
           $this->Ready = true;
-          
+
           // Move from pending to blocked
           unset ($this->pendingStreams [$Key]);
           $this->blockedStreams [] = $Stream;
-          
+
           // Install event-hooks
           $Stream->addHook (
             'eventClosed',
@@ -288,6 +289,21 @@
     }
     // }}}
     
-    
-    protected function ftpConnected (string $ftpHostname, string $userName, string $userAccount = null) : void { }
+
+    // {{{ ftpConnected
+    /**
+     * Callback: FTP-Client was connected
+     *
+     * @param string $ftpHostname
+     * @param string $userName
+     * @param string|null $userAccount
+     *
+     * @access protected
+     * @return void
+     */
+    protected function ftpConnected (string $ftpHostname, string $userName, string $userAccount = null): void
+    {
+      // No-Op
+    }
+    // }}}
   }

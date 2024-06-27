@@ -1,0 +1,61 @@
+parameters:
+	ignoreErrors:
+		-
+			message: "#^Call to static method factory\\(\\) on an unknown class X509\\\\Key\\\\Public\\\\RSA\\.$#"
+			count: 1
+			path: src/Stream/DNS/Record/DNSKEY.php
+
+		-
+			message: "#^Call to static method newInstance\\(\\) on an unknown class ASN1\\\\Integer\\.$#"
+			count: 2
+			path: src/Stream/DNS/Record/DNSKEY.php
+
+		-
+			message: "#^Call to static method newInstance\\(\\) on an unknown class ASN1\\\\ObjectID\\.$#"
+			count: 1
+			path: src/Stream/DNS/Record/DNSKEY.php
+
+		-
+			message: "#^Call to static method newInstance\\(\\) on an unknown class X509\\\\Subject\\\\PublicKey\\.$#"
+			count: 1
+			path: src/Stream/DNS/Record/DNSKEY.php
+
+		-
+			message: "#^Method quarxConnect\\\\Events\\\\Stream\\\\DNS\\\\Record\\\\DNSKEY\\:\\:algorithmIDToObjectID\\(\\) has invalid return type ASN1\\\\ObjectID\\.$#"
+			count: 1
+			path: src/Stream/DNS/Record/DNSKEY.php
+
+		-
+			message: "#^Method quarxConnect\\\\Events\\\\Stream\\\\DNS\\\\Record\\\\DNSKEY\\:\\:toX509\\(\\) has invalid return type X509_Subject_PublicKey\\.$#"
+			count: 1
+			path: src/Stream/DNS/Record/DNSKEY.php
+
+		-
+			message: "#^Property quarxConnect\\\\Events\\\\Stream\\\\DNS\\\\Record\\\\DNSKEY\\:\\:\\$x509Key has unknown class X509_Subject_PublicKey as its type\\.$#"
+			count: 1
+			path: src/Stream/DNS/Record/DNSKEY.php
+
+		-
+			message: "#^Method quarxConnect\\\\Events\\\\Stream\\\\DNS\\\\Record\\\\RRSIG\\:\\:getAlgorithmObjectID\\(\\) has invalid return type ASN1\\\\ObjectID\\.$#"
+			count: 1
+			path: src/Stream/DNS/Record/RRSIG.php
+
+		-
+			message: "#^Call to static method fromPEM\\(\\) on an unknown class x509_Certificate\\.$#"
+			count: 1
+			path: src/Stream/DNS/Recordset.php
+
+		-
+			message: "#^Class X509_Certificate not found\\.$#"
+			count: 1
+			path: src/Stream/DNS/Recordset.php
+
+		-
+			message: "#^Instantiated class quarxConnect\\\\Auth\\\\SASL\\\\Client not found\\.$#"
+			count: 1
+			path: src/Stream/POP3/Client.php
+
+		-
+			message: "#^Instantiated class qcAuth_SASL_Client not found\\.$#"
+			count: 1
+			path: src/Stream/SMTP/Client.php

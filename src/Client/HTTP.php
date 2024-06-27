@@ -3,7 +3,7 @@
   /**
    * quarxConnect Events - HTTP Client Implementation
    * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
-   *
+   *+
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
@@ -22,11 +22,14 @@
 
   namespace quarxConnect\Events\Client;
 
+  use Exception;
   use quarxConnect\Events;
   use quarxConnect\Events\Promise;
   use quarxConnect\Events\Stream;
+  use RuntimeException;
 
-  class HTTP extends Events\Hookable {
+  class HTTP extends Events\Hookable
+  {
     /**
      * All queued HTTP-Requests
      *
@@ -37,9 +40,9 @@
     /**
      * Socket-Factory
      *
-     * @var Events\ABI\Socket\Factory|null
+     * @var Events\ABI\Socket\Factory
      **/
-    private Events\ABI\Socket\Factory|null $socketFactory = null;
+    private Events\ABI\Socket\Factory $socketFactory;
 
     /**
      * Session-Cookies (if enabled)
@@ -71,7 +74,8 @@
      * @access friendly
      * @return void
      **/
-    function __construct (Events\Base $eventBase) {
+    function __construct (Events\Base $eventBase)
+    {
       $this->socketFactory = new Events\Socket\Factory\Limited (
         new Events\Socket\Factory ($eventBase)
       );
@@ -85,7 +89,8 @@
      * @access public
      * @return Events\Base|null
      **/
-    public function getEventBase (): ?Events\Base {
+    public function getEventBase (): ?Events\Base
+    {
       return $this->socketFactory->getEventBase ();
     }
     // }}}
@@ -94,10 +99,13 @@
     /**
      * Change assigned event-base
      *
+     * @param Events\Base $eventBase
+     *
      * @access public
      * @return void
      **/
-    public function setEventBase (Events\Base $eventBase): void {
+    public function setEventBase (Events\Base $eventBase): void
+    {
       $this->socketFactory->setEventBase ($eventBase);
     }
     // }}}
@@ -109,7 +117,8 @@
      * @access public
      * @return Events\ABI\Socket\Factory
      **/
-    public function getSocketFactory (): Events\ABI\Socket\Factory {
+    public function getSocketFactory (): Events\ABI\Socket\Factory
+    {
       return $this->socketFactory;
     }
     // }}}
@@ -123,7 +132,8 @@
      * @access public
      * @return void
      **/
-    public function setSocketFactory (Events\ABI\Socket\Factory $socketFactory): void {
+    public function setSocketFactory (Events\ABI\Socket\Factory $socketFactory): void
+    {
       $this->socketFactory = $socketFactory;
     }
     // }}}
@@ -132,12 +142,13 @@
     /**
      * Set a timeout for pending requests
      *
-     * @param float $requestTimeout (optional)
+     * @param float|null $requestTimeout (optional)
      *
      * @access public
      * @return void
      **/
-    public function setRequestTimeout (float $requestTimeout = null): void {
+    public function setRequestTimeout (float $requestTimeout = null): void
+    {
       $this->requestTimeout = $requestTimeout;
     }
     // }}}
@@ -151,7 +162,8 @@
      * @access public
      * @return bool
      **/
-    public function useSessionCookies (bool $setState = null): bool {
+    public function useSessionCookies (bool $setState = null): bool
+    {
       // Check whether to return current state
       if ($setState === null)
         return ($this->sessionCookies !== null);
@@ -172,10 +184,12 @@
      *
      * @access public
      * @return array
+     *
+     * @throws RuntimeException
      **/
     public function getSessionCookies (): array {
       if ($this->sessionCookies === null)
-        throw new \Exception ('Session-Cookies were not enabled');
+        throw new RuntimeException('Session-Cookies were not enabled');
 
       return $this->sessionCookies;
     }
@@ -189,10 +203,13 @@
      *
      * @access public
      * @return void
+     *
+     * @throws RuntimeException
      **/
-    public function setSessionCookies (array $sessionCookies): void {
+    public function setSessionCookies (array $sessionCookies): void
+    {
       if ($this->sessionCookies === null)
-        throw new \Exception ('Session-Cookies were not enabled');
+        throw new RuntimeException ('Session-Cookies were not enabled');
 
       # TODO: Sanitize cookies
 
@@ -214,12 +231,15 @@
      **/
     public function setSessionPath (string $sessionPath): Promise {
       if ($this->sessionCookies === null)
-        return Promise::reject ('Session-Cookies were not enabled');
+        return Promise::reject (new RuntimeException ('Session-Cookies were not enabled'));
 
       if (is_dir ($sessionPath))
         return Promise::reject ('Destination is a directory');
 
-      if (!is_file ($sessionPath) && !is_writable (dirname ($sessionPath)))
+      if (
+        !is_file ($sessionPath) &&
+        !is_writable (dirname ($sessionPath))
+      )
         return Promise::reject ('Destination is not writable');
 
       if (!is_file ($sessionPath)) {
@@ -229,26 +249,7 @@
           return Promise::resolve ();
 
         // Push new cookies to disk
-        return Events\File::writeFileContents (
-          $this->getEventBase (),
-          $this->sessionPath . '.tmp',
-          serialize ($this->sessionCookies)
-        )->then (
-          function (): void {
-            if (rename ($this->sessionPath . '.tmp', $this->sessionPath))
-              return;
-
-            unlink ($this->sessionPath . '.tmp');
-
-            throw new \Exception ('Failed to store session-cookies at destination');
-          }
-        )->catch (
-          function (): void {
-            $this->sessionPath = null;
-
-            throw new Promise\Solution (func_get_args ());
-          }
-        );
+        return $this->saveSessionCookies ();
       }
 
       return Events\File::readFileContents (
@@ -257,7 +258,7 @@
       )->then (
         function (string $fileContents) use ($sessionPath): ?Promise {
           if (!is_array ($storedCookies = unserialize ($fileContents)))
-            throw new \Exception ('Session-Path does not contain stored cookies');
+            throw new RuntimeException ('Session-Path does not contain stored cookies');
 
           $haveCookies = (count ($this->sessionCookies) > 0);
           $cookiesChanged = false;
@@ -273,26 +274,42 @@
             return null;
 
           // Push new cookies to disk
-          return Events\File::writeFileContents (
-            $this->getEventBase (),
-            $this->sessionPath . '.tmp',
-            serialize ($this->sessionCookies)
-          )->then (
-            function (): void {
-              if (rename ($this->sessionPath . '.tmp', $this->sessionPath))
-                return;
+          return $this->saveSessionCookies ();
+        }
+      );
+    }
+    // }}}
 
-              unlink ($this->sessionPath . '.tmp');
+    // {{{ saveSessionCookies
+    /**
+     * Write session-cookies to disk
+     *
+     * @access private
+     * @return Promise
+     **/
+    private function saveSessionCookies (): Promise
+    {
+      if ($this->sessionCookies === null)
+        return Promise::reject (new RuntimeException ('Session-Cookies were not enabled'));
 
-              throw new \Exception ('Failed to store session-cookies at destination');
-            }
-          )->catch (
-            function (): void {
-              $this->sessionPath = null;
+      return Events\File::writeFileContents (
+        $this->getEventBase (),
+        $this->sessionPath . '.tmp',
+        serialize ($this->sessionCookies)
+      )->then (
+        function (): void {
+          if (rename ($this->sessionPath . '.tmp', $this->sessionPath))
+            return;
 
-              throw new Promise\Solution (func_get_args ());
-            }
-          );
+          unlink ($this->sessionPath . '.tmp');
+
+          throw new RuntimeException('Failed to store session-cookies at destination');
+        }
+      )->catch (
+        function (): void {
+          $this->sessionPath = null;
+
+          throw new Promise\Solution (func_get_args ());
         }
       );
     }
@@ -308,15 +325,18 @@
      * - OR -
      *
      * @param string $URL The requested URL
-     * @param enum $Method (optional) Method to use on the request
+     * @param string|null $Method (optional) Method to use on the request
      * @param array $Headers (optional) List of additional HTTP-Headers
      * @param string $Body (optional) Additional body for the request
      * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
      *
      * @access public
      * @return Promise
-     **/
-    public function request (): Promise {
+     *
+     * @noinspection PhpDocSignatureInspection
+     */
+    public function request (): Promise
+    {
       // Process function-arguments
       $argv = func_get_args ();
       $argc = count ($argv);
@@ -348,6 +368,7 @@
       $socketFactory = $this->getSocketFactory ();
 
       if ($socketFactory instanceof Events\Socket\Factory\Limited)
+        /** @noinspection PhpPossiblePolymorphicInvocationInspection */
         $factorySession = $this->getSocketFactory ()->getSession ();
       else
         $factorySession = $socketFactory;
@@ -361,14 +382,14 @@
      * Enqueue a request on a socket-session
      *
      * @param Events\ABI\Socket\Factory $factorySession
-     * @param Stream\HTTP\Request $Request
+     * @param Stream\HTTP\Request $httpRequest
      * @param bool $authenticationPreflight
-     * @param Events\Timer $requestTimer (optional)
      *
      * @access private
      * @return Promise
      **/
-    private function requestInternal (Events\ABI\Socket\Factory $factorySession, Stream\HTTP\Request $httpRequest, bool $authenticationPreflight, Events\Timer $requestTimer = null): Promise {
+    private function requestInternal (Events\ABI\Socket\Factory $factorySession, Stream\HTTP\Request $httpRequest, bool $authenticationPreflight): Promise
+    {
       // Validate the request
       if ($httpRequest->getHostname () === null)
         return Promise::reject ('Invalid Url given');
@@ -406,8 +427,10 @@
       // Setup timer for timeouts
       $requestTimeout = false;
 
-      if (!$requestTimer && ($this->requestTimeout !== null))
+      if ($this->requestTimeout !== null)
         $requestTimer = $factorySession->getEventBase ()->addTimeout ($this->requestTimeout);
+      else
+        $requestTimer = null;
 
       if ($requestTimer) {
         $requestTimer->restart ();
@@ -434,13 +457,13 @@
             $httpConnection->close ();
             $factorySession->releaseConnection ($httpConnection);
 
-            throw new \Exception ('Timeout');
+            throw new Exception ('Timeout');
           }
 
           // Handle authentication more special
           if (!$httpRequest->hasBody () && $authenticationPreflight && (($Username !== null) || ($Password !== null))) {
             $httpRequest->setMethod ('OPTIONS');
-            $httpRequest->setCredentials (null, null);
+            $httpRequest->setCredentials ();
           } elseif (!$authenticationPreflight && (($Username !== null) || ($Password !== null)))
             $httpRequest->addAuthenticationMethod ('Basic');
 
@@ -451,10 +474,9 @@
           $this->___callback ('httpRequestStart', $httpRequest);
 
           // Close the connection on timeout
-          if ($requestTimer)
-            $requestTimer->then (
-              fn () => $httpConnection->close ()
-            );
+          $requestTimer?->then (
+            fn (): Promise => $httpConnection->close ()
+          );
 
           // Watch events on the request
           return $httpRequest->once ('httpRequestResult');
@@ -488,16 +510,17 @@
 
             // Release the socket (allow to reuse it)
             $httpConnection->unpipe ($httpRequest);
+            /** @noinspection PhpParamsInspection */
             $factorySession->releaseConnection ($httpConnection);
           }
 
           // Check if we already reached a timeout
           if ($requestTimeout)
-            throw new \Exception ('Timeout');
+            throw new Exception ('Timeout');
 
           // Abort here if no header was received
           if (!$responseHeader)
-            throw new \exception ('No header was received');
+            throw new exception ('No header was received');
 
           // Retrieve the status of the response
           $Status = $responseHeader->getStatus ();
@@ -528,8 +551,7 @@
             // Re-enqueue the request
             return $cookiePromise->then (
               function () use ($factorySession, $httpRequest, $requestTimer) {
-                if ($requestTimer)
-                  $requestTimer->cancel ();
+                $requestTimer?->cancel ();
 
                 return $this->requestInternal ($factorySession, $httpRequest, false);
               }
@@ -560,9 +582,9 @@
             if (isset ($nextURI ['path'])) {
               // Check for a relative redirect
               if (
-                (substr ($nextURI ['path'], 0, 1) == '.') ||
-                (strpos ($nextURI ['path'], '/../') !== false) ||
-                (strpos ($nextURI ['path'], '/./') !== false)
+                (str_starts_with ($nextURI [ 'path' ], '.')) ||
+                (str_contains ($nextURI [ 'path' ], '/../')) ||
+                (str_contains ($nextURI [ 'path' ], '/./'))
               ) {
                 $pathStackIn = explode ('/', dirname ($httpRequest->getURI ()) . '/' . $nextURI ['path']);
                 $pathStack = [];
@@ -581,7 +603,7 @@
                 $nextURI ['path'] = '/' . implode ('/', $pathStack);
               }
 
-              if (substr ($nextURI ['path'], 0, 1) != '/')
+              if (!str_starts_with ($nextURI [ 'path' ], '/'))
                 $nextURI ['path'] = '/' . $nextURI ['path'];
             }
 
@@ -599,22 +621,20 @@
 
             if ($Status < 307) {
               $httpRequest->setMethod ('GET');
-              $httpRequest->setBody (null);
+              $httpRequest->setBody ();
             }
 
             // Re-Enqueue the request
             return $cookiePromise->then (
               function () use ($factorySession, $httpRequest, $requestTimer): Promise {
-                if ($requestTimer)
-                  $requestTimer->cancel ();
+                $requestTimer?->cancel ();
 
                 return $this->requestInternal ($factorySession, $httpRequest, true);
               }
             );
           }
 
-          if ($requestTimer)
-            $requestTimer->cancel ();
+          $requestTimer?->cancel ();
 
           // Fire the callbacks
           $this->___callback ('httpRequestResult', $httpRequest, $responseHeader, $Body);
@@ -639,10 +659,10 @@
      * Enqueue an HTTP-Request
      *
      * @param string $URL The requested URL
-     * @param enum $Method (optional) Method to use on the request
-     * @param array $Headers (optional) List of additional HTTP-Headers
-     * @param string $Body (optional) Additional body for the request
-     * @param callback $Callback (optional) A callback to raise once the request was finished
+     * @param string|null $Method (optional) Method to use on the request
+     * @param array|null $Headers (optional) List of additional HTTP-Headers
+     * @param string|null $Body (optional) Additional body for the request
+     * @param callable|null $Callback (optional) A callback to raise once the request was finished
      * @param mixed $Private (optional) Private data to pass to the callback
      *
      * @remark See addRequest() below for callback-definition
@@ -650,7 +670,8 @@
      * @access public
      * @return Stream\HTTP\Request
      **/
-    public function addNewRequest ($URL, $Method = null, $Headers = null, $Body = null, callable $Callback = null, $Private = null): Stream\HTTP\Request {
+    public function addNewRequest (string $URL, string $Method = null, array $Headers = null, string $Body = null, callable $Callback = null, mixed $Private = null): Stream\HTTP\Request
+    {
       // Make sure we have a request-object
       $Request = new Stream\HTTP\Request ($URL);
 
@@ -674,7 +695,7 @@
      * Enqueue a prepared HTTP-Request
      *
      * @param Stream\HTTP\Request $Request The HTTP-Request to enqueue
-     * @param callback $Callback (optional) A callback to raise once the request was finished
+     * @param callable|null $Callback (optional) A callback to raise once the request was finished
      * @param mixed $Private (optional) Private data to pass to the callback
      * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
      *
@@ -685,7 +706,8 @@
      * @access public
      * @return Stream\HTTP\Request
      **/
-    public function addRequest (Stream\HTTP\Request $Request, callable $Callback = null, $Private = null, $authenticationPreflight = true): Stream\HTTP\Request {
+    public function addRequest (Stream\HTTP\Request $Request, callable $Callback = null, mixed $Private = null, bool $authenticationPreflight = true): Stream\HTTP\Request
+    {
       // Check if the request is already being processed
       if (in_array ($Request, $this->httpRequests, true))
         return $Request;
@@ -707,7 +729,7 @@
      *
      * @param string $URL URL of file to download
      * @param string $Destination Local path to store file to
-     * @param callable $Callback (optional) Callback to raise once the download was finished
+     * @param callable|null $Callback (optional) Callback to raise once the download was finished
      * @param mixed $Private (optional) A private parameter to pass to the callback
      *
      * The callback will be raised in the form of
@@ -717,7 +739,8 @@
      * @access public
      * @return Stream\HTTP\Request
      **/
-    public function addDownloadRequest ($URL, $Destination, callable $Callback = null, $Private = null): Stream\HTTP\Request {
+    public function addDownloadRequest (string $URL, string $Destination, callable $Callback = null, mixed $Private = null): Stream\HTTP\Request
+    {
       // Prepare Request-Headers
       $Headers = [];
 
@@ -735,7 +758,8 @@
       $Request = $this->addNewRequest ($URL, null, $Headers);
       $File = null;
 
-      // Setup hooks
+      // Set up hooks
+      /** @noinspection PhpUnhandledExceptionInspection */
       $Request->addHook (
         'httpHeaderReady',
         function (Stream\HTTP\Request $Request, Stream\HTTP\Header $Header) use ($Destination, &$File): void {
@@ -761,21 +785,25 @@
         }
       );
 
+      /** @noinspection PhpUnhandledExceptionInspection */
       $Request->addHook (
         'httpRequestResult',
-        function (Stream\HTTP\Request $Request, Stream\HTTP\Header $Header = null, $Body = null) use ($Callback, $Private, $URL, $Destination, &$File) {
+        function (Stream\HTTP\Request $Request, Stream\HTTP\Header $Header = null) use ($Callback, $Private, $URL, $Destination, &$File): void {
         // Process etag
         if ($Header && $Header->hasBody () && !$Header->isError () && (($etag = $Header->getField ('ETag')) !== null))
           # TODO: This is not async!
           file_put_contents ($Destination . '.etag', $etag);
 
         // Run the final callback
-        if ($File)
-          return $File->close ()->finally (
+        if ($File) {
+          $File->close ()->finally (
             function () use ($Callback, $Private, $URL, $Destination, $Header) {
               $this->___raiseCallback ($Callback, $URL, $Destination, ($Header && !$Header->isError () ? ($Header->hasBody () ? true : null) : false), $Private);
             }
           );
+
+          return;
+        }
 
         $this->___raiseCallback ($Callback, $URL, $Destination, ($Header && !$Header->isError () ? ($Header->hasBody () ? true : null) : false), $Private);
       });
@@ -792,11 +820,15 @@
      *
      * @access public
      * @return void
+     *
+     * @throws RuntimeException
      **/
-    public function setMaxRequests (int $maxRequests): void {
+    public function setMaxRequests (int $maxRequests): void
+    {
       if (!($this->getSocketFactory () instanceof Events\Socket\Factory\Limited))
-        throw new \Exception ('Socket-Factory must implement Limited');
+        throw new RuntimeException ('Socket-Factory must implement Limited');
 
+      /** @noinspection PhpPossiblePolymorphicInvocationInspection */
       $this->getSocketFactory ()->setMaxConnections ($maxRequests);
     }
     // }}}
@@ -825,7 +857,7 @@
       $Path = $Request->getURI ();
       $Secure = $Request->useTLS ();
 
-      if (substr ($Path, -1, 1) != '/') {
+      if (!str_ends_with ($Path, '/')) {
         $Path = dirname ($Path);
 
         if (strlen ($Path) > 1)
@@ -899,7 +931,7 @@
 
       $Path = $Request->getURI ();
 
-      if (substr ($Path, -1, 1) != '/') {
+      if (!str_ends_with ($Path, '/')) {
         $Path = dirname ($Path);
 
         if (strlen ($Path) > 1)
@@ -967,7 +999,7 @@
             $cookieValue = time () + (int)$cookieValue;
           } elseif ($Name == 'domain') {
             // Trim leading empty label if necessary
-            if (substr ($cookieValue, 0, 1) === '.')
+            if (str_starts_with ($cookieValue, '.'))
               $cookieValue = substr ($cookieValue, 1);
 
             // Make sure the value is on scope of origin
@@ -995,7 +1027,7 @@
             // BUGFIX: 1und1.de has urlencoded paths
             $cookieValue = urldecode ($cookieValue);
 
-            if (substr ($cookieValue, -1, 1) != '/')
+            if (!str_ends_with ($cookieValue, '/'))
               $cookieValue .= '/';
           } else
             continue;
@@ -1026,7 +1058,7 @@
 
           unlink ($this->sessionPath . '.tmp');
 
-          throw new \Exception ('Failed to store session-cookies at destination');
+          throw new Exception ('Failed to store session-cookies at destination');
         }
       )->catch (
         function (): void {
@@ -1115,12 +1147,15 @@
      * @param Stream\HTTP\Request $Request The original HTTP-Request-Object
      * @param string $Location The new location that is being redirected to
      * @param Stream\HTTP\Header $Header Response-Headers
-     * @param string $Body (optional) Contents Response-Body
+     * @param string|null $Body (optional) Contents Response-Body
      *
      * @access protected
      * @return void
      **/
-    protected function httpRequestRedirect (Stream\HTTP\Request $Request, $Location, Stream\HTTP\Header $Header, $Body = null): void { }
+    protected function httpRequestRedirect (Stream\HTTP\Request $Request, string $Location, Stream\HTTP\Header $Header, string $Body = null): void
+    {
+      // No-Op
+    }
     // }}}
 
     // {{{ httpRequestResult
@@ -1128,12 +1163,15 @@
      * Callback: HTTP-Request is finished
      *
      * @param Stream\HTTP\Request $Request The original HTTP-Request-Object
-     * @param Stream\HTTP\Header $Header (optional) Contains Response-Headers, if a response was received. NULL on network-error
-     * @param string $Body (optional) Contents Response-Body, if a response was received. NULL on network-error
+     * @param Stream\HTTP\Header|null $Header (optional) Contains Response-Headers, if a response was received. NULL on network-error
+     * @param string|null $Body (optional) Contents Response-Body, if a response was received. NULL on network-error
      *
      * @access protected
      * @return void
      **/
-    protected function httpRequestResult (Stream\HTTP\Request $Request, Stream\HTTP\Header $Header = null, $Body = null): void { }
+    protected function httpRequestResult (Stream\HTTP\Request $Request, Stream\HTTP\Header $Header = null, string $Body = null): void
+    {
+      // No-Op
+    }
     // }}}
   }

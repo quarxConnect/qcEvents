@@ -168,7 +168,7 @@
       
       // Try to read the file
       return Events\File::readFileContents ($Base, $Path)->then (
-        function ($Content) use ($Path, $Request, $Response) {
+        function ($Content) use ($Path, $Request, $Response): Events\Promise {
           // Set a proper status
           $Response->setStatus (200);
           $Response->setMessage ('Ok');
@@ -209,7 +209,7 @@
           
           return $this->httpdSetResponse ($Request, $Response, $Content);
         },
-        function () {
+        function () use ($Request, $Response): Events\Promise {
           // Push an error to the response
           $Response->setStatus (403);
           $Response->setMessage ('Forbidden');

@@ -2,7 +2,7 @@
 
   /**
    * quarxConnect Events - Client-Socket Pool
-   * Copyright (C) 2017-2021 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2017-2024 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -17,11 +17,12 @@
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Socket;
 
+  use Error;
   use quarxConnect\Events\ABI;
   use quarxConnect\Events\Base;
   use quarxConnect\Events\Emitter;
@@ -31,41 +32,41 @@
   use quarxConnect\Events\Socket\Event\Connected as ConnectedEvent;
   use quarxConnect\Events\Socket\Exception\InvalidPort;
   use quarxConnect\Events\Socket\Exception\InvalidType;
-  
+
   class Pool extends Emitter implements ABI\Socket\Factory {
     use Feature\Based;
-    
+
     /* Socket-Pool */
-    private $Sockets = [ ];
-    
+    private array $Sockets = [];
+
     /* Socket-Status */
     private const STATUS_CONNECTING = 0;
     private const STATUS_ENABLING = 1;
     private const STATUS_AVAILABLE = 2;
     private const STATUS_ACQUIRED = 3;
-    
-    private $socketStatus = [ ];
-    
+
+    private array $socketStatus = [];
+
     /* Stream-Consumers for sockets */
-    private $socketPipes = [ ];
-    
+    private array $socketPipes = [];
+
     /* Map socket-keys to Socket */
-    private $socketMaps = [ ];
-    
+    private array $socketMaps = [];
+
     /* Deferred Promises when enabling sockets */
-    private $socketPromises = [ ];
-    
+    private array $socketPromises = [];
+
     /* Enqueued Socket-Requests */
-    private $socketQueue = [ ];
-    
+    private array $socketQueue = [];
+
     /* Sessions of sockets */
-    private $socketSessions = [ ];
-    
+    private array $socketSessions = [];
+
     /* Sessions on this pool */
-    private $activeSessions = [ ];
-    
+    private array $activeSessions = [];
+
     /* Maximum number of open sockets */
-    private $maxSockets = 64;
+    private int $maxSockets = 64;
     
     // {{{ __construct
     /**
@@ -103,12 +104,11 @@
      * @param int $Number
      * 
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function setMaximumSockets ($Number) {
-      $this->maxSockets = max (1, (int)$Number);
-      
-      return true;
+    public function setMaximumSockets (int $Number): void
+    {
+      $this->maxSockets = max (1, $Number);
     }
     // }}}
     
@@ -133,25 +133,26 @@
      * @access public
      * @return void
      **/
-    public function removeSession (Pool\Session $poolSession) {
+    public function removeSession (Pool\Session $poolSession): void
+    {
       if (($sessionIndex = array_search ($poolSession, $this->activeSessions, true)) === false)
         unset ($this->activeSessions [$sessionIndex]);
-      
+
       $this->checkSocketQueue ();
     }
     // }}}
-    
+
     // {{{ createConnection
     /**
      * Request a connected socket from this factory
-     * 
+     *
      * @param array|string $remoteHost
      * @param int $remotePort
      * @param int $socketType
      * @param bool $useTLS (optional)
      * @param bool $allowReuse (optional)
-     * @param Pool\Session $poolSession (optional)
-     * 
+     * @param Pool\Session|null $poolSession (optional)
+     *
      * @access public
      * @return Promise
      **/
@@ -169,52 +170,53 @@
         ($socketType != Socket::TYPE_UDP)
       )
         return Promise::reject (new InvalidType ());
-      
+
       // Sanitize the port
       if (
         ($remotePort < 1) ||
         ($remotePort > 0xffff)
       )
         return Promise::reject (new InvalidPort ());
-      
+
       // Make sure remote host is an array
       if (!is_array ($remoteHost))
         $remoteHost = [ $remoteHost ];
-      
+
       // Push request to queue
       $deferredPromise = new Promise\Deferred ($this->getEventBase ());
-      
+
       $this->socketQueue [] = [ $remoteHost, $remotePort, $socketType, $useTLS, $allowReuse, $poolSession, $deferredPromise ];
-      
+
       // Try to run the queue
       $this->checkSocketQueue ($poolSession);
-      
+
       // Return the promise
       return $deferredPromise->getPromise ();
     }
     // }}}
-    
+
     // {{{ enableSocket
     /**
      * Mark a socket as enabled/connection established
-     * 
+     *
      * @param Socket $Socket
-     * @param ABI\Stream\Consumer $Pipe (optional)
-     * 
+     * @param ABI\Stream\Consumer|null $Pipe (optional)
+     *
      * @access public
      * @return void
      **/
-    public function enableSocket (Socket $Socket, ABI\Stream\Consumer $Pipe = null): void {
+    public function enableSocket (Socket $Socket, ABI\Stream\Consumer $Pipe = null): void
+    {
       // Try to find the socket on pool
       $socketIndex = array_search ($Socket, $this->Sockets, true);
 
       if ($socketIndex === false)
         return;
-      
+
       // Check the status
       if ($this->socketStatus [$socketIndex] != self::STATUS_ENABLING)
         throw new Error ('Cannot enable socket on this status');
-      
+
       // Enable the socket
       $this->socketPipes [$socketIndex] = $Pipe;
       
@@ -257,7 +259,8 @@
      * @access private
      * @return void
      **/
-    private function releaseSocketByIndex ($socketIndex) {
+    private function releaseSocketByIndex (int $socketIndex): void
+    {
       // Check if the socket is known
       if (!isset ($this->Sockets [$socketIndex]))
         return;
@@ -308,12 +311,13 @@
     /**
      * Check if we can connect sockets from our queue
      * 
-     * @param Pool\Session $forSession (optional)
+     * @param Pool\Session|null $forSession (optional)
      * 
      * @access private
      * @return void
      **/
-    private function checkSocketQueue (Pool\Session $forSession = null) {
+    private function checkSocketQueue (Pool\Session $forSession = null): void
+    {
       // Check for available sockets
       if (count ($this->socketMaps) > 0)
         foreach ($this->socketQueue as $queueIndex=>$queueInfo) {
@@ -322,7 +326,7 @@
           $remotePort = $queueInfo [1];
           $socketType = $queueInfo [2];
           $useTLS = $queueInfo [3];
-          $allowReuse = $queueInfo [4];
+          # $allowReuse = $queueInfo [4];
           $poolSession = $queueInfo [5];
           $deferredPromise = $queueInfo [6];
           
@@ -381,7 +385,7 @@
         $remotePort = $queueInfo [1];
         $socketType = $queueInfo [2];
         $useTLS = $queueInfo [3];
-        $allowReuse = $queueInfo [4];
+        # $allowReuse = $queueInfo [4];
         $poolSession = $queueInfo [5];
         $deferredPromise = $queueInfo [6];
         
@@ -425,8 +429,8 @@
         // Try to connect
         $newSocket->connect ($remoteHost, $remotePort, $socketType, $useTLS)->then (
           function () use ($newSocket, $socketKey, $socketIndex, $deferredPromise) {
-            // Check whether to further setup the socket
-            if (count ($this->getHooks ('socketConnected')) == 0) {
+            // Check whether to further set up the socket
+            if (count ($this->getListenersForEvent (new ConnectedEvent ($newSocket))) == 0) {
               // Mark the socket as acquired
               $this->socketStatus [$socketIndex] = self::STATUS_ACQUIRED;
               
@@ -470,7 +474,7 @@
             } else
               unset ($this->socketMaps [$socketKey]);
             
-            if ($defreredPromise)
+            if ($deferredPromise)
               call_user_func_array ([ $deferredPromise, 'reject' ], func_get_args ());
             
             // Check if we could connect queued sockets

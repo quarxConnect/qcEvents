@@ -1,0 +1,20 @@
+includes:
+    - phpstan-baseline.neon
+
+parameters:
+    paths:
+        - src/
+
+    # @see https://phpstan.org/user-guide/rule-levels
+    # Level 9 is the highest level. We want to bumb the level up as we go.
+    # To learn the tool and prevent the most common errors, we're starting with
+    # a really low level, which only finds the worst issues.
+    #
+    # When we're on a feasible level that actually helps us discovering bugs,
+    # we can also use the [baseline](https://phpstan.org/user-guide/baseline)
+    # to ignore existing errors, and only prevent new ones.
+    # The errors will then lower over time.
+    level: 0
+    # we don't want to harass developers with this and
+    # instead clean up the ignored errors once in a while.
+    reportUnmatchedIgnoredErrors: false

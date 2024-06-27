@@ -2,7 +2,7 @@
 
   /**
    * quarxConnect Events - DNS Messages
-   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
    * 
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -17,13 +17,18 @@
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Stream\DNS;
-  use quarxConnect\Events;
-  
-  class Message {
+
+  use Exception;
+  use InvalidArgumentException;
+  use LengthException;
+  use RangeException;
+
+  class Message
+  {
     /**
      * DNS Opcodes
      * 
@@ -34,7 +39,7 @@
     public const OPCODE_STATUS = 0x02;
     public const OPCODE_NOTIFY = 0x04; // RFC 1996
     public const OPCODE_UPDATE = 0x05; // RFC 2136
-    
+
     /**
      * DNS Status/Error Codes
      * 
@@ -52,11 +57,11 @@
     public const ERROR_NXRRSET       = 0x08; // RFC 2136 Update
     public const ERROR_NOT_AUTH      = 0x09; // RFC 2136 Update, RFC 2845 TSIG
     public const ERROR_NOTZONE       = 0x0A; // RFC 2136 Update
-    
+
     public const ERROR_BAD_SIG       = 0x10; // RFC 2845 TSIG
     public const ERROR_BAD_KEY       = 0x11; // RFC 2845 TSIG
     public const ERROR_BAD_TIME      = 0x12; // RFC 2845 TSIG
-    
+
     /**
      * DNS Flags
      * 
@@ -67,12 +72,12 @@
     public const FLAG_TRUNCATED           = 0x02;
     public const FLAG_RECURSION_DESIRED   = 0x04;
     public const FLAG_RECURSION_AVAILABLE = 0x08;
-    
+
     public const FLAG_AUTHENTIC_DATA      = 0x20; // RFC 4035
     public const FLAG_CHECKING_DISABLED   = 0x40; // RFC 4035
-    
+
     public const FLAG_DNSSEC_OK           = 0x400000; // EDNS, RFC 4035
-    
+
     /**
      * DNS-Classes
      * 
@@ -83,7 +88,7 @@
     public const CLASS_HESIOD   = 0x0004;
     public const CLASS_NONE     = 0x00FE;
     public const CLASS_ANY      = 0x00FF;
-    
+
     /**
      * DNS-RR-Types
      * 
@@ -110,131 +115,139 @@
     public const TYPE_SRV    = 0x21;	// RFC 2782
     public const TYPE_NAPTR  = 0x23;	// RFC 2168
     public const TYPE_OPT    = 0x29;	// RFC 6891 EDNS
-    
+
     public const TYPE_DS     = 0x2B;	// RFC 4034
     public const TYPE_RRSIG  = 0x2E;	// RFC 4034
     public const TYPE_NSEC   = 0x2F;	// RFC 4034
     public const TYPE_DNSKEY = 0x30;	// RFC 4034
-    
+
     public const TYPE_TSIG   = 0xFA;	// RFC 2845 TSIG
-    
+
     public const TYPE_ANY    = 0xFF;	// RFC 1035
-    
-    private $messageHeader = null;
-    private $questionRecords = [ ];
-    private $answerRecords = null;
-    private $authorityRecords = null;
-    private $additionalRecords = null;
-    
-    private $ednsRecord = null;
-    
+
+    private Header $messageHeader;
+    private array $questionRecords = [];
+    private Recordset $answerRecords;
+    private Recordset $authorityRecords;
+    private Recordset $additionalRecords;
+
+    private ?Record\EDNS $ednsRecord = null;
+
     // {{{ getClassName
     /**
-     * Retrive a human readable name for a given record-class
-     * 
+     * Retrieve a human-readable name for a given record-class
+     *
      * @param int $classNumber
-     * 
+     *
      * @access public
      * @return string
      **/
-    public static function getClassName ($classNumber) {
+    public static function getClassName (int $classNumber): string
+    {
       static $classNames = [
         self::CLASS_INTERNET => 'IN',
-        self::CLASS_CHAOS => 'CH',
-        self::CLASS_HESIOD => 'HS',
-        self::CLASS_NONE => 'NONE',
-        self::CLASS_ANY => 'ANY',
+        self::CLASS_CHAOS    => 'CH',
+        self::CLASS_HESIOD   => 'HS',
+        self::CLASS_NONE     => 'NONE',
+        self::CLASS_ANY      => 'ANY',
       ];
-      
+
       return $classNames [$classNumber] ?? 'UNKNOWN(' . $classNumber . ')';
     }
     // }}}
-    
+
     // {{{ getTypeName
     /**
-     * Retrive human readbale name for a given record-type
-     * 
+     * Retrieve human-readable name for a given record-type
+     *
      * @param int $typeNumber
-     * 
+     *
      * @access public
      * @return string
      **/
-    public static function getTypeName ($typeNumber) {
+    public static function getTypeName (int $typeNumber): string
+    {
       static $typeNames = [
-        self::TYPE_A => 'A',
-        self::TYPE_AAAA => 'AAAA',
-        self::TYPE_NS => 'NS',
-        self::TYPE_MD => 'MD',
-        self::TYPE_MF => 'MF',
+        self::TYPE_A     => 'A',
+        self::TYPE_AAAA  => 'AAAA',
+        self::TYPE_NS    => 'NS',
+        self::TYPE_MD    => 'MD',
+        self::TYPE_MF    => 'MF',
         self::TYPE_CNAME => 'CNAME',
-        self::TYPE_SOA => 'SOA',
-        self::TYPE_PTR => 'PTR',
+        self::TYPE_SOA   => 'SOA',
+        self::TYPE_PTR   => 'PTR',
         self::TYPE_HINFO => 'HINFO',
-        self::TYPE_MX => 'MX',
-        self::TYPE_TXT => 'TXT',
-        self::TYPE_RP => 'RP',
-        self::TYPE_SRV => 'SRV',
+        self::TYPE_MX    => 'MX',
+        self::TYPE_TXT   => 'TXT',
+        self::TYPE_RP    => 'RP',
+        self::TYPE_SRV   => 'SRV',
         self::TYPE_NAPTR => 'NAPTR',
-        self::TYPE_ANY => 'ANY',
+        self::TYPE_ANY   => 'ANY',
       ];
-      
+
       return $typeNames [$typeNumber] ?? 'UNKNOWN(' . $typeNumber . ')';
     }
     // }}}
-    
+
     // {{{ getLabel
     /**
-     * Retrive a DNS-Label at a given offset
-     * 
+     * Retrieve a DNS-Label at a given offset
+     *
      * @param string $Data
      * @param int $Offset
      * @param bool $allowCompressed (optional) Handle compressed labels (default)
-     * 
+     *
      * @access public
      * @return Label
+     *
+     * @throws InvalidArgumentException
      **/
-    public static function getLabel ($Data, &$Offset, $allowCompressed = true) : Label {
+    public static function getLabel (string $Data, int &$Offset, bool $allowCompressed = true): Label
+    {
       // Create an empty label
-      $Label = [ ];
+      $Label = [];
       $l = strlen ($Data);
-      
+
       // Load the label
       while (($Offset < $l) && (($qLength = ord ($Data [$Offset++])) > 0)) {
         // Handle a compressed label
         if (($qLength & 0xC0) == 0xC0) {
           $nextOffset = (($qLength - 0xC0) << 8) + ord ($Data [$Offset++]);
-          
+
           foreach (self::getLabel ($Data, $nextOffset)->getParts () as $Part)
             $Label [] = $Part;
-          
+
           if (!$allowCompressed)
-            throw new \Exception ('Compressed labels were not allowed');
-          
+            throw new InvalidArgumentException ('Compressed labels were not allowed');
+
           break;
         }
-        
+
         // Handle a normal label
         $Label [] = substr ($Data, $Offset, $qLength);
         $Offset += $qLength;
       }
-      
+
       // Return the whole label
       return new Label ($Label);
     }
     // }}}
-    
+
     // {{{ setLabel
     /**
      * Write a label for output
-     * 
-     * @param string $Label The label to convert
-     * @param int $Offset The location in blob where the label should be
+     *
+     * @param Label|string|array $Label The label to convert
+     * @param int|null $Offset The location in blob where the label should be
      * @param array &$Labels A set of already written labels
-     * 
+     *
      * @access public
      * @return string
+     *
+     * @throws LengthException
      **/
-    public static function setLabel ($Label, $Offset = null, &$Labels = [ ]) {
+    public static function setLabel (Label|string|array $Label, int $Offset = null, array &$Labels = []): string
+    {
       // Make sure we have the label split into parts
       if ($Label instanceof Label) {
         $Name = strtolower ((string)$Label);
@@ -242,370 +255,373 @@
       } elseif (is_string ($Label)) {
         $Name = strtolower ($Label);
         $Label = explode ('.', $Label);
-        
+
         if ((($l = strlen ($Name)) < 1) || ($Name [$l - 1] != '.'))
           $Name .= '.';
       } elseif (is_array ($Label))
         $Name = strtolower (implode ('.', $Label)) . '.';
       else
-        throw new \Exception ('Invalid label');
-      
+        $Name = ''; // Never reached
+
       // Make sure the name is not too long
       if (strlen ($Name) > 255)
-        return false;
-      
+        throw new LengthException ('DNS-Name too long');
+
       // Generate the binary label
       if (count ($Label) == 0)
         return chr (0x00);
-      
+
       $Data = '';
       $Chunk = '';
-      
+
       while (count ($Label) > 0) {
         // Check if we may compress the label
         if (isset ($Labels [$Name]))
           return $Data . chr (0xC0 + (($Labels [$Name] >> 8) & 0x3F)) . chr ($Labels [$Name] & 0xFF);
-        
-        // Retrive the current chunk
+
+        // Retrieve the current chunk
         $Chunk = array_shift ($Label);
-        
+
         // Make sure the label is not too long
         if (($l = strlen ($Chunk)) > 63)
-          return false;
-        
+          throw new LengthException ('DNS-Label too long');
+
         // Register the label
         if (($l > 0) && ($Offset !== null)) {
           $Labels [$Name] = $Offset;
           $Offset += $l + 1;
         }
-        
+
         // Append to binary output
         $Data .= chr ($l) . $Chunk;
-        
+
         // Truncate from output
         $Name = substr ($Name, ++$l);
       }
-      
+
       if (strlen ($Chunk) > 0)
         $Data .= chr (0);
-      
+
       return $Data;
     }
     // }}}
-    
+
     // {{{ __construct
     /**
      * Create a new DNS-Message
-     * 
-     * @param string $Data (optional)
-     * 
+     *
+     * @param string|null $dnsData (optional)
+     *
      * @access friendly
      * @return void
      **/
-    function __construct ($Data = null) {
+    public function __construct (string $dnsData = null)
+    {
       // Create sub-objects
-      $this->messageHeader = new Header;
-      $this->answerRecords = new Recordset;
-      $this->authorityRecords = new Recordset;
-      $this->additionalRecords = new Recordset;
-      
-      // Check wheter to parse an existing message
-      if ($Data !== null)
-        $this->parse ($Data);
+      $this->messageHeader = new Header ();
+      $this->answerRecords = new Recordset ();
+      $this->authorityRecords = new Recordset ();
+      $this->additionalRecords = new Recordset ();
+
+      // Check whether to parse an existing message
+      if ($dnsData !== null)
+        $this->parse ($dnsData);
     }
     // }}}
-    
+
     // {{{ __clone
     /**
      * Create a copy of this message
-     * 
+     *
      * @access friendly
      * @return void
      **/
-    function __clone () {
+    public function __clone ()
+    {
       $this->messageHeader = clone $this->messageHeader;
       $this->answerRecords = clone $this->answerRecords;
       $this->authorityRecords = clone $this->authorityRecords;
       $this->additionalRecords = clone $this->additionalRecords;
-      
+
       foreach ($this->questionRecords as $questionIndex=>$questionRecord)
         $this->questionRecords [$questionIndex] = clone $questionRecord;
     }
     // }}}
-    
+
     // {{{ __toString
     /**
-     * Create human readable output for this message
-     * 
+     * Create human-readable output for this message
+     *
      * @access friendly
      * @return string
      **/
-    function __toString () {
+    public function __toString (): string
+    {
       $messageOpcode = $this->getOpcode ();
-      
+
       $outputBuffer =
         ';; ' . ($messageOpcode == $this::OPCODE_UPDATE ? 'ZONE SECTION' : 'QUESTION SECTION') . ':' . "\n";
-      
+
       foreach ($this->questionRecords as $questionRecord)
         $outputBuffer .= $questionRecord . "\n";
-      
+
       $outputBuffer .= "\n" . ';; ' . ($messageOpcode == $this::OPCODE_UPDATE ? 'PREREQUISITE SECTION' : 'ANSWER SECTION') . ':' . "\n";
-      
+
       foreach ($this->answerRecords as $answerRecord)
         $outputBuffer .= $answerRecord . "\n";
-      
+
       $outputBuffer .= "\n" . ';; ' . ($messageOpcode == $this::OPCODE_UPDATE ? 'UPDATE SECTION' : 'AUTHORITY SECTION') . ':' . "\n";
-      
+
       foreach ($this->authorityRecords as $authorityRecord)
         $outputBuffer .= $authorityRecord . "\n";
-      
+
       $outputBuffer .= "\n" . ';; ' . ($messageOpcode == $this::OPCODE_UPDATE ? 'TSIG PSEUDOSECTION' : 'ADDITIONAL SECTION') . ':' . "\n";
-      
+
       foreach ($this->additionalRecords as $additionalRecord)
         $outputBuffer .= $additionalRecord . "\n";
-      
+
       return $outputBuffer;
     }
     // }}}
-    
+
     // {{{ parse
     /**
      * Try to parse an DNS-Message
      * 
      * @param string $dnsData
      * @param bool $parseErrors (optional)
-     * 
+     *
      * @access public
      * @return int DNS-Error-Code
+     *
      * @throws LengthException
      **/
-    public function parse ($dnsData, $parseErrors = false) {
+    public function parse (string $dnsData, bool $parseErrors = false): int
+    {
       // Make sure we have sufficient data
-      if (($dataLength = strlen ($dnsData)) < 12)
-        throw new \LengthException ('DNS-Message too short');
-      
+      $dataLength = strlen ($dnsData);
+
+      if ($dataLength < 12)
+        throw new LengthException ('DNS-Message too short');
+
       $dataOffset = 0;
       $errorCode = null;
-      
+
       // Parse the header
-      $messageHeader = new Header;
+      $messageHeader = new Header ();
       $messageHeader->parse ($dnsData, $dataOffset, $dataLength);
-      
+
       // Parse the questions
-      $questionRecords = [ ];
+      $questionRecords = [];
       $questionCount = $messageHeader->Questions;
-      
+
       while ($questionCount-- > 0) {
-        $questionRecord = new Question;
+        $questionRecord = new Question ();
         $questionRecord->parse ($dnsData, $dataOffset, $dataLength);
-        
+
         $questionRecords [] = $questionRecord;
       }
-      
+
       // Parse the answers
-      $answerRecords = new Recordset;
+      $answerRecords = new Recordset ();
       $answerCount = $messageHeader->Answers;
-      
+
       while ($answerCount-- > 0)
         $answerRecords [] = Record::fromString ($dnsData, $dataOffset, $dataLength);
-      
+
       // Parse the authority nameservers
-      $authorityRecords = new Recordset;
+      $authorityRecords = new Recordset ();
       $authorityCount = $messageHeader->Authorities;
-      
+
       while ($authorityCount-- > 0)
         $authorityRecords [] = Record::fromString ($dnsData, $dataOffset, $dataLength);
-      
+
       // Parse additional Records
-      $additionalRecords = new Recordset;
+      $additionalRecords = new Recordset ();
       $additionalCount = $messageHeader->Additionals;
       $ednsRecord = null;
-      
+
       while ($additionalCount-- > 0) {
         // Try to parse the record
         $dnsRecord = Record::fromString ($dnsData, $dataOffset, $dataLength);
-        
+
         // Check if this is an EDNS-Message
         if ($dnsRecord instanceof Record\EDNS) {
           // Fail if the record is present more than once or if the record has a non-empty label
-          if (($ednsRecord !== null) || (strlen ($dnsRecord->getLabel ()) > 1)) {
+          if (
+            ($ednsRecord !== null) ||
+            (strlen ((string)$dnsRecord->getLabel ()) > 1)
+          ) {
             $errorCode = Message::ERROR_FORMAT;
-            
+
             if (!$parseErrors) {
-              trigger_error ('Invalid EDNS-Data: ' . ($ednsRecord ? 'Dupplicate EDNS-Records' : 'EDNS-Record as label of size ' . strlen ($Record->getLabel ()) . strval ($Record->getLabel ())));
-              
+              trigger_error ('Invalid EDNS-Data: ' . ($ednsRecord ? 'Duplicate EDNS-Records' : 'EDNS-Record as label of size ' . strlen ((string)$dnsRecord->getLabel ()) . $dnsRecord->getLabel ()));
+
               return $errorCode;
             }
           }
-          
+
           $ednsRecord = $dnsRecord;
         }
-        
+
         $additionalRecords [] = $dnsRecord;
       }
-      
-      // Commit to ourself
+
+      // Commit to ourselves
       $this->messageHeader = $messageHeader;
       $this->questionRecords = $questionRecords;
       $this->answerRecords = $answerRecords;
       $this->authorityRecords = $authorityRecords;
       $this->additionalRecords = $additionalRecords;
       $this->ednsRecord = $ednsRecord;
-      
-      return ($errorCode === null ? $this::ERROR_NONE : $errorCode);
+
+      return ($errorCode ?? $this::ERROR_NONE);
     }
     // }}}
-    
+
     // {{{ toString
     /**
      * Convert this DNS-Message into a string
-     * 
+     *
      * @access public
      * @return string
      **/
-    public function toString () {
+    public function toString (): string
+    {
       // Update the header
       $this->messageHeader->Questions = count ($this->questionRecords);
       $this->messageHeader->Answers = count ($this->answerRecords);
       $this->messageHeader->Authorities = count ($this->authorityRecords);
       $this->messageHeader->Additionals = count ($this->additionalRecords);
-      
+
       // Convert the header into a string
       $Data = $this->messageHeader->toString ();
-      
+
       // Append Question-Section
-      $Labels = [ ];
-      
+      $Labels = [];
+
       foreach ($this->questionRecords as $questionRecord)
         $Data .= $questionRecord->toString (strlen ($Data), $Labels);
-      
+
       // Append Answer-Section
       foreach ($this->answerRecords as $answerRecord)
         $Data .= $answerRecord->toString (strlen ($Data), $Labels);
-      
+
       // Append Authority-Section
       foreach ($this->authorityRecords as $authorityRecord)
         $Data .= $authorityRecord->toString (strlen ($Data), $Labels);
-      
+
       // Append Additional-Section
       foreach ($this->additionalRecords as $additionalRecord)
         $Data .= $additionalRecord->toString (strlen ($Data), $Labels);
-      
+
       // Return the buffer
       return $Data;
     }
     // }}}
-    
+
     // {{{ isQuestion
     /**
      * Check if this DNS-Message is a question
-     * 
+     *
      * @param bool $Toggle (optional)
-     * 
+     *
      * @access public
      * @return bool
      **/
-    public function isQuestion ($Toggle = null) {
+    public function isQuestion (bool $Toggle = null): bool
+    {
       if (!is_object ($this->messageHeader))
         return false;
-      
-      if ($Toggle !== null) {
-        if (!($this->messageHeader->isResponse = !$Toggle))
-          $this->messageHeader->recursionDesired = true;
-        
-        return true;
-      }
-      
+
+      if (
+        ($Toggle !== null) &&
+        ($this->messageHeader->isResponse !== $Toggle)
+      )
+        $this->messageHeader->recursionDesired = true;
+
       return !$this->messageHeader->isResponse;
     }
     // }}}
-    
+
     // {{{ isExtended
     /**
      * Check or set if this DNS-Message is an extended DNS Message
-     * 
+     *
      * @param bool $Toggle (optional)
-     * 
+     *
      * @access public
      * @return bool
      **/
-    public function isExtended ($Toggle = null) {
-      // Just return our extended-status
-      if ($Toggle === null)
-        return is_object ($this->ednsRecord);
-      
+    public function isExtended (bool $Toggle = null): bool
+    {
       // Make sure we have no EDNS-Record
-      if ($Toggle === false) {
+      if (
+        ($Toggle === false) &&
+        ($this->ednsRecord !== null)
+      ) {
         $this->ednsRecord = null;
-        
+
         foreach ($this->additionalRecords as $ID=>$additionalRecord)
           if ($additionalRecord->getType () === self::TYPE_OPT)
             unset ($this->additionalRecords [$ID]);
-        
-        return true;
-      // Check if the toggle is something wrong
-      } elseif ($Toggle !== true)
-        return false;
-      
-      // Check if we are already extended
-      if ($this->ednsRecord)
-        return true;
-      
-      $this->additionalRecords [] = $this->ednsRecord = new Record\EDNS ();
-      
-      return true;
+      // Make sure we have an EDNS-Record
+      } elseif (
+        ($Toggle === true) &&
+        ($this->ednsRecord === null)
+      )
+        $this->additionalRecords [] = $this->ednsRecord = new Record\EDNS ();
+
+      return is_object ($this->ednsRecord);
     }
     // }}}
-    
+
     // {{{ getHeader
     /**
-     * Retrive the header of this message
-     * 
+     * Retrieve the header of this message
+     *
      * @access public
      * @return Header
      **/
-    public function getHeader () : ?Header {
+    public function getHeader (): Header
+    {
       return $this->messageHeader;
     }
     // }}}
-    
+
     // {{{ getID
     /**
-     * Retrive the ID of this message
-     * 
+     * Retrieve the ID of this message
+     *
      * @access public
      * @return int
      **/
-    public function getID () {
-      if (!is_object ($this->messageHeader))
-        return false;
-      
+    public function getID (): int
+    {
       return $this->messageHeader->ID;
     }
     // }}}
-    
+
     // {{{ setID
     /**
      * Set the ID of this query
      * 
      * @param int $ID
-     * 
+     *
      * @access public
-     * @return bool
+     * @return void
+     *
+     * @throws RangeException
      **/
-    public function setID ($ID) {
+    public function setID (int $ID): void
+    {
       if (($ID > 0xffff) || ($ID < 1))
-        return false;
-      
-      if (!is_object ($this->messageHeader))
-        return false;
-      
+        throw new RangeException ('ID must be a positive 16-bit integer');
+
       $this->messageHeader->ID = $ID;
-      
-      return true;
     }
     // }}}
-    
+
     // {{{ setRandomID
     /**
      * Generate a random ID for our header
@@ -613,439 +629,462 @@
      * @access public
      * @return int
      **/
-    public function setRandomID () {
-      $this->setID ($ID = mt_rand (0, 0xffff));
-      
-      return $ID;
+    public function setRandomID (): int
+    {
+      $this->setID (mt_rand (0, 0xffff));
+
+      return $this->getID ();
     }
     // }}}
-    
+
     // {{{ getOpcode
     /**
-     * Retrive the opcode of this DNS-Message
-     * 
-     * @access public
-     * @return enum
-     **/
-    public function getOpcode () {
-      return $this->messageHeader->getOpcode ();
-    }
-    // }}}
-    
-    // {{{ setOpcode
-    /**
-     * Set a new opcode for this message
-     * 
-     * @param enum $Opcode
-     * 
-     * @access public
-     * @return bool
-     **/
-    public function setOpcode ($Opcode) {
-      return $this->messageHeader->setOpcode ($Opcode);
-    }
-    // }}}
-    
-    // {{{ getFlags
-    /**
-     * Retrive all flags of this DNS-Message
-     * 
+     * Retrieve the opcode of this DNS-Message
+     *
      * @access public
      * @return int
      **/
-    public function getFlags () {
-      // Retrive traditional flags
+    public function getOpcode (): int
+    {
+      return $this->messageHeader->getOpcode ();
+    }
+    // }}}
+
+    // {{{ setOpcode
+    /**
+     * Set a new opcode for this message
+     *
+     * @param int $Opcode
+     *
+     * @access public
+     * @return void
+     **/
+    public function setOpcode (int $Opcode): void
+    {
+      $this->messageHeader->setOpcode ($Opcode);
+    }
+    // }}}
+
+    // {{{ getFlags
+    /**
+     * Retrieve all flags of this DNS-Message
+     *
+     * @access public
+     * @return int
+     **/
+    public function getFlags (): int
+    {
+      // Retrieve traditional flags
       $Flags = $this->messageHeader->getFlags ();
-      
+
       // Add flags from EDNS
       if ($this->ednsRecord)
         $Flags = $Flags | ($this->ednsRecord->getFlags () << 7);
-      
+
       return $Flags;
     }
     // }}}
-    
+
     // {{{ setFlags
     /**
      * Set the flags of this DNS-Message
-     * 
+     *
      * @param int $Flags
-     * 
+     *
      * @access public
-     * @return bool
+     * @return void
+     *
+     * @throws RangeException
      **/
-    public function setFlags ($Flags) {
+    public function setFlags (int $Flags): void
+    {
       // Check for extended flags
-      if (($Flags > 0x7F) && !$this->ednsRecord)
-        return false;
-      
+      if (
+        ($Flags > 0x7F) &&
+        !$this->ednsRecord
+      )
+        throw new RangeException ('Flags too big, convert to Extended-DNS-Record before');
+
       // Forward traditional flags to header
-      if (!$this->messageHeader->setFlags ($Flags & 0x7F))
-        return false;
-      
+      $this->messageHeader->setFlags ($Flags & 0x7F);
+
       // Store extended flags on EDNS-Record
-      if ($this->ednsRecord)
-        $this->ednsRecord->setFlags ($Flags >> 7);
-      
-      return true;
+      $this->ednsRecord?->setFlags ($Flags >> 7);
     }
     // }}}
     
     // {{{ addFlag
     /**
      * Enable a given flag on this message (while leaving all others intact)
-     * 
+     *
      * @param int $Flag
-     * 
+     *
      * @access public
-     * @return bool
+     * @return void
      **/
-    public function addFlag ($Flag) {
-      if (($Flags = $this->getFlags ()) === false)
-        return false;
-      
-      return $this->setFlags ($Flags | $Flag);
+    public function addFlag (int $Flag): void
+    {
+      $this->setFlags ($this->getFlags () | $Flag);
     }
     // }}}
-    
+
     // {{{ getError
     /**
-     * Retrive the error-code from the message
+     * Retrieve the error-code from the message
      * 
      * @access public
-     * @return enum
+     * @return int
      **/
-    public function getError () {
-      return ($this->messageHeader->RCode & 0x0F) + ($this->ednsRecord ? ($this->ednsRecord->getReturnCode () << 4) : 0);
+    public function getError (): int
+    {
+      return (($this->messageHeader->RCode & 0x0F) + ($this->ednsRecord ? ($this->ednsRecord->getReturnCode () << 4) : 0));
     }
     // }}}
-    
+
     // {{{ setError
     /**
      * Set an error-condition here
-     * 
-     * @param enum $Error
-     * 
+     *
+     * @param int $Error
+     *
      * @access public
-     * @return bool
+     * @return void
+     *
+     * @throws RangeException
      **/
-    public function setError ($Error) {
+    public function setError (int $Error): void
+    {
       // Check for an extended code
       if (($Error > 0x0F) && !$this->ednsRecord)
-        return false;
-      
+        throw new RangeException ('Error-Code too big, convert to Extended-DNS-Message before');
+
       // Set the classic return-code on the header
       $this->messageHeader->RCode = ($Error & 0x0F);
-      
+
       // Update EDNS-Record
-      if ($this->ednsRecord)
-        $this->ednsRecord->setReturnCode ($Error >> 4);
-      
-      return true;
+      $this->ednsRecord?->setReturnCode ($Error >> 4);
     }
     // }}}
-    
+
     // {{{ getQuestions
     /**
-     * Retrive all questions from this message
-     * 
+     * Retrieve all questions from this message
+     *
      * @access public
      * @return array
      **/
-    public function getQuestions () : array {
+    public function getQuestions (): array
+    {
       return $this->questionRecords;
     }
     // }}}
-    
+
     // {{{ addQuestion
     /**
      * Add a question to this message
-     * 
+     *
      * @param Question $Question
-     * 
+     *
      * @access public
      * @return void
      **/
-    public function addQuestion (Question $Question) {
+    public function addQuestion (Question $Question): void
+    {
       $this->questionRecords [] = $Question;
     }
     // }}}
-    
+
     // {{{ getAnswers
     /**
-     * Retrive all answers from this message
-     * 
+     * Retrieve all answers from this message
+     *
      * @access public
      * @return Recordset
      **/
-    public function getAnswers () : Recordset {
+    public function getAnswers (): Recordset
+    {
       return $this->answerRecords;
     }
     // }}}
-    
+
     // {{{ addAnswer
     /**
      * Add an answer to this message
-     * 
+     *
      * @param Record $Answer
      * @param bool $First (optional) Put Record in first place
-     * 
+     *
      * @access public
      * @return void
      **/
-    public function addAnswer (Record $Answer, $First = false) {
+    public function addAnswer (Record $Answer, bool $First = false): void
+    {
       if ($First)
         $this->answerRecords->unshift ($Answer);
       else
         $this->answerRecords [] = $Answer;
     }
     // }}}
-    
+
     // {{{ unsetAnswer
     /**
      * Remove all answer-records from this message
-     * 
+     *
      * @access public
      * @return void
      **/
-    public function unsetAnswer () {
+    public function unsetAnswer (): void
+    {
       $this->answerRecords->clear ();
     }
     // }}}
-    
+
     // {{{ getAuthorities
     /**
-     * Retrive all authority-answers from this message
-     * 
+     * Retrieve all authority-answers from this message
+     *
      * @access public
      * @return Recordset
      **/
-    public function getAuthorities () : Recordset {
+    public function getAuthorities (): Recordset
+    {
       return $this->authorityRecords;
     }
     // }}}
-    
+
     // {{{ addAuthority
     /**
      * Add a record to authority-section
-     * 
+     *
      * @param Record $Record
-     * 
+     *
      * @access public
      * @return void
      **/
-    public function addAuthority (Record $Record) {
+    public function addAuthority (Record $Record): void
+    {
       $this->authorityRecords [] = $Record;
     }
     // }}}
-    
+
     // {{{ getAdditionals
     /**
-     * Retrive all additional answers from this message
-     * 
+     * Retrieve all additional answers from this message
+     *
      * @access public
      * @return Recordset
      **/
-    public function getAdditionals () : Recordset {
+    public function getAdditionals (): Recordset
+    {
       return $this->additionalRecords;
     }
     // }}}
-    
+
     // {{{ addAdditional
     /**
      * Add a record to additional-section
-     * 
-     * @param Record $dnsRecord ...
-     * 
+     *
+     * @param Record ...$dnsRecords
+     *
      * @access public
      * @return void
      **/
-    public function addAdditional () {
-      foreach (func_get_args () as $dnsRecord)
-        if ($dnsRecord instanceof Record)
-          $this->additionalRecords [] = $dnsRecord;
+    public function addAdditional (Record ...$dnsRecords): void
+    {
+      foreach ($dnsRecords as $dnsRecord)
+        $this->additionalRecords [] = $dnsRecord;
     }
     // }}}
-    
+
     // {{{ removeAdditional
     /**
      * Remove a given record from additional-section
-     * 
-     * @param Record $dnsRecord ...
-     * 
+     *
+     * @param Record ...$dnsRecords
+     *
      * @access public
      * @return void
      **/
-    public function removeAdditional () {
-      foreach (func_get_args () as $dnsRecord)
-        if ($dnsRecord instanceof Record)
-          $this->additionalRecords->removeRecord ($dnsRecord);
-      
+    public function removeAdditional (Record ...$dnsRecords): void
+    {
+      foreach ($dnsRecords as $dnsRecord)
+        $this->additionalRecords->removeRecord ($dnsRecord);
+
       $this->messageHeader->Additionals = count ($this->additionalRecords);
     }
     // }}}
-    
+
     // {{{ getDatagramSize
     /**
-     * Retrive the disired maximum size of datagrams
-     * 
+     * Retrieve the desired maximum size of datagrams
+     *
      * @access public
      * @return int
      **/
-    public function getDatagramSize () {
+    public function getDatagramSize (): int
+    {
       if ($this->ednsRecord)
         return max (512, $this->ednsRecord->getDatagramSize ());
-      
+
       return 512;
     }
     // }}}
-    
+
     // {{{ setDatagramSize
     /**
      * Set the maximum size of datagrams for this message
-     * 
+     *
      * @param int $Size
-     * 
+     *
      * @access public
-     * @return bool
+     * @return void
+     *
+     * @throws RangeException
      **/
-    public function setDatagramSize ($Size) {
-      if (!$this->ednsRecord || ($Size < 512))
-        return false;
-      
-      return $this->ednsRecord->setDatagramSize ($Size);
+    public function setDatagramSize ($Size): void {
+      if (!$this->ednsRecord)
+        throw new RangeException ('Convert to Extended-DNS-Message before');
+
+      $this->ednsRecord->setDatagramSize ($Size);
     }
     // }}}
-    
-    // {{{ tuncate
+
+    // {{{ truncate
     /**
      * Try to truncate data from this query
-     * 
+     *
      * @access public
-     * @return bool
+     * @return void
+     *
+     * @throws Exception
      **/
-    public function tuncate () {
+    public function truncate (): void
+    {
       // Check if we are a question-message
       $isQuestion = $this->isQuestion ();
-      
+
       // Automatically set truncated-bit
       $this->messageHeader->Truncated = true;
-      
+
       // Process TSIG-Responses
-      if (!$isQuestion && (count ($tsigRecords = $this->additionalRecords->getRecords ($this::TYPE_TSIG)) > 0)) {
+      $tsigRecords = $this->additionalRecords->getRecords ($this::TYPE_TSIG);
+
+      if (
+        !$isQuestion &&
+        (count ($tsigRecords) > 0)
+      ) {
         // Make sure we could truncate anything
-        if ((count ($this->answerRecords) == 0) &&
-            (count ($this->authorityRecords) == 0) &&
-            (count ($this->additionalRecords) == count ($tsigRecords)))
-          return false;
-        
+        if (
+          (count ($this->answerRecords) == 0) &&
+          (count ($this->authorityRecords) == 0) &&
+          (count ($this->additionalRecords) == count ($tsigRecords))
+        )
+          throw new Exception ('Nothing to truncate');
+
         $this->answerRecords->clear ();
         $this->authorityRecords->clear ();
         $this->additionalRecords = $tsigRecords;
-      
+
       // Try to remove all questions first (if we are the answer)
       } elseif (!$isQuestion && (count ($this->questionRecords) > 0))
-        $this->questionRecords = [ ];
-      
-      // ... or additional informations
+        $this->questionRecords = [];
+
+      // ... or additional information
       elseif (count ($this->additionalRecords) > ($this->ednsRecord ? 1 : 0)) {
         $RR = $this->additionalRecords->pop ();
-        
+
         // Make sure we do not truncate the edns-record
-        if ($RR == $this->ednsRecord) {
+        if ($RR === $this->ednsRecord) {
           $this->additionalRecords->pop ();
           $this->additionalRecords->unshift ($RR);
         }
-      
+
       // ... maybe no one cares about authorities
       } elseif (count ($this->authorityRecords) > 0)
         $this->authorityRecords->pop ();
-      
+
       // ... finally do the hard stuff
       elseif (count ($this->answerRecords) > 0)
         $this->answerRecords->pop ();
       elseif (count ($this->questionRecords) > 0)
         array_pop ($this->questionRecords);
-      else
-        return false;
-      
-      return true;
     }
     // }}}
-    
+
     // {{{ createResponse
     /**
      * Create an empty response for this query
-     * 
-     * @param enum $dnsOpcode (optional)
-     * @param enum $dnsErrorCode (optional)
-     * 
+     *
+     * @param int|null $dnsOpcode (optional)
+     * @param int|null $dnsErrorCode (optional)
+     *
      * @access public
-     * @return object
+     * @return Message
      **/
-    public function createResponse ($dnsOpcode = null, $dnsErrorCode = null) {
+    public function createResponse (int $dnsOpcode = null, int $dnsErrorCode = null): Message
+    {
       // Create a new message
       $Response = new $this;
-      
+
       // Clone the header
       $Response->messageHeader = clone $this->messageHeader;
-      
+
       $Response->messageHeader->Opcode = ($dnsOpcode ?? Message::OPCODE_QUERY);
       $Response->messageHeader->RCode = ($dnsErrorCode ?? Message::ERROR_NONE);
       $Response->messageHeader->setFlags ($this->messageHeader->getFlags () & 0x44);
-      
+
       // Reset the counters
       $Response->messageHeader->Questions = 0;
       $Response->messageHeader->Answers = 0;
       $Response->messageHeader->Authorities = 0;
       $Response->messageHeader->Additionals = 0;
-      
+
       // Reset messages
-      $Response->questionRecords = [ ];
+      $Response->questionRecords = [];
       $Response->answerRecords = new Recordset ();
       $Response->authorityRecords = new Recordset ();
       $Response->additionalRecords = new Recordset ();
-      
+
       // Make sure we keep the EDNS-Record if there is one
       if ($this->ednsRecord)
         $Response->additionalRecords [] = $Response->ednsRecord = clone $this->ednsRecord;
-      
+
       // Invert the response-status
       $Response->messageHeader->isResponse = !$this->messageHeader->isResponse;
       $Response->messageHeader->recursionAvailable = false;
-      
+
       return $Response;
     }
     // }}}
-    
+
     // {{{ createClonedResponse
     /**
      * Create a response from a copy of this Message
-     * 
-     * @param enum $dnsOpcode (optional)
-     * @param enum $dnsErrorCode (optional)
-     * 
+     *
+     * @param int|null $dnsOpcode (optional)
+     * @param int|null $dnsErrorCode (optional)
+     *
      * @access public
-     * @return object
+     * @return Message
      **/
-    public function createClonedResponse ($dnsOpcode = null, $dnsErrorCode = null) {
+    public function createClonedResponse (int $dnsOpcode = null, int $dnsErrorCode = null): Message
+    {
       // Create a normal response
-      if (!is_object ($Response = $this->createResponse ($dnsOpcode, $dnsErrorCode)))
-        return false;
-      
+      $Response = $this->createResponse ($dnsOpcode, $dnsErrorCode);
+
       // Copy all values
       $Response->messageHeader->Questions = count ($this->questionRecords);
       $Response->messageHeader->Answers = count ($this->answerRecords);
       $Response->messageHeader->Authorities = count ($this->authorityRecords);
       $Response->messageHeader->Additionals = count ($this->additionalRecords);
-      
+
       foreach ($this->questionRecords as $questionRecord)
         $Response->questionRecords [] = clone $questionRecord;
-      
+
       $Response->answerRecords = clone $this->answerRecords;
       $Response->authorityRecords= clone $this->authorityRecords;
       $Response->additionalRecords = clone $this->additionalRecords;
-      
+
       return $Response;
     }
     // }}}

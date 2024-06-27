@@ -201,7 +201,7 @@
         // Enqueue an expiry-timer
         $this->expireTimers [$lookupKey] = $this->getEventBase ()->addTimeout ($customTTL);
         $this->expireTimers [$lookupKey]->then (
-          function () use ($lookupKey) {
+          function () use ($lookupKey): void {
             // Check if the key is cached
             if (!isset ($this->cachedValues [$lookupKey])) {
               // Check for a stale timer and clean up (should never happen though)
@@ -215,8 +215,11 @@
             }
 
             // Check if there is an expire-function set
-            if ($this->expireFunction === null)
-              return $this->expireKey ($lookupKey);
+            if ($this->expireFunction === null) {
+              $this->expireKey ($lookupKey);
+              
+              return;
+            }
 
             try {
               // Call the expire-function

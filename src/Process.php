@@ -27,7 +27,7 @@
   /**
    * Process
    * -------
-   * Spawns a command (uni- or bi-directional) and waits for input
+   * Spawns a command (uni- or bidirectional) and waits for input
    *
    * @class Process
    * @extends IOStream
@@ -90,15 +90,16 @@
      * Create an Event-Handler and spawn a process
      *
      * @param Base $eventBase
-     * @param string $commandName (optional)
-     * @param array $commandParams (optional)
+     * @param string|null $commandName (optional)
+     * @param array|null $commandParams (optional)
      *
      * @access friendly
      * @return void
      **/
-    public function __construct (Base $eventBase, string $commandName = null, array $commandParams = null) {
-      // Set our handler
-      $this->setEventBase ($eventBase);
+    public function __construct (Base $eventBase, string $commandName = null, array $commandParams = null)
+    {
+      // Inherit to parent first
+      parent::__construct ($eventBase);
 
       // Spawn the command if requested
       if ($commandName !== null)
@@ -111,12 +112,13 @@
      * Create a full command-line from separated args
      *
      * @param string $commandName
-     * @param array $commandParams (optional)
+     * @param array|null $commandParams (optional)
      *
      * @access private
      * @return string
      **/
-    private static function toCommandLine (string $commandName, array $commandParams = null): string {
+    private static function toCommandLine (string $commandName, array $commandParams = null): string
+    {
       // Create the command-line
       $commandLine = escapeshellcmd ($commandName);
 
@@ -134,12 +136,13 @@
      * Execute the command
      *
      * @param string $commandName
-     * @param array $commandParams (optional)
+     * @param array|null $commandParams (optional)
      *
      * @access public
      * @return Promise
      **/
-    public function spawnCommand ($commandName, array $commandParams = null): Promise {
+    public function spawnCommand (string $commandName, array $commandParams = null): Promise
+    {
       // Spawn using proc_open
       if (function_exists ('proc_open')) {
         // Try to spawn the command
@@ -181,7 +184,7 @@
 
         // Register FDs
         try {
-          $this->setStreamFDs ($processPointer);
+          $this->setStreamFD ($processPointer);
         } catch (Throwable $streamError) {
           return Promise::reject ($streamError);
         }
@@ -264,7 +267,7 @@
           exit ($exitCode);
         }
 
-        // Setup the parent
+        // Set up the parent
         $this->processMode = self::MODE_FORKED;
         $this->childPID = $processId;
 
@@ -298,7 +301,9 @@
      * @access public
      * @return void
      **/
-    public function finishConsume (): void {
+    public function finishConsume (): void
+    {
+      /** @noinspection PhpUnhandledExceptionInspection */
       $this->addHook (
         'eventDrained',
         function (): void {
@@ -313,12 +318,13 @@
     /**
      * Read from the underlying stream
      *
-     * @param int $readLength (optional)
+     * @param int|null $readLength (optional)
      *
      * @access protected
-     * @return string
+     * @return string|null
      **/
-    protected function ___read (int $readLength = null): ?string {
+    protected function ___read (int $readLength = null): ?string
+    {
       // Try to read from process
       $readData = $this->___readGeneric ($readLength);
 
@@ -349,10 +355,11 @@
      * @param string $writeData
      *
      * @access private
-     * @return int Number of bytes written
+     * @return int|null Number of bytes written
      **/
-    protected function ___write (string $writeData): ?int {
-      return $this->___genericWrite ($writeData);
+    protected function ___write (string $writeData): ?int
+    {
+      return $this->___writeGeneric ($writeData);
     }
     // }}}
 
@@ -381,7 +388,9 @@
      *
      * @access protected
      * @return bool
-     **/
+     *
+     * @noinspection PhpComposerExtensionStubsInspection
+     */
     protected function ___close ($closeFD = null): bool {
       if (
         ($this->processMode === self::MODE_PROC_OPEN) ||
@@ -404,6 +413,7 @@
           ($this->childPID > 0) &&
           function_exists ('posix_kill')
         )
+          /** @noinspection PhpComposerExtensionStubsInspection */
           posix_kill ($this->childPID, SIGTERM);
 
         // Wait for the process to exit
@@ -451,10 +461,11 @@
                 if (function_exists ('posix_kill'))
                   posix_kill ($this->childPID, SIGKILL);
 
-                $terminatedProcessId = pcntl_waitpid ($this->childPID, $childStatus, WNOHANG | WUNTRACED);
+                $childStatusCode = 0;
+                $terminatedProcessId = pcntl_waitpid ($this->childPID, $childStatusCode, WNOHANG | WUNTRACED);
 
                 $childStatus = [
-                  'exitCode' => pcntl_wexitstatus ($childStatus),
+                  'exitCode' => pcntl_wexitstatus ($childStatusCode),
                   'running' => ($terminatedProcessId <= 0),
                 ];
               } else {
@@ -471,12 +482,11 @@
             }
 
             // Resolve the promise
-            if ($this->processPromise)
-              $this->processPromise->resolve ($this->exitCode);
+            $this->processPromise?->resolve ($this->exitCode);
           }
         );
 
-        // Don't loose time
+        // Don't lose time
         $closeTimer->run ();
 
         return true;
@@ -487,8 +497,7 @@
         $this->exitCode = pclose ($this->getReadFD ());
 
         // Resolve the promise
-        if ($this->processPromise)
-          $this->processPromise->resolve ($this->exitCode);
+        $this->processPromise?->resolve ($this->exitCode);
 
         return ($this->exitCode >= 0);
       }
@@ -504,7 +513,9 @@
      *
      * @access public
      * @return void  
-     **/
+     *
+     * @noinspection PhpComposerExtensionStubsInspection
+     */
     public function raiseRead (): void {
       // Check if we can detect a finished process
       if (
@@ -535,7 +546,7 @@
           parent::raiseRead ();
 
           // Don't close if the emitted event triggered a read()
-          // The read()-Handler will trigger a close on its own when no data is available any more
+          // The read()-Handler will trigger a close on its own when no data is available anymore
           if ($this->hasRead)
             return;
 

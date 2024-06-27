@@ -25,7 +25,8 @@
     "require-dev" : {
         "phpunit/phpunit": "^9",
         "quarxconnect/events-test": "^0.0.1@dev",
-        "ext-zip": "*"
+        "ext-zip": "*",
+        "phpstan/phpstan": "2.0.x-dev"
     },
     "suggest": {
       "ext-pcntl": "*",

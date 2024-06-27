@@ -62,7 +62,8 @@
      * @access public
      * @return Promise
      **/
-    public static function resolve () : Promise {
+    public static function resolve (): Promise
+    {
       $resolveParameters = func_get_args ();
       
       if ((count ($resolveParameters) > 0) && ($resolveParameters [count ($resolveParameters) - 1] instanceof Base))
@@ -70,7 +71,7 @@
       else
         $eventBase = null;
       
-      return new static (
+      return new Promise (
         function (callable $resolveFunction) use ($resolveParameters) {
           call_user_func_array ($resolveFunction, $resolveParameters);
         },
@@ -89,7 +90,8 @@
      * @access public
      * @return Promise
      **/
-    public static function reject () : Promise {
+    public static function reject (): Promise
+    {
       $rejectParameter = func_get_args ();
       
       if ((count ($rejectParameter) > 0) && ($rejectParameter [count ($rejectParameter) - 1] instanceof Base))
@@ -97,7 +99,7 @@
       else
         $eventBase = null;
       
-      return new static (
+      return new Promise (
         function (callable $resolveFunction, callable $rejectFunction) use ($rejectParameter) {
           call_user_func_array ($rejectFunction, $rejectParameter);
         },
@@ -116,7 +118,8 @@
      * @access public
      * @return Promise
      **/
-    public static function all (Iterable $promiseValues, Base $eventBase = null) : Promise {
+    public static function all (Iterable $promiseValues, Base $eventBase = null): Promise
+    {
       // Pre-Filter the promises
       $realPromises = [ ];
       $resultValues = [ ];
@@ -139,7 +142,7 @@
         return static::resolve ($resultValues);
       }
       
-      return new static (
+      return new Promise (
         function (callable $resolveFunction, callable $rejectFunction)
         use ($resultValues, $realPromises) {
           // Track if the promise is settled
@@ -203,7 +206,8 @@
      * @access public
      * @return Promise
      **/
-    public static function allSettled (Iterable $promiseValues, Base $eventBase = null) : Promise {
+    public static function allSettled (Iterable $promiseValues, Base $eventBase = null): Promise
+    {
       // Pre-Filter the promises
       $realPromises = [ ];
       $resultValues = [ ];
@@ -236,7 +240,7 @@
         return static::resolve ($resultValues);
       }
       
-      return new static (
+      return new Promise (
         function (callable $resolveFunction)
         use ($realPromises, $resultValues) {
           // Track if the promise is settled
@@ -291,7 +295,8 @@
      * @access public
      * @return Promise
      **/
-    public static function any (Iterable $watchPromises, Base $eventBase = null, $forceSpec = false) : Promise {
+    public static function any (Iterable $watchPromises, Base $eventBase = null, $forceSpec = false): Promise
+    {
       // Check for non-promises first
       $promiseCountdown = 0;
       
@@ -312,7 +317,7 @@
         return static::reject (new \Error ('No promise in Promise::any was resolved'), [ ]);
       }
       
-      return new static (
+      return new Promise (
         function (callable $resolveFunction, callable $rejectFunction)
         use ($watchPromises, $promiseCountdown) {
           // Track if the promise is settled
@@ -370,7 +375,8 @@
      * @access public
      * @return Promise
      **/
-    public static function race (Iterable $watchPromises, Base $eventBase = null, $ignoreRejections = false, $forceSpec = false) : Promise {
+    public static function race (Iterable $watchPromises, Base $eventBase = null, $ignoreRejections = false, $forceSpec = false): Promise
+    {
       // Check for non-promises first
       $promiseCount = 0;
       
@@ -396,7 +402,7 @@
       if ($ignoreRejections)
         trigger_error ('Please use Promise::any() instead of Promise::race() if you want to ignore rejections', E_USER_DEPRECATED);
       
-      return new static (
+      return new Promise (
         function (callable $resolveFunction, callable $rejectFunction)
         use ($watchPromises, $ignoreRejections, $promiseCount) {
           // Track if the promise is settled
@@ -544,7 +550,8 @@
      * @access friendly
      * @return void
      **/
-    function __construct (callable $initCallback = null, Base $eventBase = null) {
+    public function __construct (callable $initCallback = null, Base $eventBase = null)
+    {
       // Store the assigned base
       $this->eventBase = $eventBase;
       
@@ -678,8 +685,9 @@
      * @access protected
      * @return void
      **/
-    protected function promiseFulfill () {
-      return $this->finish ($this::STATUS_FULFILLED, func_get_args ());
+    protected function promiseFulfill (): void
+    {
+      $this->finish ($this::STATUS_FULFILLED, func_get_args ());
     }
     // }}}
     
@@ -692,8 +700,9 @@
      * @access protected
      * @return void
      **/
-    protected function promiseReject () {
-      return $this->finish ($this::STATUS_REJECTED, func_get_args ());
+    protected function promiseReject (): void
+    {
+      $this->finish ($this::STATUS_REJECTED, func_get_args ());
     }
     // }}}
     

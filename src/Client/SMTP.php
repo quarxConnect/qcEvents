@@ -147,7 +147,8 @@
      * @access public
      * @return void
      **/
-    public function setRemoteHost ($remoteHost, int $remotePort = null, bool $enableTLS = null) : bool {
+    public function setRemoteHost ($remoteHost, int $remotePort = null, bool $enableTLS = null): void
+    {
       $this->remoteHost = $remoteHost;
       $this->remotePort = $remotePort;
       $this->remoteTLS = $enableTLS;
@@ -330,7 +331,10 @@
         function (Events\Socket $clientSocket, Events\ABI\Stream\Consumer $smtpStream = null)
         use ($mailOriginator, $mailReceivers, $mailBody) {
           // Make sure we got our SMTP-Stream
-          if (!$smtpClient || !($smtpClient instanceof Events\Stream\SMTP\Client)) {
+          if (
+            !$smtpStream ||
+            !($smtpStream instanceof Events\Stream\SMTP\Client)
+          ) {
             // Release the socket
             if ($clientSocket)
               $this->socketPool->releaseConnection ($clientSocket);

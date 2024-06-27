@@ -638,7 +638,7 @@
           break;
         case Stream\DNS\Message::TYPE_TXT:
           $phpRecord ['txt'] = $dnsRecord->getPayload ();
-          $phpRecord ['entries'] = explode ("\n", $Result ['txt']);
+          $phpRecord ['entries'] = ($dnsRecord instanceof Stream\DNS\Record\TXT ? $dnsRecord->getTexts () : '');
           
           break;
         default:

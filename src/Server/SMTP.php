@@ -303,7 +303,7 @@
             function (string $intermediateData) use ($smtpCommand) {
               return $smtpCommand->setResponse (250);
             },
-            function (\Throwable $errot) use ($smtpCommand) {
+            function (\Throwable $error) use ($smtpCommand) {
               return $smtpCommand->setResponse (554, $error->getMessage ());
             }
           );

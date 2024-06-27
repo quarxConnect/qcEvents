@@ -61,7 +61,7 @@
      * @access friendly
      * @return void
      **/
-    public function __construct (Base|Promise $baseOrPromise = null, callable $Resolve = null, callable $Reject = null)
+    public function __construct (Base|Promise $baseOrPromise = null, callable $resolveFunction = null, callable $rejectFunction = null)
     {
       // Check if a promise was given
       if ($baseOrPromise instanceof Promise) {

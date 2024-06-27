@@ -33,8 +33,11 @@
             );
         }
 
+        /**
+         * @throws NotFound
+         **/
         public function testGet (): void {
-            $theCache = new Cache ($this->getEventBase ());
+              $theCache = new Cache ($this->getEventBase ());
 
             $theCache->set (
                 'testKey',
@@ -66,6 +69,9 @@
             }
         }
 
+        /**
+         * @throws NotFound
+         **/
         public function testSet (): void {
             $theCache = new Cache ($this->getEventBase ());
 
