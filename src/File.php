@@ -140,7 +140,10 @@
     public function __construct (Base $eventBase, string $fileName, bool $forReading = true, bool $forWriting = false, bool $truncateFile = false)
     { 
       // Handle stream-wrappers
-      $fileMode = 'c+';
+      if (!$forWriting)
+        $fileMode = 'r';
+      else
+        $fileMode = 'c' . ($forReading ? '+' : '');
 
       # ZLIB does not support select()-calls
       #if (($p = strpos ($fileName, '://')) !== false) {
@@ -230,7 +233,7 @@
     public function truncate (int $fileSize = null): void
     {
       // Try to access the descriptor
-      $fileDescriptor = $this->getWriteFD ();
+      $fileDescriptor = $this->getWriteFD (true);
 
       if (!is_resource ($fileDescriptor))
         throw new RuntimeException ('Failed to get file-descriptor');
