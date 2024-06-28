@@ -332,17 +332,18 @@
     /**
      * Create a new event-socket
      * 
-     * @param Base $Base (optional)
-     * @param mixed $Host (optional)
-     * @param int $Port (optional)
-     * @param enum $Type (optional)
+     * @param Base|null $Base (optional)
+     * @param string|array|null $Host (optional)
+     * @param int|null $Port (optional)
+     * @param int|null $Type (optional)
      * @param bool $enableTLS (optional)
      * 
      * @access friendly
      * @return void
      **/
-    function __construct (Base $Base = null, $Host = null, $Port = null, $Type = null, $enableTLS = false) {
-      // Don't do anything withour an events-base
+    public function __construct (Base $Base = null, string|array|null $Host = null, int $Port = null, int $Type = null, bool $enableTLS = false)
+    {
+      // Don't do anything without an events-base
       if ($Base === null)
         return;
       
@@ -436,14 +437,15 @@
      * 
      * @param mixed $Hosts
      * @param int $Port
-     * @param enum $Type (optional) TCP is used by default
+     * @param int|null $Type (optional) TCP is used by default
      * @param bool $enableTLS (optional) Enable TLS-Encryption on connect
      * 
      * @access public
      * @return Promise
      **/
-    public function connect ($Hosts, $Port = null, $Type = null, $enableTLS = false) : Promise {
-      // Check wheter to use the default socket-type
+    public function connect ($Hosts, int $Port = null, int $Type = null, bool $enableTLS = false): Promise
+    {
+      // Check whether to use the default socket-type
       if ($Type === null)
         $Type = $this::DEFAULT_TYPE;
       
@@ -454,7 +456,7 @@
       if (($Type != self::TYPE_TCP) && ($Type != self::TYPE_UDP))
         return Promise::reject ('Unsupported socket-type');
       
-      // Check wheter to use a default port
+      // Check whether to use a default port
       if ($Port === null) {
         $Port = $this::DEFAULT_PORT;
         
@@ -575,37 +577,39 @@
       // Generate label to look up
       $Label = '_' . $Service . '._' . ($Type == self::TYPE_UDP ? 'udp' : 'tcp') . '.' . $Domain;
       
-      return new Promise (function ($resolve, $reject) use ($Label, $Type, $Domain) {
-        // Remember promises
-        $this->socketConnectResolve = $resolve;
-        $this->socketConnectReject = $reject;
-        
-        // Perform syncronous lookup
-        if ($this->Resolving < 0) {
-          // Fire a callback
-          $this->___callback ('socketResolve', [ $Label ], [ Stream\DNS\Message::TYPE_SRV ]);
-          
-          // Do the DNS-Lookup
-          $Result = dns_get_record ($Label, \DNS_SRV, $AuthNS, $Addtl);
+      return new Promise (
+        function ($resolve, $reject) use ($Label, $Type, $Domain): void {
+          // Remember promises
+          $this->socketConnectResolve = $resolve;
+          $this->socketConnectReject = $reject;
 
-          if (
-            !is_array ($Result) ||
-            (count ($Result) == 0)
-          ) {
-            $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED, 'Failed to resolve destination (SRV) with dns_get_record()');
+          // Perform synchronous lookup
+          if ($this->Resolving < 0) {
+            // Fire a callback
+            $this->___callback ('socketResolve', [ $Label ], [ Stream\DNS\Message::TYPE_SRV ]);
+
+            // Do the DNS-Lookup
+            $Result = dns_get_record ($Label, DNS_SRV, $AuthNS, $Addtl);
+
+            if (
+              !is_array ($Result) ||
+              (count ($Result) == 0)
+            ) {
+              $this->socketHandleConnectFailed ($this::ERROR_NET_DNS_FAILED, 'Failed to resolve destination (SRV) with dns_get_record()');
+
+              return;
+            }
+
+            // Forward the result
+            $this->socketResolverResultArray ($Result, $Addtl, $Domain, DNS_SRV, 0, $Type);
 
             return;
           }
-          
-          // Forward the result
-          $this->socketResolverResultArray ($Result, $Addtl, $Domain, \DNS_SRV, null, $Type);
-          
-          return;
+
+          // Perform asynchronous lookup
+          $this->socketResolveDo ($Label, 0, $Type, Stream\DNS\Message::TYPE_SRV);
         }
-        
-        // Perform asyncronous lookup
-        $this->socketResolveDo ($Label, null, $Type, Stream\DNS\Message::TYPE_SRV);
-      });
+      );
     }
     // }}}
      
@@ -655,8 +659,8 @@
         ($this->socketBindAddress !== null) ||
         ($this->socketBindPort !== null)
       ) {
-        $isIPv6 = self::isIPv6 ($this->socketBindAddress);
-        
+        $isIPv6 = self::isIPv6 ($this->socketBindAddress ?? '::');
+
         $socketContext = stream_context_create ([
           'socket' => [
             'bindto' => ($isIPv6 ? '[' : '') . $this->socketBindAddress . ($isIPv6 ? ']' : '') . ':' . (int)$this->socketBindPort,
@@ -931,19 +935,20 @@
     // {{{ socketResolveDo
     /**
      * Resolve a given hostname
-     * 
-     * @param string $Hostname
+     *
+     * @param string $hostName
      * @param int $Port
-     * @param enum $Type
-     * @param array $Types (optional)
-     * 
+     * @param int $Type
+     * @param array|null $Types (optional)
+     *
      * @access private
      * @return void
      **/
-    private function socketResolveDo ($Hostname, $Port, $Type, array $Types = null) {
+    private function socketResolveDo (string $hostName, int $Port, int $Type, array $Types = null): void
+    {
       // Don't do further resolves if we are already connected
       if ($this->isConnected ())
-        return false;
+        return;
       
       // Create a new resolver
       if (!is_object (self::$dnsResolver))
@@ -961,10 +966,10 @@
       $this->Resolving += count ($Types);
       
       foreach ($Types as $rType)
-        self::$dnsResolver->resolve ($Hostname, $rType)->then (
+        self::$dnsResolver->resolve ($hostName, $rType)->then (
           function (Stream\DNS\Recordset $Answers, Stream\DNS\Recordset $Authorities, Stream\DNS\Recordset $Additional, Stream\DNS\Message $Response)
-          use ($Hostname, $Port, $Type, $rType): void {
-            // Decrese counter
+          use ($hostName, $Port, $Type, $rType): void {
+            // Decrease counter
             $this->Resolving--;
             
             // Discard any result if we are connected already
@@ -975,16 +980,18 @@
             $this->lastEvent = time ();
             
             // Convert the result
+            $Authorities = [];
+            $Additional = [];
             $Result = self::$dnsResolver->dnsConvertPHP ($Response, $Authorities, $Additional);
             
             // Forward
-            $this->socketResolverResultArray ($Result, $Additional, $Hostname, $rType, $Port, $Type);
+            $this->socketResolverResultArray ($Result, $Additional, $hostName, $rType, $Port, $Type);
           },
-          function () use ($Hostname, $Port, $Type, $rType): void {
-            // Decrese counter
+          function () use ($hostName, $Port, $Type, $rType): void {
+            // Decrease counter
             $this->Resolving--;
             
-            $this->socketResolverResultArray ([ ], [ ], $Hostname, $rType, $Port, $Type);
+            $this->socketResolverResultArray ([ ], [ ], $hostName, $rType, $Port, $Type);
           }
         );
       
@@ -992,7 +999,7 @@
       $this->lastEvent = time ();
       
       // Fire a callback
-      $this->___callback ('socketResolve', [ $Hostname ], $Types);
+      $this->___callback ('socketResolve', [ $hostName ], $Types);
       
       // Setup a timeout
       $this->socketSetupConnectionTimeout ();
@@ -1027,16 +1034,16 @@
      * Handle the result of from any resolve-process
      * 
      * @param array $Results Results returned from the resolver
-     * @param array $Addtl Additional results returned from the resolver
+     * @param array $Additional Additional results returned from the resolver
      * @param string $Hostname The Hostname we are looking for
-     * @param enum $rType DNS-Record-Type we are looking for
+     * @param int $rType DNS-Record-Type we are looking for
      * @param int $Port The port we want to connect to
-     * @param enum $Type The type of socket we wish to create
+     * @param int $Type The type of socket we wish to create
      * 
      * @access private
      * @return void
      **/
-    private function socketResolverResultArray (array $Results, array $Addtl, string $Hostname, int $rType, int $Port, int $Type): void
+    private function socketResolverResultArray (array $Results, array $Additional, string $Hostname, int $rType, int $Port, int $Type): void
     {
       // Check if there are no results
       if ((count ($Results) == 0) && ($this->Resolving <= 0)) {
@@ -1075,14 +1082,14 @@
           
         // Handle canonical names
         } elseif ($Record ['type'] == 'CNAME') {
-          // Check additionals
+          // Check additional
           $Found = false;
           
           foreach ($Results as $Record2)
             if ($Found = ($Record2 ['host'] == $Record ['target']))
               break;
           
-          foreach ($Addtl as $Record2)
+          foreach ($Additional as $Record2)
             if ($Record2 ['host'] == $Record ['target']) {
               $Results [] = $Record2;
               $Found = true;
@@ -1097,10 +1104,10 @@
         
         // Handle SRV-Records
         } elseif ($Record ['type'] == 'SRV') {
-          // Check additionals
+          // Check additional
           $Found = false;
        
-          foreach ($Addtl as $Record2)
+          foreach ($Additional as $Record2)
             if ($Record2 ['host'] == $Record ['target']) {
               $Record2 ['port'] = $Record ['port'];
               $Results [] = $Record2;
@@ -1281,7 +1288,7 @@
      * @return string
      **/
     public function getLocalName () {
-      return ($this::isIPv6 ($this->localAddr) ? '[' . $this->localAddr . ']' : $this->localAddr) . ':' . $this->localPort;
+      return ($this::isIPv6 ($this->localAddr ?? '::') ? '[' . $this->localAddr . ']' : $this->localAddr) . ':' . $this->localPort;
     }
     // }}}
     
@@ -1404,6 +1411,7 @@
       $this->lastEvent = time ();
 
       if ($this->socketType === self::TYPE_UDP_SERVER)
+        /** @noinspection PhpStrictTypeCheckingInspection */
         $writtenLength = stream_socket_sendto ($socketDescriptor, $writeData, 0, $this->remoteName);
       else
         $writtenLength = fwrite ($socketDescriptor, $writeData);
