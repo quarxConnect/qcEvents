@@ -47,7 +47,7 @@
     private float $dnsTimeout = 4;
 
     /* Forced Datagram-size for EDNS-Messages */
-    private int $dnsDatagramSize = 1200;
+    private int $dnsDatagramSize = 0;
 
     /* Source of our pipe */
     private Events\ABI\Source|null $dataSource = null;
@@ -133,8 +133,10 @@
       $Query = $Message->isQuestion ();
 
       // Try to override datagram-size
-      if ($this->dnsDatagramSize > 0)
+      if ($this->dnsDatagramSize > 512) {
+        $Message->isExtended (true);
         $Message->setDatagramSize ($this->dnsDatagramSize);
+      }
 
       // Convert the Message into a string
       $Data = $Message->toString ();
@@ -401,7 +403,7 @@
 
     // {{{ initStreamConsumer
     /**
-     * Set up ourself to consume data from a stream
+     * Set up ourselves to consume data from a stream
      *
      * @param Events\ABI\Stream $sourceStream
      *
