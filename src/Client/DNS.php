@@ -602,7 +602,7 @@
         return null;
       
       $phpRecord = [
-        'host' => $dnsRecord->getLabel (),
+        'host' => (string)$dnsRecord->getLabel (),
         'class' => 'IN',
         'type' => $recordTypes [$recordType],
         'ttl' => $dnsRecord->getTTL (),
@@ -621,19 +621,19 @@
         case Stream\DNS\Message::TYPE_NS:
         case Stream\DNS\Message::TYPE_CNAME:
         case Stream\DNS\Message::TYPE_PTR:
-          $phpRecord ['target'] = $dnsRecord->getHostname ();
+          $phpRecord ['target'] = (string)$dnsRecord->getHostname ();
           
           break;
         case Stream\DNS\Message::TYPE_MX:
           $phpRecord ['pri'] = $dnsRecord->getPriority ();
-          $phpRecord ['target'] = $dnsRecord->getHostname ();
+          $phpRecord ['target'] = (string)$dnsRecord->getHostname ();
           
           break;
         case Stream\DNS\Message::TYPE_SRV:
           $phpRecord ['pri'] = $dnsRecord->getPriority ();
           $phpRecord ['weight'] = $dnsRecord->getWeight ();
           $phpRecord ['port'] = $dnsRecord->getPort ();
-          $phpRecord ['target'] = $dnsRecord->getHostname ();
+          $phpRecord ['target'] = (string)$dnsRecord->getHostname ();
           
           break;
         case Stream\DNS\Message::TYPE_TXT:
