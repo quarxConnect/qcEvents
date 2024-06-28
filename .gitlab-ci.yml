@@ -70,6 +70,13 @@ unittest:php-8.2:
     - composer install
     - composer test
 
+phpstan:php-8.2:
+  stage: test
+  image: "${DOCKER_IMAGE_BASE}-8.2"
+  script:
+    - composer install
+    - vendor/bin/phpstan
+
 publish:
   image: curlimages/curl:latest
   stage: deploy
