@@ -75,7 +75,7 @@ phpstan:php-8.2:
   image: "${DOCKER_IMAGE_BASE}-8.2"
   script:
     - composer install
-    - vendor/bin/phpstan
+    - vendor/bin/phpstan --memory-limit=1G
 
 publish:
   image: curlimages/curl:latest
