@@ -654,6 +654,8 @@
       $this->connectPromise = new Deferred ($this->getEventBase ());
       $this->tlsEnabled = ($enableTLS ? null : false);
 
+      $connectPromise = $this->connectPromise->getPromise ();
+
       // Make sure hosts is an array
       if (!is_array ($remoteHosts))
         $remoteHosts = [ $remoteHosts ];
@@ -704,7 +706,7 @@
       )
         $this->socketResolveDo (array_shift ($domainNames), $remotePort, $socketType);
 
-      return $this->connectPromise->getPromise ();
+      return $connectPromise;
     }
     // }}}
 
@@ -758,6 +760,8 @@
       $this->socketConnected = null;
       $this->lastEvent = time ();
 
+      $connectPromise = $this->connectPromise->getPromise ();
+
       // Generate label to look up
       $dnsLabel = '_' . $serviceName . '._' . ($socketType == self::TYPE_UDP ? 'udp' : 'tcp') . '.' . $serviceDomain;
 
@@ -786,7 +790,7 @@
       } else
         $this->socketResolveDo ($dnsLabel, 0, $socketType, [ Stream\DNS\Message::TYPE_SRV ]);
 
-      return $this->connectPromise->getPromise ();
+      return $connectPromise;
     }
     // }}}
 
