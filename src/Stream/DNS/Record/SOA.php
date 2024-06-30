@@ -51,44 +51,204 @@
     }
     // }}}
 
+    // {{{ getNameserver
+    /**
+     * Retrieve name of the primary nameserver for this zone
+     *
+     * @access public
+     * @return DNS\Label
+     **/
+    public function getNameserver (): DNS\Label
+    {
+      return $this->Nameserver;
+    }
+    // }}}
+
+    // {{{ setNameserver
+    /**
+     * Set the primary nameserver for this zone
+     *
+     * @param DNS\Label $Nameserver
+     *
+     * @access public
+     * @return void
+     **/
     public function setNameserver (DNS\Label $Nameserver): void
     {
       $this->Nameserver = $Nameserver;
     }
+    // }}}
 
+    // {{{ getMailbox
+    /**
+     * Retrieve the e-mail-address pf the dns-administrator in DNS-Form
+     *
+     * @access public
+     * @return DNS\Label
+     **/
+    public function getMailbox (): DNS\Label
+    {
+      return $this->Mailbox;
+    }
+    // }}}
+
+    // {{{ setMailbox
+    /**
+     * Set the e-mail-address of the dns-administrator in DNS-Form
+     *
+     * @param DNS\Label|string $Mailbox
+     *
+     * @access public
+     * @return void
+     **/
     public function setMailbox (DNS\Label|string $Mailbox): void
     {
-      if (is_string ($Mailbox)) {
+      if (is_string ($Mailbox))
         $Mailbox = new DNS\Label (explode ('.', str_replace ('@', '.', $Mailbox)));
-      }
 
       $this->Mailbox = $Mailbox;
     }
+    // }}}
 
+    // {{{ getSerial
+    /**
+     * Retrieve the incrementing serial-number of this zone
+     *
+     * @access public
+     * @return int
+     **/
+    public function getSerial (): int
+    {
+      return $this->Serial;
+    }
+    // }}}
+
+    // {{{ setSerial
+    /**
+     * Set the serial number of this zone
+     *
+     * @param int $Serial
+     *
+     * @access public
+     * @return void
+     **/
     public function setSerial (int $Serial): void
     {
       $this->Serial = $Serial;
     }
+    // }}}
 
+    // {{{ getRefresh
+    /**
+     * Retrieve amount of seconds secondary nameservers should wait between refreshes
+     *
+     * @access public
+     * @return int
+     **/
+    public function getRefresh (): int
+    {
+      return $this->Refresh;
+    }
+    // }}}
+
+    // {{{ setRefresh
+    /**
+     * Set the amount of seconds to wait between refreshes
+     *
+     * @param int $Refresh
+     *
+     * @access public
+     * @return void
+     **/
     public function setRefresh (int $Refresh): void
     {
       $this->Refresh = $Refresh;
     }
+    // }}}
 
+    // {{{ getRetry
+    /**
+     * Retrieve the amount of seconds to wait between negative responses
+     *
+     * @access public
+     * @return int
+     **/
+    public function getRetry (): int
+    {
+      return $this->Retry;
+    }
+    // }}}
+
+    // {{{ setRetry
+    /**
+     * Set time to wait between negative responses
+     *
+     * @param int $Retry
+     *
+     * @access public
+     * @return void
+     **/
     public function setRetry (int $Retry): void
     {
       $this->Retry = $Retry;
     }
+    // }}}
 
+    // {{{ getExpire
+    /**
+     * Get maximum amount of to keep a copy of this zone
+     *
+     * @access public
+     * @return int
+     **/
+    public function getExpire (): int
+    {
+      return $this->Expire;
+    }
+    // }}}
+
+    // {{{ setExpire
+    /**
+     * Set maximum amount of time to keep a copy of this zone
+     *
+     * @param int $Expire
+     *
+     * @access public
+     * @return void
+     **/
     public function setExpire (int $Expire): void
     {
       $this->Expire = $Expire;
     }
+    // }}}
 
+    // {{{ getMinimum
+    /**
+     * Retrieve the minimum ttl for DNS-Records on this zone
+     *
+     * @access public
+     * @return int
+     **/
+    public function getMinimum (): int
+    {
+      return $this->Minimum;
+    }
+    // }}}
+
+    // {{{ setMinimum
+    /**
+     * Set the minimum ttl for DNS-Records on this zone
+     *
+     * @param int $Minimum
+     *
+     * @access public
+     * @return void
+     **/
     public function setMinimum (int $Minimum): void
     {
       $this->Minimum = $Minimum;
     }
+    // }}}
 
     // {{{ parsePayload
     /**
