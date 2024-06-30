@@ -2,7 +2,7 @@
 
   /**
    * quarxConnect Events - Socket Factory
-   * Copyright (C) 2017-2023 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2017-2024 Bernd Holzmueller <bernd@quarxconnect.de>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -33,7 +33,8 @@
   use quarxConnect\Events\Socket\Exception\InvalidPort;
   use quarxConnect\Events\Socket\Exception\InvalidType;
 
-  class Factory extends Emitter implements ABI\Socket\Factory {
+  class Factory extends Emitter implements ABI\Socket\Factory
+  {
     use Feature\Based;
 
     private const STATE_CONNECTING = 0x00;
@@ -53,10 +54,25 @@
      **/
     private array $socketInstances = [];
 
+    /**
+     * List of consumers for our sockets
+     *
+     * @var array
+     **/
     private array $socketConsumers = [];
 
+    /**
+     * Status of our sockets
+     *
+     * @var array
+     **/
     private array $socketStates = [];
 
+    /**
+     * Index for the next socket
+     *
+     * @var int
+     **/
     private int $nextIndex = 0;
 
     // {{{ __construct
@@ -83,7 +99,7 @@
      * @param int $socketType
      * @param bool $useTLS (optional)
      * @param bool $allowReuse (optional)
-     * @param Pool\Session $poolSession (optional)
+     * @param Pool\Session|null $poolSession (optional)
      *
      * @access public
      * @return Promise
@@ -200,8 +216,16 @@
       // Find the socket
       $socketIndex = array_search ($leasedConnection, $this->socketInstances, true);
 
-      if ($socketIndex === false)
+      if ($socketIndex === false) {
+        // Don't be too harsh if the connection already was disconnected
+        if (
+          ($leasedConnection instanceof Socket) &&
+          $leasedConnection->isDisconnected ()
+        )
+          return;
+
         throw new InvalidArgumentException ('The socket was not created here');
+      }
 
       // Check if the socket must not be reused
       if ($this->socketStates [$socketIndex] === self::STATE_EXCLUSIVE) {
@@ -216,7 +240,8 @@
       $this->socketStates [$socketIndex] = self::STATE_CONNECTED;
 
       // Set timeout on the socket
-      $leasedConnection->setIdleTimeout (self::IDLE_TIMEOUT);
+      if ($leasedConnection instanceof Socket)
+        $leasedConnection->setIdleTimeout (self::IDLE_TIMEOUT);
     }
     // }}}
   }
