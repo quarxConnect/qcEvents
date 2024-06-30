@@ -850,7 +850,7 @@
       else
         $socketContext = stream_context_create ();
 
-      $streamSocket = stream_socket_client (
+      $streamSocket = @stream_socket_client (
         $socketUri,
         $errorNumber,
         $errorMessage,
