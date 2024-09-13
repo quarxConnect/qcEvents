@@ -149,7 +149,7 @@
         }
       );
       
-      $this->expectException (\Exception::class);
+      $this->expectException (Exception::class);
       
       Events\Synchronizer::do (
         $eventBase,
@@ -172,7 +172,7 @@
         );
         
         $this->assertTrue (false);
-      } catch (\Exception $rejection) {
+      } catch (Exception $rejection) {
         $this->assertEquals (
           23,
           $rejection->getMessage ()
@@ -208,7 +208,7 @@
         );
         
         $this->assertTrue (false);
-      } catch (\Exception $rejection) {
+      } catch (Exception $rejection) {
         $this->assertIsArray ($rejectionResult);
         $this->assertCount (
           3,
@@ -249,7 +249,7 @@
         }
       );
       
-      $this->expectException (\Exception::class);
+      $this->expectException (Exception::class);
       
       Events\Synchronizer::do (
         $eventBase,
@@ -271,7 +271,7 @@
         }
       );
       
-      $this->expectException (\Exception::class);
+      $this->expectException (Exception::class);
 
       Events\Synchronizer::do (
         $eventBase,
@@ -291,7 +291,7 @@
         }
       );
       
-      $this->expectException (\Exception::class);
+      $this->expectException (Exception::class);
       
       unset ($rejectedPromise);
       gc_collect_cycles ();
@@ -352,7 +352,7 @@
       $this->assertTrue (isset ($allResults ['x']));
       $this->assertEquals ([ 19, 23, 42 ], $allResults ['x']);
       
-      $this->expectException (\Exception::class);
+      $this->expectException (Exception::class);
       
       Events\Synchronizer::do (
         $eventBase,
@@ -370,16 +370,20 @@
         $eventBase,
         Events\Promise::allSettled ([
           Events\Promise::resolve (42),
+          Events\Promise::resolve (),
           Events\Promise::reject ('Rejected'),
         ])
       );
       
-      $this->assertCount (2, $settledPromises);
+      $this->assertCount (3, $settledPromises);
       
-      $this->assertEquals ('fulfilled', $settledPromises [0]->status);
+      $this->assertEquals (Events\Promise\Status::STATUS_FULFILLED, $settledPromises [0]->status);
       $this->assertEquals (42, $settledPromises [0]->value);
+
+      $this->assertEquals (Events\Promise\Status::STATUS_FULFILLED, $settledPromises [1]->status);
+      $this->assertNull ($settledPromises [1]->value);
       
-      $this->assertEquals ('rejected', $settledPromises [1]->status);
-      $this->assertInstanceOf (\Exception::class, $settledPromises [1]->reason);
+      $this->assertEquals (Events\Promise\Status::STATUS_REJECTED, $settledPromises [2]->status);
+      $this->assertInstanceOf (Exception::class, $settledPromises [2]->reason);
     }
   }
