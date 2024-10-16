@@ -24,12 +24,18 @@
 
   use Exception;
   use quarxConnect\Events;
+  use quarxConnect\Events\ABI;
+  use quarxConnect\Events\Base;
+  use quarxConnect\Events\Emitter;
+  use quarxConnect\Events\Feature;
   use quarxConnect\Events\Promise;
   use quarxConnect\Events\Stream;
   use RuntimeException;
 
-  class HTTP extends Events\Hookable
+  class HTTP extends Emitter implements ABI\Hookable
   {
+    use Feature\Hookable;
+
     /**
      * All queued HTTP-Requests
      *
@@ -40,9 +46,9 @@
     /**
      * Socket-Factory
      *
-     * @var Events\ABI\Socket\Factory
+     * @var ABI\Socket\Factory
      **/
-    private Events\ABI\Socket\Factory $socketFactory;
+    private ABI\Socket\Factory $socketFactory;
 
     /**
      * Session-Cookies (if enabled)
@@ -69,12 +75,12 @@
     /**
      * Create a new HTTP-Client Pool
      *
-     * @param Events\Base $eventBase
+     * @param Base $eventBase
      *
      * @access friendly
      * @return void
      **/
-    function __construct (Events\Base $eventBase)
+    function __construct (Base $eventBase)
     {
       $this->socketFactory = new Events\Socket\Factory\Limited (
         new Events\Socket\Factory ($eventBase)
@@ -87,9 +93,9 @@
      * Retrieve the instance of the current event-base
      *
      * @access public
-     * @return Events\Base|null
+     * @return Base|null
      **/
-    public function getEventBase (): ?Events\Base
+    public function getEventBase (): ?Base
     {
       return $this->socketFactory->getEventBase ();
     }
@@ -99,12 +105,12 @@
     /**
      * Change assigned event-base
      *
-     * @param Events\Base $eventBase
+     * @param Base $eventBase
      *
      * @access public
      * @return void
      **/
-    public function setEventBase (Events\Base $eventBase): void
+    public function setEventBase (Base $eventBase): void
     {
       $this->socketFactory->setEventBase ($eventBase);
     }
@@ -115,9 +121,9 @@
      * Retrieve the socket-factory for this client
      *
      * @access public
-     * @return Events\ABI\Socket\Factory
+     * @return ABI\Socket\Factory
      **/
-    public function getSocketFactory (): Events\ABI\Socket\Factory
+    public function getSocketFactory (): ABI\Socket\Factory
     {
       return $this->socketFactory;
     }
@@ -127,12 +133,12 @@
     /**
      * Change the socket-factory for this HTTP-Client
      *
-     * @param Events\ABI\Socket\Factory $socketFactory
+     * @param ABI\Socket\Factory $socketFactory
      *
      * @access public
      * @return void
      **/
-    public function setSocketFactory (Events\ABI\Socket\Factory $socketFactory): void
+    public function setSocketFactory (ABI\Socket\Factory $socketFactory): void
     {
       $this->socketFactory = $socketFactory;
     }
@@ -327,7 +333,7 @@
      * @param string $URL The requested URL
      * @param string|null $Method (optional) Method to use on the request
      * @param array $Headers (optional) List of additional HTTP-Headers
-     * @param string $Body (optional) Additional body for the request
+     * @param string $requestBody (optional) Additional body for the request
      * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
      *
      * @access public
@@ -381,14 +387,14 @@
     /**
      * Enqueue a request on a socket-session
      *
-     * @param Events\ABI\Socket\Factory $factorySession
+     * @param ABI\Socket\Factory $factorySession
      * @param Stream\HTTP\Request $httpRequest
      * @param bool $authenticationPreflight
      *
      * @access private
      * @return Promise
      **/
-    private function requestInternal (Events\ABI\Socket\Factory $factorySession, Stream\HTTP\Request $httpRequest, bool $authenticationPreflight): Promise
+    private function requestInternal (ABI\Socket\Factory $factorySession, Stream\HTTP\Request $httpRequest, bool $authenticationPreflight): Promise
     {
       // Validate the request
       if ($httpRequest->getHostname () === null)
@@ -450,7 +456,7 @@
         Events\Socket::TYPE_TCP,
         $httpRequest->useTLS ()
       )->then (
-        function (Events\ABI\Stream $httpConnection)
+        function (ABI\Stream $httpConnection)
         use ($httpRequest, $authenticationPreflight, $Username, $Password, $factorySession, $requestTimer, &$requestTimeout): Promise {
           // Check if we already reached a timeout
           if ($requestTimeout) {
@@ -468,18 +474,21 @@
             $httpRequest->addAuthenticationMethod ('Basic');
 
           // Pipe the socket to our request
-          $httpConnection->pipeStream ($httpRequest);
+          return $httpConnection->pipeStream ($httpRequest)->then (
+            fn (): Promise => $this->dispatch(
+              new HTTP\Event\Start ($this, $httpRequest)
+            )->then (
+              function () use ($requestTimer, $httpConnection, $httpRequest): Promise {
+                // Close the connection on timeout
+                $requestTimer?->then (
+                  fn (): Promise => $httpConnection->close ()
+                );
 
-          // Raise event
-          $this->___callback ('httpRequestStart', $httpRequest);
-
-          // Close the connection on timeout
-          $requestTimer?->then (
-            fn (): Promise => $httpConnection->close ()
+                // Watch events on the request
+                return $httpRequest->once ('httpRequestResult');
+              }
+            )
           );
-
-          // Watch events on the request
-          return $httpRequest->once ('httpRequestResult');
         }
       )->finally (
         function () use ($requestIndex): void {
@@ -487,7 +496,7 @@
           unset ($this->httpRequests [$requestIndex]);
         }
       )->then (
-        function (Stream\HTTP\Header $responseHeader = null, $Body = null)
+        function (Stream\HTTP\Header $responseHeader = null, $responseBody = null)
         use ($httpRequest, $authenticationPreflight, $Username, $Password, $Method, $originalCookies, $factorySession, $requestTimer, &$requestTimeout): Promise {
           // Restore cookies on request
           if ($originalCookies !== null) {
@@ -523,7 +532,7 @@
             throw new exception ('No header was received');
 
           // Retrieve the status of the response
-          $Status = $responseHeader->getStatus ();
+          $responseStatus = $responseHeader->getStatus ();
 
           // Check whether to process cookies
           if (
@@ -558,12 +567,27 @@
             );
           }
 
+          // Stop the request-timer (if any)
+          $requestTimer?->cancel ();
+
           // Check for redirects
+          $nextLocation = $responseHeader->getField ('Location');
+          $maxRedirects = $httpRequest->getMaxRedirects ();
+
           if (
-            ($nextLocation = $responseHeader->getField ('Location')) &&
-            (($Status >= 300) && ($Status < 400)) &&
-            (($maxRedirects = $httpRequest->getMaxRedirects ()) > 0) &&
-            is_array ($nextURI = parse_url ($nextLocation))
+            $nextLocation &&
+            ($maxRedirects > 0)
+          )
+            $nextURI = parse_url ($nextLocation);
+          else
+            $nextURI = null;
+
+          if (
+            $nextLocation &&
+            ($responseStatus >= 300) &&
+            ($responseStatus < 400) &&
+            ($maxRedirects > 0) &&
+            is_array ($nextURI)
           ) {
             // Make sure the URL is fully qualified
             if ($rebuildLocation = !isset ($nextURI ['scheme']))
@@ -610,39 +634,38 @@
             if ($rebuildLocation)
               $nextLocation = $nextURI ['scheme'] . '://' . $nextURI ['host'] . (isset ($nextURI ['port']) ? ':' . $nextURI ['port'] : '') . ($nextURI ['path'] ?? '/') . (isset ($nextURI ['query']) ? '?' . $nextURI ['query'] : '');
 
-            // Fire a callback first
-            $this->___callback ('httpRequestRedirect', $httpRequest, $nextLocation, $responseHeader, $Body);
+            // Dispatch an event first
+            return $this->dispatch (
+              new HTTP\Event\Redirect ($this, $httpRequest, $nextLocation, $responseHeader, $responseBody)
+            )->then (
+              function () use ($httpRequest, $responseStatus, $nextLocation, $maxRedirects, $cookiePromise): Promise {
+                // Set the new location as destination
+                $httpRequest->setURL ($nextLocation);
 
-            // Set the new location as destination
-            $httpRequest->setURL ($nextLocation);
+                // Lower the number of max requests
+                $httpRequest->setMaxRedirects ($maxRedirects - 1);
 
-            // Lower the number of max requests
-            $httpRequest->setMaxRedirects ($maxRedirects - 1);
+                // Convert to GET-Request
+                if ($responseStatus < 307) {
+                  $httpRequest->setMethod ('GET');
+                  $httpRequest->setBody ();
+                }
 
-            if ($Status < 307) {
-              $httpRequest->setMethod ('GET');
-              $httpRequest->setBody ();
-            }
-
-            // Re-Enqueue the request
-            return $cookiePromise->then (
-              function () use ($factorySession, $httpRequest, $requestTimer): Promise {
-                $requestTimer?->cancel ();
-
-                return $this->requestInternal ($factorySession, $httpRequest, true);
+                return $cookiePromise;
               }
+            // Re-Enqueue the request
+            )->then (
+              fn (): Promise => $this->requestInternal ($factorySession, $httpRequest, true)
             );
           }
 
-          $requestTimer?->cancel ();
-
-          // Fire the callbacks
-          $this->___callback ('httpRequestResult', $httpRequest, $responseHeader, $Body);
-
-          return $cookiePromise->then (
-            function () use ($Body, $responseHeader, $httpRequest): Promise\Solution {
-              return new Promise\Solution ([ $Body, $responseHeader, $httpRequest ]);
-            }
+          // Dispatch a result-event
+          return $this->dispatch (
+            new HTTP\Event\Result ($this, $httpRequest, $responseHeader, $responseBody)
+          )->finally (
+            fn () => $cookiePromise
+          )->then (
+            fn (): Promise\Solution => new Promise\Solution ([ $responseBody, $responseHeader, $httpRequest ])
           );
         }
       )->then (
@@ -661,7 +684,7 @@
      * @param string $URL The requested URL
      * @param string|null $Method (optional) Method to use on the request
      * @param array|null $Headers (optional) List of additional HTTP-Headers
-     * @param string|null $Body (optional) Additional body for the request
+     * @param string|null $requestBody (optional) Additional body for the request
      * @param callable|null $Callback (optional) A callback to raise once the request was finished
      * @param mixed $Private (optional) Private data to pass to the callback
      *
@@ -670,7 +693,7 @@
      * @access public
      * @return Stream\HTTP\Request
      **/
-    public function addNewRequest (string $URL, string $Method = null, array $Headers = null, string $Body = null, callable $Callback = null, mixed $Private = null): Stream\HTTP\Request
+    public function addNewRequest (string $URL, string $Method = null, array $Headers = null, string $requestBody = null, callable $Callback = null, mixed $Private = null): Stream\HTTP\Request
     {
       // Make sure we have a request-object
       $Request = new Stream\HTTP\Request ($URL);
@@ -683,8 +706,8 @@
         foreach ($Headers as $Key=>$Value)
           $Request->setField ($Key, $Value);
 
-      if ($Body !== null)
-        $Request->setBody ($Body);
+      if ($requestBody !== null)
+        $Request->setBody ($requestBody);
 
       return $this->addRequest ($Request, $Callback, $Private);
     }
@@ -1124,54 +1147,6 @@
       }
 
       return $initialCookies;
-    }
-    // }}}
-
-
-    // {{{ httpRequestStart
-    /**
-     * Callback: HTTP-Request is stated
-     *
-     * @param Stream\HTTP\Request $Request The original HTTP-Request-Object
-     *
-     * @access protected
-     * @return void
-     **/
-    protected function httpRequestStart (Stream\HTTP\Request $Request): void { }
-    // }}}
-
-    // {{{ httpRequestRedirect
-    /**
-     * Callback: A HTTP-Request is being redirected
-     *
-     * @param Stream\HTTP\Request $Request The original HTTP-Request-Object
-     * @param string $Location The new location that is being redirected to
-     * @param Stream\HTTP\Header $Header Response-Headers
-     * @param string|null $Body (optional) Contents Response-Body
-     *
-     * @access protected
-     * @return void
-     **/
-    protected function httpRequestRedirect (Stream\HTTP\Request $Request, string $Location, Stream\HTTP\Header $Header, string $Body = null): void
-    {
-      // No-Op
-    }
-    // }}}
-
-    // {{{ httpRequestResult
-    /**
-     * Callback: HTTP-Request is finished
-     *
-     * @param Stream\HTTP\Request $Request The original HTTP-Request-Object
-     * @param Stream\HTTP\Header|null $Header (optional) Contains Response-Headers, if a response was received. NULL on network-error
-     * @param string|null $Body (optional) Contents Response-Body, if a response was received. NULL on network-error
-     *
-     * @access protected
-     * @return void
-     **/
-    protected function httpRequestResult (Stream\HTTP\Request $Request, Stream\HTTP\Header $Header = null, string $Body = null): void
-    {
-      // No-Op
     }
     // }}}
   }
