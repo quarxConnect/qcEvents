@@ -153,6 +153,7 @@
             
             try {
               $this->remoteHeader = new $remoteHeaderClass ($this->bufferHeader);
+              $this->remoteHeader->previousRequest = $this;
             } catch (\Throwable $headerError) {
               $this->___callback ('httpFailed', null, null);
               

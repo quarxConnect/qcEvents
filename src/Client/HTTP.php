@@ -33,6 +33,9 @@
   use quarxConnect\Events\Feature;
   use quarxConnect\Events\Promise;
   use quarxConnect\Events\Stream;
+  use quarxConnect\Events\Stream\HTTP\Cookie;
+  use quarxConnect\Events\Stream\HTTP\Header as HttpHeader;
+  use quarxConnect\Events\Stream\HTTP\Request as HttpRequest;
 
   class HTTP extends Emitter implements ABI\Hookable
   {
@@ -219,9 +222,10 @@
       if ($this->sessionCookies === null)
         throw new RuntimeException ('Session-Cookies were not enabled');
 
-      # TODO: Sanitize cookies
-
-      $this->sessionCookies = $sessionCookies;
+      $this->sessionCookies = array_filter (
+        $sessionCookies,
+        fn ($cookieValue) => $cookieValue instanceof Cookie
+      );
 
       if ($this->sessionPath)
         $this->saveSessionCookies ();
@@ -413,19 +417,14 @@
       $sessionCookies = $this->getSessionCookiesForRequest ($httpRequest);
 
       if ($sessionCookies) {
-        $originalCookies = $httpRequest->getField ('Cookie', true);
-        $requestCookies = $originalCookies;
-
-        $httpRequest->unsetField ('Cookie');
-
-        if (count ($requestCookies) < 1)
-          $requestCookies [] = '';
-
-        foreach ($sessionCookies as $Cookie)
-          $requestCookies [0] .= (strlen ($requestCookies [0]) > 0 ? ';' : '') . urlencode ($Cookie ['name']) . '=' . (!isset ($Cookie ['encode']) || $Cookie ['encode'] ? urlencode ($Cookie ['value']) : $Cookie ['value']);
-
-        foreach ($requestCookies as $Cookie)
-          $httpRequest->setField ('Cookie', $Cookie, false);
+        $originalCookies = $httpRequest->getCookies ();
+      
+        $httpRequest->setCookies (
+          array_merge (
+            $originalCookies,
+            $sessionCookies
+          )
+        );
       } else
         $originalCookies = null;
 
@@ -501,12 +500,8 @@
         function (Stream\HTTP\Header $responseHeader = null, $responseBody = null)
         use ($httpRequest, $authenticationPreflight, $Username, $Password, $Method, $originalCookies, $factorySession, $requestTimer, &$requestTimeout): Promise {
           // Restore cookies on request
-          if ($originalCookies !== null) {
-            $httpRequest->unsetField ('Cookie');
-
-            foreach ($originalCookies as $Cookie)
-              $httpRequest->setField ('Cookie', $Cookie, false);
-          }
+          if ($originalCookies !== null)
+            $httpRequest->setCookies ($originalCookies);
 
           // Retrieve the current socket for the request
           if ($httpConnection = $httpRequest->getPipeSource ()) {
@@ -539,7 +534,7 @@
           // Check whether to process cookies
           if (
             ($this->sessionCookies !== null) &&
-            $responseHeader->hasField ('Set-Cookie')
+            $responseHeader->hasCookies ()
           )
             $cookiePromise = $this->updateSessionCookies ($httpRequest, $responseHeader)->catch (function () { });
           else
@@ -862,75 +857,65 @@
     /**
      * Retrieve session-cookies for a given request
      *
-     * @param Stream\HTTP\Request $Request
+     * @param Stream\HTTP\Request $forRequest
      *
      * @access private
      * @return array
      **/
-    private function getSessionCookiesForRequest (Stream\HTTP\Request $Request): array {
+    private function getSessionCookiesForRequest (Stream\HTTP\Request $forRequest): array
+    {
       // Check if we use/have session-cookies
       if ($this->sessionCookies === null)
         return [];
 
       // Prepare search-attributes
-      $targetHostname = $Request->getHostname ();
+      $targetHostname = $forRequest->getHostname ();
 
       if ($targetHostname === null)
         return [];
 
-      $Time = time ();
-      $Path = $Request->getURI ();
-      $Secure = $Request->useTLS ();
+      $requestPath = $forRequest->getURI ();
+      $isSecureRequest = $forRequest->useTLS ();
 
-      if (!str_ends_with ($Path, '/')) {
-        $Path = dirname ($Path);
+      if (!str_ends_with ($requestPath, '/')) {
+        $requestPath = dirname ($requestPath);
 
-        if (strlen ($Path) > 1)
-          $Path .= '/';
+        if (strlen ($requestPath) > 1)
+          $requestPath .= '/';
       }
 
       // Search matching cookies
-      $Cookies = [];
+      $requestCookies = [];
 
-      foreach ($this->sessionCookies as $Index=>$Cookie) {
+      foreach ($this->sessionCookies as $cookieIndex=>$sessionCookie) {
         // Check expire-time
-        if (
-          ($Cookie ['expires'] !== null) &&
-          ($Cookie ['expires'] < $Time)
-        ) {
-          unset ($this->sessionCookies [$Index]);
+        if ($sessionCookie->isExpired ()) {
+          unset ($this->sessionCookies [$cookieIndex]);
+
           continue;
         }
 
         // Compare domain
-        if (
-          (
-            !$Cookie ['origin'] &&
-            (strcasecmp (substr ($targetHostname, -strlen ($Cookie ['domain']), strlen ($Cookie ['domain'])), $Cookie ['domain']) != 0)
-          ) || (
-            $Cookie ['origin'] &&
-            (strcasecmp ($Cookie ['domain'], $targetHostname) != 0)
-          )
-        )
+        if (!$sessionCookie->matchDomain ($targetHostname))
           continue;
 
         // Compare path
-        if (strncmp ($Cookie ['path'], $Path, strlen ($Cookie ['path'])) != 0)
+        if (!$sessionCookie->matchPath ($requestPath))
           continue;
 
         // Check secure-attribute
-        if ($Cookie ['secure'] && !$Secure)
+        if ($sessionCookie->cookieSecure && !$isSecureRequest)
           continue;
 
         // Push to cookies
-        if (isset ($Cookies ['name']))
+        if (isset ($requestCookies [$sessionCookie->cookieName]))
           # TODO
           trigger_error ('Duplicate cookie, please fix');
 
-        $Cookies [$Cookie ['name']] = $Cookie;
+        $requestCookies [$sessionCookie->cookieName] = $sessionCookie;
       }
 
-      return $Cookies;
+      return $requestCookies;
     }
     // }}}
 
@@ -938,144 +923,70 @@
     /**
      * Inject cookies from a request-result into our session
      *
-     * @param Stream\HTTP\Request $Request
-     * @param Stream\HTTP\Header $Header
+     * @param HttpRequest $httpRequest
+     * @param HttpHeader $httpHeader
      *
      * @access private
      * @return Promise
      **/
-    private function updateSessionCookies (Stream\HTTP\Request $Request, Stream\HTTP\Header $Header): Promise {
+    private function updateSessionCookies (HttpRequest $httpRequest, HttpHeader $httpHeader): Promise
+    {
       // Make sure we store session-cookies at all
       if ($this->sessionCookies === null)
         return Promise::resolve ();
 
-      // Prepare the origin
-      $Origin = $Request->getHostname ();
-      $OriginA = array_reverse (explode ('.', $Origin));
-      $OriginL = count ($OriginA);
-
-      $Path = $Request->getURI ();
-
-      if (!str_ends_with ($Path, '/')) {
-        $Path = dirname ($Path);
-
-        if (strlen ($Path) > 1)
-          $Path .= '/';
-      }
-
       // Process all newly set cookies
       $cookiesChanged = false;
-      $responseCookies = [];
+      $responseCookies = $httpHeader->getCookies ();
+      $addedCookies = [];
+      $updatedCookies = [];
+      $removedCookies = [];
 
-      foreach ($Header->getField ('Set-Cookie', true) as $setCookie) {
-        // Prepare cookie
-        $Cookie = [
-          'name' => null,
-          'value' => null,
-          'expires' => null,
-          'domain' => $Origin,
-          'origin' => true,
-          'path' => $Path,
-          'secure' => null,
-        ];
+      $this->sessionCookies = $this->mergeSessionCookies (
+        $this->sessionCookies,
+        $responseCookies,
+        $cookiesChanged,
+        $addedCookies,
+        $updatedCookies,
+        $removedCookies
+      );
 
-        // Parse the cookie
-        foreach (explode (';', $setCookie) as $i=>$cookieValue) {
-          // Get name and value of current pair
-          if (($p = strpos ($cookieValue, '=')) === false) {
-            if ($i == 0)
-              continue (2);
-
-            $Name = trim ($cookieValue);
-            $cookieValue = true;
-          } else {
-            $Name = ltrim (substr ($cookieValue, 0, $p));
-            $cookieValue = substr ($cookieValue, $p + 1);
-
-            if (
-              (strlen ($cookieValue) > 0) &&
-              ($cookieValue [0] == '"')
-            )
-              $cookieValue = substr ($cookieValue, 1, -1);
-          }
-
-          // First pair is name and value of the cookie itself
-          if ($i == 0) {
-            $decodedValue = urldecode ($cookieValue);
-
-            $Cookie ['name'] = $Name;
-            $Cookie ['encode'] = (urlencode ($decodedValue) === $cookieValue);
-            $Cookie ['value'] = ($Cookie ['encode'] ? $decodedValue : $cookieValue);
-
-            continue;
-          }
-
-          // We treat all attributes in lower-case
-          $Name = strtolower ($Name);
-
-          // Sanitize attributes
-          if ($Name == 'max-age') {
-            // Make sure the age is valid
-            if ((strval ((int)$cookieValue) != $cookieValue) || ((int)$cookieValue == 0))
-              continue;
-
-            // Rewrite to expires-cookie
-            $Name = 'expires';
-            $cookieValue = time () + (int)$cookieValue;
-          } elseif ($Name == 'domain') {
-            // Trim leading empty label if necessary
-            if (str_starts_with ($cookieValue, '.'))
-              $cookieValue = substr ($cookieValue, 1);
-
-            // Make sure the value is on scope of origin
-            $Domain = array_reverse (explode ('.', $cookieValue));
-            $Length = count ($Domain);
-
-            if (($Length > $OriginL) || ($Length < 2))
-              continue;
-
-            for ($i = 0; $i < $Length; $i++)
-              if (strcasecmp ($Domain [$i], $OriginA [$i]) != 0)
-                continue (2);
-
-            // Allow domain-matching on the cookie
-            $Cookie ['origin'] = false;
-          } elseif ($Name == 'expires') {
-            // Make sure the value is a valid timestamp
-            if (($cookieValue = strtotime ($cookieValue)) === false)
-              continue;
-          } elseif ($Name == 'secure') {
-            // Make sure the value is a boolean
-            if (!is_bool ($cookieValue))
-              continue;
-          } elseif ($Name == 'path') {
-            // BUGFIX: 1und1.de has urlencoded paths
-            $cookieValue = urldecode ($cookieValue);
-
-            if (!str_ends_with ($cookieValue, '/'))
-              $cookieValue .= '/';
-          } else
-            continue;
-
-          $Cookie [$Name] = $cookieValue;
-        }
-
-        $responseCookies [] = $Cookie;
-      }
-
-      $this->sessionCookies = $this->mergeSessionCookies ($this->sessionCookies, $responseCookies, $cookiesChanged);
+      $dispatchPromise = Promise::all (
+        array_merge (
+          array_map (
+            fn (Cookie $responseCookie): Promise => $this->dispatch (
+              new HTTP\Event\Cookie\Added ($this, $httpRequest, $httpHeader, $responseCookie)
+            ),
+            $addedCookies
+          ),
+          array_map (
+            fn (Cookie $responseCookie): Promise => $this->dispatch (
+              new HTTP\Event\Cookie\Updated ($this, $httpRequest, $httpHeader, $responseCookie)
+            ),
+            $updatedCookies
+          ),
+          array_map (
+            fn (Cookie $responseCookie): Promise => $this->dispatch (
+              new HTTP\Event\Cookie\Removed ($this, $httpRequest, $httpHeader, $responseCookie)
+            ),
+            $removedCookies
+          ),
+        )
+      );
 
       // Check whether to store changes
       if (
         !$this->sessionPath ||
         !$cookiesChanged
       )
-        return Promise::resolve ();
+        return $dispatchPromise;
 
-      return Events\File::writeFileContents (
-        $this->getEventBase (),
-        $this->sessionPath . '.tmp',
-        serialize ($this->sessionCookies)
+      return $dispatchPromise->then (
+        fn () => Events\File::writeFileContents (
+          $this->getEventBase (),
+          $this->sessionPath . '.tmp',
+          serialize ($this->sessionCookies)
+        )
       )->then (
         function (): void {
           if (rename ($this->sessionPath . '.tmp', $this->sessionPath))
@@ -1099,46 +1010,41 @@
     /**
      * Merge two sets of session-cookies
      *
-     * @param array $initialCookies
-     * @param array $newCookies
-     * @param bool $cookiesChanged
+     * @param Cookie[] $initialCookies
+     * @param Cookie[] $newCookies
+     * @param bool $cookiesChanged (optional)
+     * @param array|null $addedCookies (optional)
+     * @param array|null $updatedCookies (optional)
+     * @param array|null $removedCookies (optional)
      *
      * @access private
      * @return array
      **/
-    private function mergeSessionCookies (array $initialCookies, array $newCookies, bool &$cookiesChanged = null): array {
+    private function mergeSessionCookies (array $initialCookies, array $newCookies, bool &$cookiesChanged = false, array &$addedCookies = null, array &$updatedCookies = null, array &$removedCookies = null): array {
       $cookiesChanged = false;
+
+      $addedCookies = [];
+      $updatedCookies = [];
+      $removedCookies = [];
 
       foreach ($newCookies as $newCookie) {
         // Inject into our collection
         foreach ($initialCookies as $cookieIndex=>$initialCookie) {
-          // Compare the name
-          if (strcmp ($initialCookie ['name'], $newCookie ['name']) != 0)
+          // Compare the cookies
+          if (!$newCookie->compareId ($initialCookie))
             continue;
 
-          // Compare the path
-          if (strcmp ($initialCookie ['path'], $newCookie ['path']) != 0)
-            continue;
-
-          // Compare domain
-          if (
-            (strcasecmp ($initialCookie ['domain'], $newCookie ['domain']) != 0) ||
-            ($initialCookie ['origin'] != $newCookie ['origin'])
-          )
-            continue;
-
-          // Replace the cookie
-          if (
-            ($initialCookie ['value'] != $newCookie ['value']) ||
-            ($initialCookie ['secure'] != $newCookie ['secure']) ||
-            ($initialCookie ['expires'] != $newCookie ['expires'])
-          )
+          // Update the cookie
+          if ($newCookie->isDeleted ()) {
             $cookiesChanged = true;
+            $removedCookies [] = $initialCookie;
 
-          if ($newCookie ['value'] !== 'deleted')
-            $initialCookies [$cookieIndex] = $newCookie;
-          else
             unset ($initialCookies [$cookieIndex]);
+          } elseif (!$newCookie->compareValue ($initialCookie)) {
+            $cookiesChanged = true;
+            $initialCookies [$cookieIndex] = $newCookie;
+            $updatedCookies [] = $newCookie;
+          }
 
           continue (2);
         }
@@ -1146,6 +1052,7 @@
         // Push as new cookie to session
         $cookiesChanged = true;
         $initialCookies [] = $newCookie;
+        $addedCookies [] = $newCookie;
       }
 
       return $initialCookies;

@@ -109,6 +109,13 @@
      **/
     private array $headerValues = [];
 
+    /**
+     * Instance of the previous request
+     *
+     * @var Header|null
+     **/
+    protected Header|null $previousRequest = null;
+
     // {{{ __construct
     /**
      * Create a new generic HTTP-Header
@@ -532,7 +539,211 @@
       $this->responseMessage = $responseMessage;
     }
     // }}}
-    
+
+    // {{{ hasCookies
+    /**
+     * Check if there are cookies present on this header
+     *
+     * @access public
+     * @return bool
+     */
+    public function hasCookies (): bool
+    {
+      return (
+        ($this->isRequest () && $this->hasField ('Cookie')) ||
+        ($this->isResponse () && $this->hasField ('Set-Cookie'))
+      );
+    }
+    // }}}
+
+    // {{{ getCookies
+    /**
+     * Retrieve all cookies from this header
+     *
+     * @return Cookie[]
+     **/
+    public function getCookies (): array
+    {
+      if ($this->isRequest ())
+        return $this->getCookiesFromRequest ();
+
+      return $this->getCookiesFromResponse ();
+    }
+    // }}}
+
+    // {{{ getCookiesFromRequest
+    /**
+     * Extract cookies from a request-header
+     *
+     * @return Cookie[]
+     **/
+    private function getCookiesFromRequest (): array
+    {
+      return [];
+    }
+    // }}}
+
+    // {{{ getCookiesFromResponse
+    /**
+     * Extract cookies from a response-header
+     *
+     * @return Cookie[]
+     **/
+    private function getCookiesFromResponse (): array
+    {
+      $responseCookies = [];
+
+      $requestOrigin = $this->previousRequest?->getHostname () ?? '';
+      $requestOriginArray = array_reverse (explode ('.', $requestOrigin));
+      $requestOriginLength = count ($requestOriginArray);
+      $requestPath = $this->previousRequest->getURI () ?? '/';
+
+      if (!str_ends_with ($requestPath, '/')) {
+        $requestPath = dirname ($requestPath);
+
+        if (strlen ($requestPath) > 1)
+          $requestPath .= '/';
+      }
+
+      foreach ($this->getField ('Set-Cookie', true) as $cookieHeader) {
+        // Parse the cookie
+        foreach (explode (';', $cookieHeader) as $i=>$cookieValue) {
+          // Get name and value of current pair
+          $valueDelimiter = strpos ($cookieValue, '=');
+
+          if ($valueDelimiter === false) {
+            if ($i == 0)
+              continue (2);
+
+            $cookieName = trim ($cookieValue);
+            $cookieValue = true;
+          } else {
+            $cookieName = ltrim (substr ($cookieValue, 0, $valueDelimiter));
+            $cookieValue = substr ($cookieValue, $valueDelimiter + 1);
+
+            if (
+              (strlen ($cookieValue) > 0) &&
+              ($cookieValue [0] == '"')
+            )
+              $cookieValue = substr ($cookieValue, 1, -1);
+          }
+
+          // First pair is name and value of the cookie itself
+          if ($i == 0) {
+            $decodedValue = urldecode ($cookieValue);
+
+            $responseCookie = new Cookie ($cookieName);
+            $responseCookie->cookieEncodeValue = (urlencode ($decodedValue) === $cookieValue);
+            $responseCookie->cookieValue = ($responseCookie->cookieEncodeValue ? $decodedValue : $cookieValue);
+            $responseCookie->cookieDomain = $requestOrigin;
+            $responseCookie->cookieOrigin = true;
+            $responseCookie->cookiePath = $requestPath;
+
+            continue;
+          }
+
+          // We treat all attributes in lower-case
+          $cookieName = strtolower ($cookieName);
+
+          // Sanitize attributes
+          switch (strtolower ($cookieName)) {
+            case 'max-age':
+              // Make sure the age is valid
+              if (
+                (strval ((int)$cookieValue) != $cookieValue) ||
+                ((int)$cookieValue == 0)
+              )
+                break;
+
+              $responseCookie->cookieExpires = time () + (int)$cookieValue;
+
+              break;
+            case 'domain':
+              // Trim leading empty label if necessary
+              if (str_starts_with ($cookieValue, '.'))
+                $cookieValue = substr ($cookieValue, 1);
+
+              // Make sure the value is on scope of origin
+              $cookieDomain = array_reverse (explode ('.', $cookieValue));
+              $domainLength = count ($cookieDomain);
+
+              if (
+                ($domainLength > $requestOriginLength) ||
+                ($domainLength < 2)
+              )
+                break;
+
+              $responseCookie->cookieDomain = $cookieValue;
+
+              for ($i = 0; $i < $domainLength; $i++)
+                if (strcasecmp ($cookieDomain [$i], $requestOriginArray [$i]) != 0)
+                  break (2);
+
+              // Allow domain-matching on the cookie
+              $responseCookie->cookieOrigin = false;
+
+              break;
+            case 'expires':
+              // Make sure the value is a valid timestamp
+              $cookieValue = strtotime ($cookieValue);
+
+              if ($cookieValue === false)
+                break;
+
+              $responseCookie->cookieExpires = $cookieValue;
+
+              break;
+            case 'secure':
+              // Make sure the value is a boolean
+              if (!is_bool ($cookieValue))
+                break;
+
+              $responseCookie->cookieSecure = $cookieValue;
+
+              break;
+            case 'path':
+              // BUGFIX: 1und1.de has urlencoded paths
+              $cookieValue = urldecode ($cookieValue);
+
+              if (!str_ends_with ($cookieValue, '/'))
+                $cookieValue .= '/';
+
+              $responseCookie->cookiePath = $cookieValue;
+          }
+        }
+
+        $responseCookies [] = $responseCookie;
+      }
+
+      return $responseCookies;
+    }
+    // }}}
+
+    // {{{ setCookies
+    /**
+     * Set cookies on this header
+     *
+     * @param Cookie[] $theCookies
+     *
+     * @return void
+     **/
+    public function setCookies (array $theCookies): void
+    {
+      if ($this->isRequest ()) {
+        $this->setField (
+          'Cookie',
+          implode (
+            '; ',
+            array_map (
+              fn (Cookie $theCookie) => urlencode ($theCookie->cookieName) . '=' . ($theCookie->cookieEncodeValue ? urlencode ($theCookie->cookieValue) : $theCookie->cookieValue),
+              $theCookies
+            )
+          )
+        );
+      }
+    }
+    // }}}
+
     // {{{ hasField
     /**
      * Check if a field is present on this header
