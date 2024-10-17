@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - HTTP Client Implementation
-   * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2009-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2024 Bernd Holzmueller <bernd@innorize.gmbh>
    *+
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -23,6 +24,8 @@
   namespace quarxConnect\Events\Client;
 
   use Exception;
+  use RuntimeException;
+
   use quarxConnect\Events;
   use quarxConnect\Events\ABI;
   use quarxConnect\Events\Base;
@@ -30,7 +33,6 @@
   use quarxConnect\Events\Feature;
   use quarxConnect\Events\Promise;
   use quarxConnect\Events\Stream;
-  use RuntimeException;
 
   class HTTP extends Emitter implements ABI\Hookable
   {
