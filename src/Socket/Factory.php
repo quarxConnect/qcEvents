@@ -30,6 +30,7 @@
   use quarxConnect\Events\Feature;
   use quarxConnect\Events\Promise;
   use quarxConnect\Events\Socket;
+  use quarxConnect\Events\Socket\Exception\Disconnected;
   use quarxConnect\Events\Socket\Exception\InvalidPort;
   use quarxConnect\Events\Socket\Exception\InvalidType;
 
@@ -166,6 +167,10 @@
       )->then (
         function () use ($theSocket, $connectedEvent, $allowReuse, $socketIndex): Promise\Solution
         {
+          // Check if the socket is still connected
+          if (!$theSocket->isConnected ())
+            throw new Disconnected ();
+
           // Store the consumer if there is one
           if ($connectedEvent->theConsumer)
             $this->socketConsumers [$socketIndex] = $connectedEvent->theConsumer;
