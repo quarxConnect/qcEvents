@@ -246,9 +246,9 @@ EOF;
         if (count ($sigKeys) == 0) {
           foreach ($Records as $Record)
             if (strlen ($Record->getLabel ()) == 1) {
-              require_once ('X509/Certificate.php');
-              
-              $sigKeys [] = \x509_Certificate::fromPEM ($rootCertificate);
+              # require_once ('X509/Certificate.php');
+              #
+              # $sigKeys [] = \x509_Certificate::fromPEM ($rootCertificate);
               
               break;
             }
