@@ -25,6 +25,7 @@
   use ArrayIterator;
   use Error;
   use Exception;
+  use InvalidArgumentException;
   use Iterator;
   use IteratorAggregate;
   use Throwable;
@@ -498,44 +499,116 @@
 
     // {{{ walk
     /**
-     * NON-STANDARD: Walk an array with a callable
+     * NON-STANDARD: Walk an array or iterable with a callable that may return an async result (promise)
      *
-     * @param iterable $walkArray
-     * @param callable $itemCallback
-     * @param bool $justSettle (optional) Don't stop on rejections, but enqueue them as result
-     * @param Base|null $eventBase (optional)
+     * @param iterable $walkArray Iterable to iterate over
+     * @param callable $itemCallback Callable to invoke for each element on the iterable
+     * @param bool|Base $justSettle (optional, deprecated) Don't stop on rejections, but enqueue them as result (Instance of Event-Base accepted here in order to remove this parameter in future)
+     * @param Base|null $eventBase (optional) Instance of event-base to use for async operations
      *
      * @access public
-     * @return Promise
+     * @return Promise<array>
+     * @throws InvalidArgumentException
      **/
-    public static function walk (iterable $walkArray, callable $itemCallback, bool $justSettle = false, Base $eventBase = null): Promise
+    public static function walk (iterable $walkArray, callable $itemCallback, bool|Base $justSettle = false, Base $eventBase = null): Promise
+    {
+      // Support removal of `$justSettle` in future
+      if ($justSettle instanceof Base) {
+        if ($eventBase)
+          trigger_error ('$eventBase specified twice', E_USER_WARNING);
+
+        $eventBase = $justSettle;
+        $justSettle = false;
+      }
+
+      // Proceed to new-style-method
+      if ($justSettle) {
+        trigger_error ('walk() with $justSettle set will be replaced by walkSettled()', E_USER_DEPRECATED);
+
+        return self::walkSettled ($walkArray, $itemCallback, $eventBase)->then (
+          fn (array $settledResults): array => array_map (
+            fn (Promise\Status $settledResult) => $settledResult->status === Promise\Status::STATUS_FULFILLED ? $settledResult->value : $settledResult->reason,
+            $settledResults
+          )
+        );
+      }
+
+      return self::walkKernel (
+        $walkArray,
+        $itemCallback,
+        $eventBase,
+        fn () => (func_num_args () === 1 ? func_get_arg (0) : func_get_args ())
+      );
+    }
+    // }}}
+
+    // {{{ walk
+    /**
+     * NON-STANDARD: Walk an array or iterable with a callable that may return an async result (promise) and return Promise-Status for all elements
+     *
+     * @param iterable $walkArray Iterable to iterate over
+     * @param callable $itemCallback Callable to invoke for each element on the iterable
+     * @param Base|null $eventBase (optional) Instance of event-base to use for async operations
+     *
+     * @access public
+     * @return Promise<array<Promise\Status>>
+     * @throws InvalidArgumentException
+     **/
+    public static function walkSettled (iterable $walkArray, callable $itemCallback, Base $eventBase = null): Promise
+    {
+      return self::walkKernel (
+        $walkArray,
+        $itemCallback,
+        $eventBase,
+        function (): Promise\Status {
+          $argCount = func_num_args ();
+
+          if (
+            ($argCount === 1) &&
+            (func_get_arg (0) instanceof Promise\Status)
+          )
+            return func_get_arg (0);
+
+          return new Promise\Status (
+            Promise\Status::STATUS_FULFILLED,
+            ($argCount > 0 ? func_get_arg (0) : null),
+            func_get_args ()
+          );
+        },
+        fn (Throwable $walkRejection) => new Promise\Status (Promise\Status::STATUS_REJECTED, $walkRejection, func_get_args ())
+      );
+    }
+    // }}}
+
+    // {{{ walkKernel
+    /**
+     * Generic processor for `walk()` and `walkSettled()`
+     *
+     * @param iterable $walkArray Iterable to iterate over
+     * @param callable $itemCallback Callable to invoke for each element of the iterable
+     * @param Base|null $eventBase (optional) Instance of Event-Base to use for our promises
+     * @param callable|null $resultCallback (optional) Callable to filter successful results
+     * @param callable|null $catchCallback (optional) Callable to filter failed results
+     *
+     * @return Promise
+     * @throws InvalidArgumentException
+     **/
+    private static function walkKernel (iterable $walkArray, callable $itemCallback, Base $eventBase = null, callable $resultCallback = null, callable $catchCallback = null): Promise
     {
       // Make sure we have an iterator-instance
-      if (is_array ($walkArray))
-        $arrayIterator = new ArrayIterator ($walkArray);
-      elseif ($walkArray instanceof Iterator)
-        $arrayIterator = $walkArray;
-      elseif ($walkArray instanceof IteratorAggregate)
-        try {
-          $arrayIterator = $walkArray->getIterator ();
-        } catch (Throwable $iteratorException) {
-          return Promise::reject (new Error ('Failed to get Iterator from IteratorAggregate', 0, $iteratorException));
-        }
+      $arrayIterator = self::iterableToIterator ($walkArray);
+      $arrayIterator->rewind ();
 
       // Make sure we have an event-base
       if (!$eventBase)
         $eventBase = Base::singleton ();
 
-      // Move to start
-      /** @noinspection PhpUndefinedVariableInspection */
-      $arrayIterator->rewind ();
-
       return new Promise (
-        function (callable $resolveFunction, callable $rejectFunction) use ($arrayIterator, $itemCallback, $justSettle, $eventBase): void
+        function (callable $resolveFunction, callable $rejectFunction) use ($arrayIterator, $itemCallback, $eventBase, $resultCallback, $catchCallback): void
         {
           $walkResults = [];
           $walkItem = null;
-          $walkItem = function () use (&$walkResults, &$walkItem, $arrayIterator, $itemCallback, $justSettle, $eventBase, $resolveFunction, $rejectFunction): void {
+          $walkItem = function () use (&$walkResults, &$walkItem, $arrayIterator, $itemCallback, $eventBase, $resolveFunction, $rejectFunction, $resultCallback, $catchCallback): void {
             // Check whether to stop
             if (!$arrayIterator->valid ()) {
               $resolveFunction ($walkResults);
@@ -560,24 +633,31 @@
 
             // Process the result
             $itemResult->catch (
-              function () use ($justSettle, $rejectFunction): Promise\Solution {
-                // Process the rejection as a result if requested
-                if ($justSettle)
-                  return new Promise\Solution (func_get_args ());
+              function () use ($catchCallback, $rejectFunction) {
+                try {
+                  // Process the rejection as a result if requested
+                  if ($catchCallback)
+                    return call_user_func_array ($catchCallback, func_get_args ());
 
-                // Or forward the rejection to our initial promise
-                call_user_func_array ($rejectFunction, func_get_args ());
+                  // Or forward the rejection to our initial promise
+                  call_user_func_array ($rejectFunction, func_get_args ());
+                } catch (Throwable $catchException) {
+                  call_user_func ($rejectFunction, $catchException);
+                }
 
                 /**
                  * Throw an exception just to leave the processing-loop,
                  * this exception won't be ever seen on the public
-                 **/ 
+                 **/
                 throw new Exception ('Stopped by rejection');
               }
             )->then (
-              function () use ($itemKey, &$walkResults, &$walkItem): void {
+              function () use ($itemKey, &$walkResults, &$walkItem, $resultCallback): void {
                 // Push the result
-                $walkResults [$itemKey] = (func_num_args () === 1 ? func_get_arg (0) : func_get_args ());
+                if ($resultCallback)
+                  $walkResults [$itemKey] = call_user_func_array ($resultCallback, func_get_args ());
+                else
+                  $walkResults [$itemKey] = (func_num_args () === 1 ? func_get_arg (0) : func_get_args ());
 
                 // Process the next array-item
                 $walkItem ();
@@ -593,6 +673,34 @@
         },
         $eventBase
       );
+    }
+    // }}}
+
+    // {{{ iterableToIterator
+    /**
+     * Convert an iterable into an Iterator
+     *
+     * @param iterable $theIterable
+     *
+     * @return Iterator
+     * @throws InvalidArgumentException
+     **/
+    private static function iterableToIterator (iterable $theIterable): Iterator
+    {
+      if ($theIterable instanceof Iterator)
+        return $theIterable;
+
+      if (is_array ($theIterable))
+        return new ArrayIterator ($theIterable);
+
+      if ($theIterable instanceof IteratorAggregate)
+        try {
+          return $theIterable->getIterator ();
+        } catch (Throwable $iteratorException) {
+          throw new InvalidArgumentException ('Failed to get Iterator from IteratorAggregate', 0, $iteratorException);
+        }
+
+      throw new InvalidArgumentException ('Failed to convert iterable to Iterator');
     }
     // }}}
 
