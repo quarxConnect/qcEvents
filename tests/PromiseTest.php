@@ -363,7 +363,8 @@
       );
     }
     
-    public function testAllSettled () : void {
+    public function testAllSettled (): void
+    {
       $eventBase = Events\Base::singleton ();
       
       $settledPromises = Events\Synchronizer::do (
@@ -385,5 +386,73 @@
       
       $this->assertEquals (Events\Promise\Status::STATUS_REJECTED, $settledPromises [2]->status);
       $this->assertInstanceOf (Exception::class, $settledPromises [2]->reason);
+    }
+
+    public function testWalk (): void
+    {
+      $eventBase = Events\Base::singleton ();
+
+      $walkedResults = Events\Synchronizer::do (
+        $eventBase,
+        Events\Promise::walk (
+          [ 0, 1, 2, 4 ],
+          fn ($x) => $x * $x,
+          false,
+          $eventBase
+        )
+      );
+
+      $this->assertCount (4, $walkedResults);
+      $this->assertEquals ([ 0, 1, 4, 16 ], $walkedResults);
+
+      $this->expectException (Exception::class);
+      $this->expectExceptionMessage ('Unit-Test');
+
+      Events\Synchronizer::do (
+        $eventBase,
+        Events\Promise::walk (
+          [ 0, 1, 2, 4 ],
+          function ($x) {
+            if ($x === 0)
+              throw new Exception ('Unit-Test');
+
+            $this->assertFalse (true, 'Code was reached');
+          },
+          false,
+          $eventBase
+        )
+      );
+    }
+
+    public function testWalkSettled (): void
+    {
+      $eventBase = Events\Base::singleton ();
+
+      $walkedResults = Events\Synchronizer::do (
+        $eventBase,
+        Events\Promise::walkSettled (
+          [ 0, 1, 2, 4 ],
+          fn ($x) => $x * $x,
+          $eventBase
+        )
+      );
+
+      $this->assertCount (4, $walkedResults);
+
+      $walkedResults = Events\Synchronizer::do (
+        $eventBase,
+        Events\Promise::walkSettled (
+          [ 0, 1, 2, 4 ],
+          function ($x) {
+            if ($x === 0)
+              throw new Exception ('Unit-Test');
+
+            $this->assertFalse (true, 'Code was reached');
+          },
+          $eventBase
+        )
+      );
+
+      $this->assertCount (4, $walkedResults);
     }
   }
