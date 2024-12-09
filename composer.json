@@ -52,7 +52,7 @@
   },
   "extra": {
     "branch-alias": {
-      "dev-composer": "0.0.4-dev"
+      "dev-composer": "0.0.5-dev"
     }
   }
 }
