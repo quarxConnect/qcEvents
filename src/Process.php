@@ -85,6 +85,48 @@
      **/
     private bool|null $hasRead = false;
 
+    // {{{ readProcessOutput
+    /**
+     * Run a process and return it's output as a promise
+     *
+     * @param Base $eventBase
+     * @param string $commandName
+     * @param array|null $commandParams
+     *
+     * @return Promise<string, int>
+     **/
+    public static function readProcessOutput (Base $eventBase, string $commandName, array $commandParams = null): Promise
+    {
+      $readBuffer = '';
+      $processInstance = new Process ($eventBase);
+
+      /** @noinspection PhpUnhandledExceptionInspection */
+      $processInstance->addHook (
+        'eventReadable',
+        function (Process $processInstance) use (&$readBuffer): void
+        {
+          // Try to read from stream
+          $readData = $processInstance->read ();
+
+          if ($readData === false)
+            return;
+
+          // Push to our buffer
+          $readBuffer .= $readData;
+        }
+      );
+
+      return $processInstance->spawnCommand (
+        $commandName,
+        $commandParams
+      )->then (
+        function (int $exitCode) use (&$readBuffer): Promise\Solution {
+          return new Promise\Solution ([ $readBuffer, $exitCode ]);
+        }
+      );
+    }
+    // }}}
+
     // {{{ __construct
     /**
      * Create an Event-Handler and spawn a process
