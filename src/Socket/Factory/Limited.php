@@ -244,7 +244,7 @@
       $connectionIndex = null;
       
       foreach ($this->activeConnections as $activeIndex=>$activeConnection)
-        if ($activeConnection ['connection'] === $leasedConnection) {
+        if (($activeConnection ['connection'] ?? null) === $leasedConnection) {
           $connectionIndex = $activeIndex;
           
           break;
