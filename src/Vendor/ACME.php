@@ -220,14 +220,13 @@
     
     // {{{ getNonce
     /**
-     * Retrive a nonce for the next request
-     * 
-     * @access public
-     * @return Events\Promise<string>
+     * Retrieve a nonce for the next request
+     *
+     * @return Events\Promise{string}
      **/
     public function getNonce (): Events\Promise
     {
-      // Check wheter to use a cached nonce
+      // Check whether to use a cached nonce
       if ($this->replayNonce !== null) {
         $storedNonce = $this->replayNonce;
         $this->replayNonce = null;

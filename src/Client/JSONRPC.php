@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - Client for JSON-RPC
-   * Copyright (C) 2018-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -81,17 +82,13 @@
      * Issue a JSON-RPC-Request
      *
      * @param string $Method
-     * @param ...
+     * @param mixed ...$Args
      *
      * @access public
      * @return Events\Promise
      **/
-    public function request (string $Method): Events\Promise
+    public function request (string $Method, mixed ...$Args): Events\Promise
     {
-      // Process arguments
-      $Args = func_get_args ();
-      $Method = array_shift ($Args);
-
       // Prepare the request
       $Request = [
         'jsonrpc' => ($this->Version == self::VERSION_2000 ? '2.0' : '1.0'),

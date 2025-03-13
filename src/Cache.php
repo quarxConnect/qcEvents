@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - Key/Value Cache with TTL
-   * Copyright (C) 2015-2023 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2015-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -321,20 +322,20 @@
       );
     }
     // }}}
-    
+
     // {{{ prune
     /**
      * Remove all key-values from this cache
-     * 
-     * @access public
-     * @return void
+     *
+     * @return Promise
      **/
-    public function prune (): Promise {
+    public function prune (): Promise
+    {
       $allPromises = [];
 
       foreach (array_keys ($this->cachedValues) as $lookupKey)
         $allPromises [] = $this->unset ($lookupKey);
-      
+
       return Promise::all ($allPromises);
     }
     // }}}

@@ -1,38 +1,30 @@
 <?php
 
   /**
-   * quarxConnect Events - Asyncronous POP3 Client-Stream
-   * Copyright (C) 2015-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * quarxConnect Events - Asynchronous POP3 Client-Stream
+   * Copyright (C) 2015-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Stream\POP3;
+
   use quarxConnect\Events;
-  
-  /**
-   * POP3 Client (Stream)
-   * --------------------
-   * Stream-Handler for POP3-Client-Connections
-   * 
-   * @class Client
-   * @extends Events\Hookable
-   * @package quarxConnect\Events
-   * @revision 02
-   **/
+
   class Client extends Events\Hookable implements Events\ABI\Stream\Consumer {
     /* Defaults for POP3 */
     protected const DEFAULT_PORT = 110;
@@ -683,13 +675,13 @@
     // {{{ popSetState
     /**   
      * Change the POP3-Protocol-State
-     * 
-     * @param enum $State
-     * 
-     * @access private
+     *
+     * @param int $State
+     *
      * @return void
      **/
-    private function popSetState ($State) {
+    private function popSetState (int $State): void
+    {
       // Change the status
       $oState = $this->State;
       $this->State = $State;
@@ -701,14 +693,14 @@
     
     // {{{ initStreamConsumer
     /**
-     * Setup ourself to consume data from a stream
-     * 
-     * @param Events\ABI\Source $Source
-     * 
-     * @access public
+     * Setup ourselves to consume data from a stream
+     *
+     * @param Events\ABI\Stream $streamSource
+     *
      * @return Events\Promise
      **/
-    public function initStreamConsumer (Events\ABI\Stream $streamSource) : Events\Promise {
+    public function initStreamConsumer (Events\ABI\Stream $streamSource): Events\Promise
+    {
       // Check if this is really a new stream
       if ($this->Stream === $streamSource)
         return Events\Promise::resolve ();
@@ -922,14 +914,16 @@
     // {{{ popStateChanged
     /**
      * Callback: Our protocol-state was changed
-     * 
-     * @param enum $newState
-     * @param enum $oldState
-     * 
-     * @access protected
+     *
+     * @param int $newState
+     * @param int $oldState
+     *
      * @return void
      **/
-    protected function popStateChanged ($newState, $oldState) { }
+    protected function popStateChanged (int $newState, int $oldState): void
+    {
+
+    }
     // }}}
     
     // {{{ popConnecting
@@ -965,13 +959,15 @@
     // {{{ popCapabilities
     /**
      * Callback: Server-Capabilities were received/changed
-     * 
-     * @param array $Capabilties
-     * 
-     * @access protected
+     *
+     * @param array $Capabilities
+     *
      * @return void
      **/
-    protected function popCapabilities ($Capabilities) { }
+    protected function popCapabilities (array $Capabilities): void
+    {
+
+    }
     // }}}
     
     // {{{ popAuthenticated

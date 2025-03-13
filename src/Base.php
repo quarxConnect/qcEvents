@@ -784,18 +784,12 @@
      * Safely run a given callback
      *
      * @param callable $invokeCallback
-     * @param ...
+     * @param mixed ...$invokeParameters
      *
-     * @access private
      * @return void
      **/
-    private function invoke (callable $invokeCallback): void
+    private function invoke (callable $invokeCallback, mixed ...$invokeParameters): void
     {
-      // Prepare parameters
-      $invokeParameters = func_get_args ();
-      $invokeCallback = array_shift ($invokeParameters);
-
-      // Try to run
       try {
         call_user_func_array ($invokeCallback, $invokeParameters);
       } catch (Throwable $errorException) {

@@ -2,26 +2,28 @@
 
   /**
    * quarxConnect Events - Websocket-Stream
-   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2019-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Stream;
-  use \quarxConnect\Events;
+
+  use quarxConnect\Events;
   
   class Websocket extends Events\Hookable implements Events\ABI\Stream\Consumer {
     /* Known frame-opcodes */
@@ -78,7 +80,7 @@
     /**
      * Create a new Websocket-Stream
      * 
-     * @param enum $Type (optional)
+     * @param int $Type (optional)
      * @param array $Protocols (optional)
      * @param string $URI (optional)
      * @param string $Origin (optional)
@@ -551,15 +553,17 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param Events\ABI\Source $Source
+     * @param Events\ABI\Stream $Source
      * 
      * @access public
      * @return Events\Promise
      **/
     public function initStreamConsumer (Events\ABI\Stream $Source) : Events\Promise {
       // Check if we are server or a handshake isn't needed
-      if (($this->Type == $this::TYPE_SERVER) ||
-          ($this->URI === null)) {
+      if (
+        ($this->Type == $this::TYPE_SERVER) ||
+        ($this->URI === null)
+      ) {
         // Register the source
         $this->Stream = $Source;
         $this->Start = null;
@@ -570,7 +574,10 @@
         
         return Events\Promise::resolve ();
       }
-      
+
+      if (!($Source instanceof Events\Socket))
+        return Events\Promise::reject (new \InvalidArgumentException ('Only sockets are supported here'));
+
       // Create a new HTTP-Request for the Upgrade
       $Nonce = base64_encode (pack ('JJ', time (), self::$Nonce++));
       

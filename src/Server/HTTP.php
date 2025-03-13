@@ -2,18 +2,19 @@
 
   /**
    * quarxConnect Events - HTTP-Server Implementation
-   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
@@ -24,16 +25,6 @@
   use \quarxConnect\Events;
   use \quarxConnect\Events\Stream;
   
-  /**
-   * HTTP-Server
-   * -----------
-   * HTTP-Request Handler (server)
-   * 
-   * @class HTTP
-   * @extends Events\Stream\HTTP
-   * @package \quarxConnect\Events
-   * @revision 03
-   **/
   class HTTP extends Stream\HTTP {
     /* Maximum numbers of requests for this connection */
     private $maxRequestCount = 50;
@@ -247,8 +238,13 @@
       
       if ((int)$Request->getField ('Sec-WebSocket-Version') != 13)
         return Events\Promise::reject ('Invalud WebSocket-Version');
-      
-      // Preapre response-header
+
+      $Stream = $this->getPipeSource ();
+
+      if (!($Stream instanceof Events\ABI\Stream))
+        return Events\Promise::reject ('This can only be done on a Stream');
+
+      // Prepare response-header
       $Response = new Stream\HTTP\Header ([
         'HTTP/' . $Request->getVersion (true) . ' 101 Switch protocols',
         'Upgrade: websocket',
@@ -261,25 +257,22 @@
         $Request,
         $Response
       )->then (
-        function () {
-          // Retrive our source-stream
-          $Stream = $this->getPipeSource ();
-          
-          // Remove the stream as source from ourself
-          return $Stream->unpipe ($this)->catch (function () { })->then (
-            function () use ($Stream) {
-              // Create a new websocket
-              $Websocket = new Stream\Websocket (Stream\Websocket::TYPE_SERVER);
-              
-              // Pipe the stream to the new socket
-              return $Stream->pipeStream ($Websocket)->then (
-                function () use ($Websocket) {
-                  return $Websocket;
-                }
-              );
-            }
-          );
-        }
+        // Remove the stream as source from ourselves
+        fn (): Events\Promise => $Stream->unpipe ($this)->catch (
+          function () { }
+        )->then (
+          function () use ($Stream) {
+            // Create a new websocket
+            $Websocket = new Stream\Websocket (Stream\Websocket::TYPE_SERVER);
+
+            // Pipe the stream to the new socket
+            return $Stream->pipeStream ($Websocket)->then (
+              function () use ($Websocket) {
+                return $Websocket;
+              }
+            );
+          }
+        )
       );
     }
     // }}}
@@ -640,15 +633,15 @@
     
     // {{{ initStreamConsumer
     /**
-     * Setup ourself to consume data from a stream
-     * 
-     * @param Events\ABI\Source $Source
-     * 
-     * @access public
+     * Setup ourselves to consume data from a stream
+     *
+     * @param Events\ABI\Stream $Source
+     *
      * @return Events\Promise
      **/
-    public function initStreamConsumer (Events\ABI\Stream $Source) : Events\Promise {
-      // Setup our parent first
+    public function initStreamConsumer (Events\ABI\Stream $Source): Events\Promise
+    {
+      // Set up our parent first
       return parent::initStreamConsumer ($Source)->then (
         function () use ($Source) {
           // Setup keep-alive

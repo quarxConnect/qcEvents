@@ -2,26 +2,29 @@
 
   /**
    * quarxConnect Events - DNS Question
-   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Stream\DNS;
   
+  use InvalidArgumentException;
+
   class Question {
     /**
      * [QName] The Label that is asked for
@@ -42,14 +45,11 @@
     /**
      * Create a new DNS-Question
      * 
-     * @param string $Label (optional)
-     * @param enum $Type (optional)
-     * @param enum $Class (optional)
-     * 
-     * @access friendly
-     * @return void
+     * @param string|null $Label (optional)
+     * @param int|null $Type (optional)
+     * @param int|null $Class (optional)
      **/
-    function __construct ($Label = null, $Type = null, $Class = null) {
+    function __construct (string $Label = null, $Type = null, $Class = null) {
       if ($Label !== null)
         $this->setLabel ($Label);
       
@@ -106,12 +106,12 @@
     
     // {{{ getType
     /**
-     * Retrive the type of this question
-     * 
-     * @access public
-     * @return enum
+     * Retrieve the type of this question
+     *
+     * @return int
      **/
-    public function getType () {
+    public function getType (): int
+    {
       return $this->Type;
     }
     // }}}
@@ -120,26 +120,24 @@
     /**
      * Set the type of this question
      * 
-     * @param enum $Type
-     * 
-     * @access public
-     * @return bool
+     * @param int $Type
+     *
+     * @return void
      **/
-    public function setType ($Type) {
+    public function setType (int $Type): void
+    {
       $this->Type = $Type;
-      
-      return true;
     }
     // }}}
-    
+
     // {{{ getClass
     /**
-     * Retrive the class of this question
-     * 
-     * @access public
-     * @return enum
+     * Retrieve the class of this question
+     *
+     * @return int
      **/
-    public function getClass () {
+    public function getClass (): int
+    {
       return $this->Class;
     }
     // }}}
@@ -147,19 +145,21 @@
     // {{{ setClass
     /**
      * Set the class of this question
-     * 
-     * @param enum $Class
-     * 
-     * @access public
-     * @return bool
+     *
+     * @param int $Class
+     *
+     * @return void
+     * @throws InvalidArgumentException if the given class is invalid
      **/
-    public function setClass ($Class) {
-      if (($Class < 1) || ($Class > 4))
-        return false;
-      
+    public function setClass (int $Class): void
+    {
+      if (
+        ($Class < 1) ||
+        ($Class > 4)
+      )
+        throw new InvalidArgumentException ('Invalid class type');
+
       $this->Class = $Class;
-      
-      return true;
     }
     // }}}
     
@@ -173,7 +173,7 @@
      * 
      * @access public
      * @return void
-     * @throws LengthException
+     * @throws \LengthException
      **/
     public function parse ($dnsData, &$dataOffset, $dataLength = null) {
       // Get the length of input

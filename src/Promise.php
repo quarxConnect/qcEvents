@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - Promise
-   * Copyright (C) 2018-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -80,29 +81,28 @@
     /**
      * Create a resolved promise
      *
-     * @param ...
-     * @param Base $eventBase (optional)
+     * If the last parameter passed to this method is an Event-`Base`, this one is used to set up the `Promise`.
      *
-     * @access public
+     * @param mixed ...$fulfillParameters
+     *
      * @return Promise
      *
      * @noinspection PhpDocSignatureInspection
      **/
-    public static function resolve (): Promise
+    public static function resolve (...$fulfillParameters): Promise
     {
-      $resolveParameters = func_get_args ();
-      $parameterCount = count ($resolveParameters);
+      $parameterCount = count ($fulfillParameters);
 
       if (
         ($parameterCount > 0) &&
-        ($resolveParameters [$parameterCount - 1] instanceof Base)
+        ($fulfillParameters [$parameterCount - 1] instanceof Base)
       )
-        $eventBase = array_pop ($resolveParameters);
+        $eventBase = array_pop ($fulfillParameters);
       else
         $eventBase = null;
       
       return new Promise (
-        fn (callable $resolveFunction) => call_user_func_array ($resolveFunction, $resolveParameters),
+        fn (callable $resolveFunction) => call_user_func_array ($resolveFunction, $fulfillParameters),
         $eventBase
       );
     }
@@ -112,29 +112,28 @@
     /**
      * Create a rejected promise
      *
-     * @param ...
-     * @param Base $eventBase (optional)
+     * If the last parameter passed to this method is an Event-`Base`, this one is used to set up the `Promise`.
      *
-     * @access public
+     * @param mixed ...$rejectParameters
+     *
      * @return Promise
      *
      * @noinspection PhpDocSignatureInspection
      **/
-    public static function reject (): Promise
+    public static function reject (mixed ...$rejectParameters): Promise
     {
-      $rejectParameter = func_get_args ();
-      $parameterCount = count ($rejectParameter);
+      $parameterCount = count ($rejectParameters);
 
       if (
         ($parameterCount > 0) &&
-        ($rejectParameter [$parameterCount - 1] instanceof Base)
+        ($rejectParameters [$parameterCount - 1] instanceof Base)
       )
-        $eventBase = array_pop ($rejectParameter);
+        $eventBase = array_pop ($rejectParameters);
       else
         $eventBase = null;
 
       return new Promise (
-        fn (callable $resolveFunction, callable $rejectFunction) => call_user_func_array ($rejectFunction, $rejectParameter),
+        fn (callable $resolveFunction, callable $rejectFunction) => call_user_func_array ($rejectFunction, $rejectParameters),
         $eventBase
       );
     }
@@ -506,8 +505,7 @@
      * @param bool|Base $justSettle (optional, deprecated) Don't stop on rejections, but enqueue them as result (Instance of Event-Base accepted here in order to remove this parameter in future)
      * @param Base|null $eventBase (optional) Instance of event-base to use for async operations
      *
-     * @access public
-     * @return Promise<array>
+     * @return Promise{array}
      * @throws InvalidArgumentException
      **/
     public static function walk (iterable $walkArray, callable $itemCallback, bool|Base $justSettle = false, Base $eventBase = null): Promise
@@ -551,7 +549,7 @@
      * @param Base|null $eventBase (optional) Instance of event-base to use for async operations
      *
      * @access public
-     * @return Promise<array<Promise\Status>>
+     * @return Promise{array<Promise\Status>}
      * @throws InvalidArgumentException
      **/
     public static function walkSettled (iterable $walkArray, callable $itemCallback, Base $eventBase = null): Promise
@@ -853,14 +851,13 @@
     /**
      * Trigger a fulfillment of this promise
      *
-     * @param ...
+     * @param mixed ...$fulfillParameters
      *
-     * @access protected
      * @return void
      **/
-    protected function promiseFulfill (): void
+    protected function promiseFulfill (mixed ...$fulfillParameters): void
     {
-      $this->finish (self::STATUS_FULFILLED, func_get_args ());
+      $this->finish (self::STATUS_FULFILLED, $fulfillParameters);
     }
     // }}}
 
@@ -868,14 +865,13 @@
     /**
      * Trigger a rejection of this promise
      *
-     * @param ...
+     * @param mixed ...$rejectParameters
      *
-     * @access protected
      * @return void
      **/
-    protected function promiseReject (): void
+    protected function promiseReject (mixed ...$rejectParameters): void
     {
-      $this->finish (self::STATUS_REJECTED, func_get_args ());
+      $this->finish (self::STATUS_REJECTED, $rejectParameters);
     }
     // }}}
 

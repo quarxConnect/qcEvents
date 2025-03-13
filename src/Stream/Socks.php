@@ -191,7 +191,8 @@
      * @access public
      * @return void
      **/
-    public function consume ($sourceData, Events\ABI\Source $Source) : void {
+    public function consume ($sourceData, Events\ABI\Source $sourceStream): void
+    {
       // Push to internal buffer
       $this->socksBuffer .= $sourceData;
       unset ($sourceData);
@@ -615,26 +616,27 @@
      * Run any pending promise-callback
      * 
      * @param int $callbackID (optional)
-     * @param ...
+     * @param mixed ...$promiseParameters
      * 
      * @access private
      * @return void
      **/
-    private function runPromiseCallback (int $callbackID = 0) : void {
+    private function runPromiseCallback (int $callbackID = 0, mixed ...$promiseParameters): void
+    {
       // Make sure there is a promise registered
       if (!$this->promiseCallbacks)
         return;
-      
+
       // Stop any timer
       if ($this->promiseCallbacks [2])
         $this->promiseCallbacks [2]->cancel ();
-      
+
       // Get and clear the callbacks
       $promiseCallback = $this->promiseCallbacks [$callbackID];
       $this->promiseCallbacks = null;
-      
+
       // Run the callback
-      call_user_func_array ($promiseCallback, array_slice (func_get_args (), 1));
+      call_user_func_array ($promiseCallback, $promiseParameters);
     }
     // }}}
     

@@ -2,27 +2,29 @@
 
   /**
    * quarxConnect Events - Interface for hookable functions/events
-   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events\ABI;
+
   use quarxConnect\Events;
-  
+
   interface Hookable {
     // {{{ getRegisteredHooks
     /**
@@ -103,16 +105,27 @@
      **/
     public function removeHook (string $hookName, callable $eventCallback) : void;
     // }}}
-    
+
+    // {{{ removeHooks
+    /**
+     * Remove registered hooks
+     *
+     * @param string|null $hookName (optional) Name of hook to remove callbacks for
+     *
+     * @return void
+     **/
+    public function removeHooks (string $hookName = null): void;
+    // }}}
+
     // {{{ once
     /**
      * Register a hook that is triggered once when a given event raises for the first time
-     * 
-     * @param string $Name Name of the hookable function
-     * 
+     *
+     * @param string $hookName Name of the hookable function
+     *
      * @access public
      * @return Events\Promise
      **/
-    public function once (string $hookName) : Events\Promise;
+    public function once (string $hookName): Events\Promise;
     // }}}
   }

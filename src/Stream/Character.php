@@ -2,41 +2,37 @@
 
   /**
    * qcEvents - Character-Stream
-   * Copyright (C) 2015-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2015-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Stream;
-  use \quarxConnect\Events;
-  use \quarxConnect\Events\ABI;
-  
+
+  use quarxConnect\Events;
+  use quarxConnect\Events\ABI;
+
   // Make sure MBString is available
-  if (!extension_loaded ('mbstring') && (!function_exists ('dl') || !dl ('mbstring.so')))
+  if (
+    !extension_loaded ('mbstring') &&
+    (!function_exists ('dl') || !dl ('mbstring.so'))
+  )
     return trigger_error ('No mbstring-extension loaded');
-  
-  /**
-   * Character-Stream
-   * ----------------
-   * Convert Character-Encoding of a piped stream
-   * 
-   * @class quarxConnect\Events\Stream\Character
-   * @package qcEvents
-   * @revision 01
-   **/
+
   class Character extends Events\Virtual\Source implements ABI\Consumer {
     /* Internal buffer */
     private $bufferData = '';
@@ -68,18 +64,18 @@
         $this->charsetOut = $charsetOut;
     }
     // }}}
-    
+
     // {{{ consume
     /**
      * Consume a set of data
-     * 
-     * @param mixed $soruceData
+     *
+     * @param mixed $sourceData
      * @param ABI\Source $dataSource
-     * 
-     * @access public
+     *
      * @return void
      **/
-    public function consume ($sourceData, ABI\Source $dataSource) : void {
+    public function consume (mixed $sourceData, ABI\Source $dataSource): void
+    {
       // Append data to text-buffer
       $this->bufferData .= $sourceData;
       $this->bufferLength += strlen ($sourceData);

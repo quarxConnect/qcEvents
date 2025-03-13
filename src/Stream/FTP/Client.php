@@ -1,45 +1,32 @@
 <?php
 
   /**
-   * qcEvents - Asyncronous FTP Client-Stream
-   * Copyright (C) 2015-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * qcEvents - Asynchronous FTP Client-Stream
+   * Copyright (C) 2015-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Stream\FTP;
-  use \quarxConnect\Events;
-  use \quarxConnect\Events\ABI;
-  
+
+  use quarxConnect\Events;
+  use quarxConnect\Events\ABI;
+
   /**
-   * FTP Client Stream
-   * -----------------
-   * FTP Client Implementation (RFC 969)
-   * This Stream is implemented independant of the underlying Stream.
-   * It can be anything from a standard-compilant TCP-Socket to a pipe. Feel free!
-   * 
-   * @see https://tools.ietf.org/html/rfc959
-   * 
-   * @class quarxConnect\Events\Stream\FTP\Client
-   * @extends quarxConnect\Events\Hookable
-   * @implements qcEvents_Interface_Stream_Consumer
-   * @package qcEvents
-   * @revision 01
-   * @author Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
    * @todo CDUP - CHANGE TO PARENT DIRECTORY
    * @todo SMNT - STRUCTURE MOUNT		SMNT <SP> <pathname> <CRLF>
    * @todo REIN - REINITIALIZE
@@ -119,15 +106,15 @@
     // {{{ authenticate
     /**
      * Try to authenticate this FTP-Stream
-     * 
+
      * @param string $userName
      * @param string $userPassword
-     * @param string $userAccount (optional)
-     * 
-     * @access public
-     * @return Events\Promsie
+     * @param string|null $userAccount (optional)
+     *
+     * @return Events\Promise
      **/
-    public function authenticate (string $userName, string $userPassword, string $userAccount = null) : Events\Promise {
+    public function authenticate (string $userName, string $userPassword, string $userAccount = null): Events\Promise
+    {
       return $this->ftpCommand (
         'USER',
         [ $userName ],
@@ -221,14 +208,13 @@
     
     // {{{ getStatus
     /**
-     * Retrive the status of FTP-Server or a file on that server
-     * 
-     * @param string $forPath (optional) Pathname for file
-     * 
-     * @access public
-     * @return Events\Promise<string>
+     * Retrieve the status of FTP-Server or a file on that server
+     *
+     * @param string|null $forPath (optional) Pathname for file
+     *
+     * @return Events\Promise{string}
      **/
-    public function getStatus (string $forPath = null) : Events\Promise
+    public function getStatus (string $forPath = null): Events\Promise
     {
       return $this->ftpCommand (
         'STAT',
@@ -562,16 +548,23 @@
      * Setup a data-connection and run a given command on that
      * 
      * @param string $commandName The command to issue once the connection was established
-     * @param array $commandParameters (optional) Parameters to pass to the previous command
-     * @param enum $dataType (optional) Character Representation-Type
-     * @param enum $dataStructure (optional) File-Structure-Type
-     * @param enum $dataMode (optional) Transfer-Mode
+     * @param array|null $commandParameters (optional) Parameters to pass to the previous command
+     * @param int|null $dataType (optional) Character Representation-Type
+     * @param int|null $dataStructure (optional) File-Structure-Type
+     * @param int|null $dataMode (optional) Transfer-Mode
      * @param bool $waitForStream (optional) Wait for the data-stream to be finished until final promise returns
      * 
      * @access private
      * @return Events\Promise
      **/
-    private function ftpDataCommandStream (string $commandName, array $commandParameters = null, int $dataType = null, int $dataStructure = null, int $dataMode = null, bool $waitForStream = true) : Events\Promise {
+    private function ftpDataCommandStream (
+      string $commandName,
+      array $commandParameters = null,
+      int $dataType = null,
+      int $dataStructure = null,
+      int $dataMode = null,
+      bool $waitForStream = true
+    ): Events\Promise {
       // Prepare parameters
       static $typeMap = [
         self::TYPE_ASCII => 'A',
@@ -711,21 +704,23 @@
     
     // {{{ ftpDataCommandBuffered
     /**
-     * Run an FTP-Command that retrives it results via a data-stream and return the result as whole
-     * 
+     * Run an FTP-Command that retrieves it results via a data-stream and return the result as whole
+     *
      * @param string $commandName The command to issue once the connection was established
-     * @param array $commandParameters (optional) Parameters to pass to the previous command
-     * @param enum $Type (optional) Character Representation-Type
-     * @param enum $Structure (optional) File-Structure-Type
-     * @param enum $Mode (optional) Transfer-Mode
-     * 
-     * @access private
+     * @param array|null $commandParameters (optional) Parameters to pass to the previous command
+     * @param int|null $dataType (optional) Character Representation-Type
+     * @param int|null $dataStructure (optional) File-Structure-Type
+     * @param int|null $dataMode (optional) Transfer-Mode
+     *
      * @return Events\Promise
      **/
-    private function ftpDataCommandBuffered (string $commandName, array $commandParameters = null, int $dataType = null, int $dataStructure = null, int $dataMode = null) : Events\Promise {
-      // Create a local buffer
-      $readBuffer = '';
-      
+    private function ftpDataCommandBuffered (
+      string $commandName,
+      array $commandParameters = null,
+      int $dataType = null,
+      int $dataStructure = null,
+      int $dataMode = null
+    ): Events\Promise {
       // Run the command with a "normal" stream
       return $this->ftpDataCommandStream (
         $commandName,
@@ -813,12 +808,13 @@
     /**
      * Setup ourself to consume data from a stream
      * 
-     * @param ABI\Source $sourceStream
+     * @param ABI\Stream $sourceStream
      * 
      * @access public
      * @return Events\Promise
      **/
-    public function initStreamConsumer (ABI\Stream $sourceStream) : Events\Promise {
+    public function initStreamConsumer (ABI\Stream $sourceStream): Events\Promise
+    {
       // Reject any pending initialization-promise
       if ($this->initPromise)
         $this->initPromise->reject ('Replaced by new source-stream');

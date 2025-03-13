@@ -457,19 +457,18 @@
     /**
      * Try to finalize this order
      * 
-     * @param mixed $signingReqeust
-     * 
      * @access public
      * @return Events\Promise
      **/
-    public function finalize ($signingRequest) : Events\Promise {
+    public function finalize ($signingRequest): Events\Promise
+    {
       // Check our state first
       if (!$this->isReady ())
         return Events\Promise::reject ('Order must be in ready-state');
-      
+
       if ($this->finalizeURI === null)
         return Events\Promise::reject ('No finalizeURI assigned');
-      
+
       // Make sure the CSR is in the right format
       if (is_resource ($signingRequest) && !openssl_csr_export ($signingRequest, $signingRequest))
         return Events\Promise::reject ('Failed to export CSR from OpenSSL');

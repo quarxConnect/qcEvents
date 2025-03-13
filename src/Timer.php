@@ -94,26 +94,26 @@
       return $this->Interval;
     }
     // }}}
-    
+
     // {{{ setInterval
     /**
      * Set a new interval for this timer
-     * 
-     * @param float $Interval
-     * 
-     * @access public
+     *
+     * @param float $timerInterval
+     *
      * @return void
      **/
-    public function setInterval ($Interval) {
+    public function setInterval (float $timerInterval): void
+    {
       // Store the new interval
-      $this->Interval = (float)$Interval;
-      
+      $this->Interval = $timerInterval;
+
       // Try to restart the timer
-      if ($this->getEventBase ()->clearTimer ($this))
-        $this->getEventBase ()->addTimer ($this);
+      $this->getEventBase ()->clearTimer ($this);
+      $this->getEventBase ()->addTimer ($this);
     }
     // }}}
-    
+
     // {{{ run
     /**
      * Run the timer
@@ -150,26 +150,25 @@
       $this->getEventBase ()->addTimer ($this);
     }
     // }}}
-    
+
     // {{{ cancel
     /**
      * Cancel the timer
-     * 
-     * @access public
+     *
      * @return void
      **/
-    public function cancel () {
+    public function cancel (): void
+    {
       // Signal that we were canceled
-      if ($this->getStatus () != $this::STATUS_PENDING)
+      if ($this->getStatus () !== $this::STATUS_PENDING)
         $this->Repeat = false;
-      
-      // Try to remove at our parent
-      if ($this->getEventBase ()->clearTimer ($this))
-        return;
-      
+
+      // Remove from our event-base
+      $this->getEventBase ()->clearTimer ($this);
+
       // Reject the promise
       $this->promiseReject ('canceled');
-      
+
       // Reset our state
       $this->reset ();
     }

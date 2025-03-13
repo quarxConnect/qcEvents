@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - Asynchronous Process/Application I/O
-   * Copyright (C) 2012-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2012-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -24,16 +25,6 @@
 
   use Throwable;
 
-  /**
-   * Process
-   * -------
-   * Spawns a command (uni- or bidirectional) and waits for input
-   *
-   * @class Process
-   * @extends IOStream
-   * @package quarxConnect/Events
-   * @revision 02
-   **/
   class Process extends IOStream {
     /* Default size of read-buffer */
     protected const READ_BUFFER = 40960;
@@ -93,7 +84,7 @@
      * @param string $commandName
      * @param array|null $commandParams
      *
-     * @return Promise<string, int>
+     * @return Promise{string, int}
      **/
     public static function readProcessOutput (Base $eventBase, string $commandName, array $commandParams = null): Promise
     {

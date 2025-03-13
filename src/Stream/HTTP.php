@@ -3,13 +3,13 @@
   /**
    * quarxConnect Events - HTTP-Stream Implementation
    * Copyright (C) 2012-2022 Bernd Holzmueller <bernd@quarxconnect.de>
-   * Copyright (C) 2023 Bernd Holzmueller <bernd@innorize.gmbh>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -18,22 +18,13 @@
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Stream;
+
   use quarxConnect\Events;
-  
-  /**
-   * HTTP-Stream
-   * -----------
-   * Abstract HTTP-Stream-Handler (common functions for both - client and server)
-   * 
-   * @class  HTTP
-   * @extends HTTP\Header
-   * @package quarxConnect\Events
-   * @revision 02
-   **/
+
   abstract class HTTP extends HTTP\Header implements Events\ABI\Consumer, Events\ABI\Stream\Consumer, Events\ABI\Source {
     // Just use everything from the trait
     use Events\Feature\Hookable;
@@ -349,14 +340,14 @@
     
     // {{{ initStreamConsumer
     /**
-     * Setup ourself to consume data from a stream
-     * 
-     * @param Events\ABI\Source $Source
-     * 
-     * @access public
+     * Setup ourselves to consume data from a stream
+     *
+     * @param Events\ABI\Stream $Source
+     *
      * @return Events\Promise
      **/
-    public function initStreamConsumer (Events\ABI\Stream $Source) : Events\Promise {
+    public function initStreamConsumer (Events\ABI\Stream $Source): Events\Promise
+    {
       // Check if this source is already set
       if ($this->streamSource === $Source)
         return Events\Promise::resolve ();
@@ -524,13 +515,13 @@
     // {{{ httpSetState
     /**
      * Change the state of the HTTP-Parser
-     * 
-     * @param enum $newState
-     * 
-     * @access private
+     *
+     * @param int $newState
+     *
      * @return void
      **/
-    private function httpSetState ($newState) {
+    private function httpSetState (int $newState): void
+    {
       // Check if the state changed
       if ($newState == $this->httpState)
         return;
@@ -701,14 +692,16 @@
     // {{{ httpStateChanged
     /**
      * Callback: The HTTP-State was changed
-     * 
-     * @param enum $newState
-     * @param enum $oldState
-     * 
-     * @access protected
+     *
+     * @param int $newState
+     * @param int $oldState
+     *
      * @return void
      **/
-    protected function httpStateChanged ($newState, $oldState) { }
+    protected function httpStateChanged (int $newState, int $oldState): void
+    {
+
+    }
     // }}}
     
     // {{{ httpHeadersSend

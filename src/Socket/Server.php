@@ -3,35 +3,29 @@
   /**
    * quarxConnect Events - Multi-Purpose Server Interface
    * Copyright (C) 2013-2022 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Socket;
-  use \quarxConnect\Events;
-  
-  /**
-   * Server-Socket
-   * -------------
-   * Event-based Server-Sockets
-   * 
-   * @class Server
-   * @package \quarxConnect\Events
-   * @revision 03
-   **/
+
+  use InvalidArgumentException;
+  use quarxConnect\Events;
+
   class Server implements Events\ABI\Loop, Events\ABI\Server {
     use Events\Feature\Hookable;
     use Events\Feature\Based;
@@ -80,38 +74,43 @@
     // {{{ __construct
     /**
      * Create a new server-process
-     * 
-     * @param Events\Base $Base (optional) Event-Base to bind to
-     * @param string $Host (optional) Hostname to listen on (may be null)
-     * @param int $Port (optional) Port to listen on
-     * @param enum $Type (optional) Type of socket to use (TCP/UDP)
-     * @param string $Class (optional) Class for Child-Connections
-     * @param bool $Piped (optional) Use Child-Class as Pipe-Consumer
-     * @param array $Hooks (optional) Hooks for Child-Connections
-     * 
-     * @access friendly
-     * @return void
+     *
+     * @param Events\Base|null $eventBase (optional) Event-Base to bind to
+     * @param string|null $serverHost (optional) Hostname to listen on (may be null)
+     * @param int|null $serverPort (optional) Port to listen on
+     * @param int|null $socketType (optional) Type of socket to use (TCP/UDP)
+     * @param string|null $serverClass (optional) Class for Child-Connections
+     * @param bool $isPiped (optional) Use Child-Class as Pipe-Consumer
+     * @param array|null $predefinedHooks (optional) Hooks for Child-Connections
      **/
-    function __construct (Events\Base $Base = null, string $Host = null, int $Port = null, int $Type = null, string $Class = null, bool $Piped = false, array $Hooks = null) {
+    public function __construct (
+      Events\Base $eventBase = null,
+      string $serverHost = null,
+      int $serverPort = null,
+      int $socketType = null,
+      string $serverClass = null,
+      bool $isPiped = false,
+      array $predefinedHooks = null
+    ) {
       // Set our handler
-      if ($Base !== null)
-        $this->setEventBase ($Base);
+      if ($eventBase !== null)
+        $this->setEventBase ($eventBase);
       
       // Set child-class
-      if ($Class !== null)
-        $this->setChildClass ($Class, $Piped);
+      if ($serverClass !== null)
+        $this->setChildClass ($serverClass, $isPiped);
       
       // Register any hooks
-      if (is_array ($Hooks))
-        foreach ($Hooks as $Hook=>$Callback)
+      if (is_array ($predefinedHooks))
+        foreach ($predefinedHooks as $Hook=> $Callback)
           $this->addChildHook ($Hook, $Callback);
       
       // Check wheter to setup
-      if ($Type === null)
+      if ($socketType === null)
         return;
       
       // Put ourself into listenng-state
-      $this->listen ($Type, $Port, $Host);
+      $this->listen ($socketType, $serverPort, $serverHost);
     }
     // }}}
     
@@ -175,21 +174,22 @@
     // {{{ setChildClass
     /**
      * Set class to use for incoming connections
-     * 
+     *
      * @param string $childClassname
      * @param bool $isPiped (optional) Treat the class as pipe-consumer, not as socket
-     * 
-     * @access public
+     *
      * @return void
+     * @throws InvalidArgumentException if the class is not suitable for this
      **/
-    public function setChildClass (string $childClassname, bool $isPiped = false) : void {
+    public function setChildClass (string $childClassname, bool $isPiped = false): void
+    {
       // Verify the class
       if (
         (!$isPiped && !is_a ($childClassname, $this::CHILD_CLASS_BASE, true)) ||
         ($isPiped && !is_a ($childClassname, Events\ABI\Consumer::class, true) && !is_a ($childClassname, Events\ABI\Stream\Consumer::class, true))
       )
-        throw new \ValueError ($childClassname . ' has to implement ' . ($isPiped ? Events\ABI\Consumer::class . ' or ' . Events\ABI\Stream\Consumer::class : $this::CHILD_CLASS_BASE));
-      
+        throw new InvalidArgumentException ($childClassname . ' has to implement ' . ($isPiped ? Events\ABI\Consumer::class . ' or ' . Events\ABI\Stream\Consumer::class : $this::CHILD_CLASS_BASE));
+
       // Set the class
       $this->childClass = $childClassname;
       $this->childClassPiped = $isPiped;
@@ -344,15 +344,19 @@
     /**
      * Create a the server-process
      * 
-     * @param enum $socketType
-     * @param int $serverPort (optional)
-     * @param string $serverHost (optional)
-     * @param int $socketBacklog (optional)
-     * 
-     * @access public
+     * @param int $socketType
+     * @param int|null $serverPort (optional)
+     * @param string|null $serverHost (optional)
+     * @param int|null $socketBacklog (optional)
+     *
      * @return void
      **/
-    public function listen (int $socketType, int $serverPort = null, string $serverHost = null, int $socketBacklog = null) : void {
+    public function listen (
+      int $socketType,
+      int $serverPort = null,
+      string $serverHost = null,
+      int $socketBacklog = null
+    ): void {
       // Handle Context
       if ($socketBacklog !== null)
         $streamContext = stream_context_create ([ 'backlog' => $socketBacklog ]);
@@ -390,15 +394,15 @@
     // {{{ setServerSocket
     /**
      * Internally override our server-socket
-     * 
+     *
      * @param resource $Socket
-     * @param enum $Type
+     * @param int $Type
      * @param bool $Listening
-     * 
-     * @access protected
+     *
      * @return void
      **/
-    protected function setServerSocket ($Socket, int $Type, bool $Listening) : void {
+    protected function setServerSocket ($Socket, int $Type, bool $Listening): void
+    {
       // Update ourself
       $this->Socket = $Socket;
       $this->Type = $Type;
@@ -485,8 +489,10 @@
       // Handle TCP-Events (accept an incoming connection)
       } elseif ($this->Type == self::TYPE_TCP) {
         // Accept incoming connection
-        if (!is_resource ($Connection = stream_socket_accept ($this->Socket, 0, $Remote)))
-          return;
+        $Connection = stream_socket_accept ($this->Socket, 0, $Remote);
+
+        if (!is_resource ($Connection))
+          throw new \RuntimeException ('Failed to accept incoming connection');
         
         stream_context_set_option ($Connection, [ 'ssl' => $this->tlsOptions ]);
         
@@ -654,13 +660,16 @@
     /**
      * Callback: A new client was created
      * 
-     * @param Events\Socket $Client
-     * @param mixed $Consumer
+     * @param Events\Socket $clientSocket
+     * @param Events\ABI\Consumer|null $socketConsumer
      * 
      * @access protected
      * @return void
      **/
-    protected function serverClientNew (Events\Socket $Socket, $Consumer = null) : void { }
+    protected function serverClientNew (Events\Socket $clientSocket, Events\ABI\Consumer $socketConsumer = null): void
+    {
+
+    }
     // }}}
     
     // {{{ serverClientClosed
@@ -668,11 +677,14 @@
      * Callback: Client-Connection was/will be closed
      * 
      * @param string $Remote
-     * @param Events\Socket $Client
+     * @param Events\Socket $clientSocket
      * 
      * @access protected
      * @return void
      **/
-    protected function serverClientClosed (string $Remote, Events\Socket $Socket) : void { }
+    protected function serverClientClosed (string $Remote, Events\Socket $clientSocket): void
+    {
+
+    }
     // }}}
   }

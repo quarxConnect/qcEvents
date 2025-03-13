@@ -2,18 +2,19 @@
 
   /**
    * quarxConnect Events - TSIG DNS Resource Record
-   * Copyright (C) 2020-2024 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2020-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
@@ -199,7 +200,7 @@
       // Check for supported message-algorithm
       $algorithmName = substr ((string)$tsigRecord->getAlgorithm (), 0, -1);
 
-      if (!isset (static::$supportedAlgorithms [$algorithmName]))
+      if (!isset (self::$supportedAlgorithms [$algorithmName]))
         return ((DNS\Message::ERROR_BAD_SIG << 16) | DNS\Message::ERROR_NOT_AUTH);
 
       // Check if the key is known
@@ -214,7 +215,7 @@
 
       // Create MAC for that message
       $messageMac = hash_hmac (
-        static::$supportedAlgorithms [$algorithmName],
+        self::$supportedAlgorithms [$algorithmName],
         static::messageDigest ($dnsMessage, $tsigRecord),
         base64_decode ($keyStore [$keyName]),
         true
@@ -252,7 +253,7 @@
       // Check whether to sign the response
       $algorithmName = substr ((string)$tsigRecord->algorithmName, 0, -1);
 
-      if (!isset (static::$supportedAlgorithms [$algorithmName]))
+      if (!isset (self::$supportedAlgorithms [$algorithmName]))
         $algorithmName = static::DEFAULT_HMAC;
 
       $tsigLabel = $tsigRecord->getLabel ();
@@ -279,7 +280,7 @@
 
       if ($signResponse)
         $responseRecord->macData = hash_hmac (
-          static::$supportedAlgorithms [$algorithmName],
+          self::$supportedAlgorithms [$algorithmName],
           static::messageDigest ($dnsResponse, $responseRecord, $dnsMessage),
           base64_decode ($keyStore [$keyName]),
           true

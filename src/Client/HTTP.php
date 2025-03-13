@@ -3,8 +3,8 @@
   /**
    * quarxConnect Events - HTTP Client Implementation
    * Copyright (C) 2009-2022 Bernd Holzmueller <bernd@quarxconnect.de>
-   * Copyright (C) 2023-2024 Bernd Holzmueller <bernd@innorize.gmbh>
-   *+
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
@@ -194,11 +194,11 @@
      * Retrieve all session-cookies from this client
      *
      * @access public
-     * @return array
-     *
+     * @return array{Cookie}
      * @throws RuntimeException
      **/
-    public function getSessionCookies (): array {
+    public function getSessionCookies (): array
+    {
       if ($this->sessionCookies === null)
         throw new RuntimeException('Session-Cookies were not enabled');
 
@@ -331,22 +331,29 @@
     /**
      * Enqueue an HTTP-Request
      *
-     * @param Stream\HTTP\Request $Request
-     * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
+     * There are two variants to use this method:
+     *
+     * ```
+     * $httpClient->request (
+     *   Stream\HTTP\Request $httpRequest,
+     *   bool $authenticationPreflight // (optional) Try request without authentication-information first (default)
+     * )
+     * ```
      *
      * - OR -
      *
-     * @param string $URL The requested URL
-     * @param string|null $Method (optional) Method to use on the request
-     * @param array $Headers (optional) List of additional HTTP-Headers
-     * @param string $requestBody (optional) Additional body for the request
-     * @param bool $authenticationPreflight (optional) Try request without authentication-information first (default)
+     * ```
+     * $httpClient->request (
+     *   string $requestURL, // The requested URL
+     *   string|null $requestMethod, // (optional) Method to use on the request
+     *   array|null $requestHeaders, // (optional) List of additional HTTP-Headers
+     *   string|null $requestBody, // (optional) Additional body for the request
+     *   bool $authenticationPreflight // (optional) Try request without authentication-information first (default)
+     * )
+     * ```
      *
-     * @access public
      * @return Promise
-     *
-     * @noinspection PhpDocSignatureInspection
-     */
+     **/
     public function request (): Promise
     {
       // Process function-arguments
@@ -380,8 +387,7 @@
       $socketFactory = $this->getSocketFactory ();
 
       if ($socketFactory instanceof Events\Socket\Factory\Limited)
-        /** @noinspection PhpPossiblePolymorphicInvocationInspection */
-        $factorySession = $this->getSocketFactory ()->getSession ();
+        $factorySession = $socketFactory->getSession ();
       else
         $factorySession = $socketFactory;
 

@@ -2,27 +2,29 @@
 
   /**
    * quarxConnect Events - Generic Hookable Implementation
-   * Copyright (C) 2014-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Feature;
+
   use quarxConnect\Events;
-  
+
   trait Hookable {
     /* Debug Hook-Calls */
     public static $debugHooks = false;
@@ -165,12 +167,13 @@
     /**
      * Retrive all registered hooks for a given callback-function
      * 
-     * @param string $Name Name of the hookable function
+     * @param string $hookName Name of the hookable function
      * 
      * @access public
      * @return array
      **/
-    public function getHooks (string $hookName) : array {
+    public function getHooks (string $hookName): array
+    {
       // Treat all hooks lower-case to prevent dupes
       $hookName = strtolower ($hookName);
       
@@ -262,13 +265,13 @@
     // {{{ removeHooks
     /**
      * Remove registered hooks
-     * 
-     * @param string $hookName (optional) Name of hook to remove callbacks for
-     * 
-     * @access public
+     *
+     * @param string|null $hookName (optional) Name of hook to remove callbacks for
+     *
      * @return void
      **/
-    public function removeHooks (string $hookName = null) : void {
+    public function removeHooks (string $hookName = null): void
+    {
       if ($hookName === null)
         $this->registeredHooks = [ ];
       else
@@ -312,12 +315,12 @@
      * Fire a callback
      * 
      * @param string $hookName Name of the callback
-     * @param ...
+     * @param mixed ...$hookParameters
      * 
      * @access protected
      * @return mixed
      **/
-    protected function ___callback (string $hookName) {
+    protected function ___callback (string $hookName, mixed ...$hookParameters) {
       // Output debug-info
       if (defined ('QCEVENTS_DEBUG_HOOKS') || self::$debugHooks)
         echo substr (number_format (microtime (true), 4, '.', ''), -8, 8), ' Callback: ', $hookName, ' on ', get_class ($this), "\n";
@@ -329,16 +332,13 @@
       if (!isset ($this->hooksAdapted [$hookName]))
         $this->getHooks ($hookName);
       
-      // Retrive all given parameters
-      $localArguments = func_get_args ();
+      // Retrieve all given parameters
+      $localArguments = $hookParameters;
       
-      // Prepare arguements for external callbacks
+      // Prepare arguments for external callbacks
       $externalArguments = $localArguments;
-      $externalArguments [0] = $this;
-      
-      // Prepare arguements for internal callbacks
-      array_shift ($localArguments);
-      
+      array_unshift ($externalArguments, $this);
+
       // Check hooks
       if (isset ($this->registeredHooks [$hookName]))
         foreach ($this->registeredHooks [$hookName] as $hookID=>$hookInfo) {
@@ -379,16 +379,19 @@
      * Run all registered handlers for a given hook, allow asynchronous processing
      * 
      * @param string $hookName
-     * @param ...
+     * @param mixed ...$hookParameters
      * 
      * @access protected
      * @return Events\Promise
      **/
-    protected function ___awaitHooks (string $hookName) : Events\Promise {
+    protected function ___awaitHooks (string $hookName, mixed ...$hookParameters) : Events\Promise {
       // Output debug-info
-      if (defined ('QCEVENTS_DEBUG_HOOKS') || self::$debugHooks)
+      if (
+        defined ('QCEVENTS_DEBUG_HOOKS') ||
+        self::$debugHooks
+      )
         echo substr (number_format (microtime (true), 4, '.', ''), -8, 8), ' Callback: ', $hookName, ' on ', get_class ($this), ' (async)', "\n";
-      
+
       // We are treating hooks in lower-case
       $hookName = strtolower ($hookName);
       
@@ -420,7 +423,7 @@
           
           // Process the result
           if ($lastResult instanceof Events\Promise)
-            return $hookResults->then (
+            return $lastResult->then (
               function () use ($hookResults) {
                 $lastResult = func_get_args ();
                 
@@ -456,7 +459,7 @@
       
       return call_user_func_array (
         [ Events\Promise::class, 'resolve' ],
-        array_slice (func_get_args (), 1)
+        $hookParameters
       )->then (
         $hookInvoker
       );
@@ -467,27 +470,27 @@
     /**
      * Fire a user-defined callback
      * 
-     * @param callable $Callback (optional)
-     * @param ...
-     * 
+     * @param callable|null $Callback (optional)
+     * @param mixed ...$callbackParameters
+     *
      * @access protected
      * @return mixed
      **/
-    protected function ___raiseCallback (callable $Callback = null) {
+    protected function ___raiseCallback (callable $Callback = null, mixed ...$callbackParameters): mixed
+    {
       // Check if there really is a callback
       if ($Callback === null)
-        return;
+        return null;
       
       // Prepare parameters
-      $Args = func_get_args ();
-      
-      if (!is_array ($Callback) || ($Callback [0] !== $this))
-        $Args [0] = $this;
-      else
-        array_shift ($Args);
-      
+      if (
+        !is_array ($Callback) ||
+        ($Callback [0] !== $this)
+      )
+        array_unshift ($callbackParameters, $this);
+
       // Run the callback
-      return call_user_func_array ($Callback, $Args);
+      return call_user_func_array ($Callback, $callbackParameters);
     }
     // }}}
   }

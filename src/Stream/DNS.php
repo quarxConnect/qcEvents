@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - Generic DNS Handling
-   * Copyright (C) 2018-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2018-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -129,6 +130,9 @@
       if (!$this->dataSource)
         return Events\Promise::reject (new RuntimeException ('No source available'));
 
+      if (!($this->dataSource instanceof Events\ABI\Sink))
+        return Events\Promise::reject (new RuntimeException ('Source is not writable'));
+
       // Check if this is a query
       $Query = $Message->isQuestion ();
 
@@ -179,7 +183,10 @@
       } elseif (!$Query)
         unset ($this->dnsQueries [$Message->getID ()]);
 
-      return $this->dataSource->write ($Data);
+      /** @var Events\ABI\Sink $dataSource */
+      $dataSource = $this->dataSource;
+
+      return $dataSource->write ($Data);
     }
     // }}}
 

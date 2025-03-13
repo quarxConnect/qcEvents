@@ -6,24 +6,29 @@
   use quarxConnect\Events;
 
   final class HttpServerTest extends TestCase {
-    public function testServerCreate () : Events\Socket\Server {
+    /**
+     * @throws Exception
+     **/
+    public function testServerCreate (): Events\Socket\Server
+    {
       // Create Socket-Server
       $eventBase = Events\Base::singleton ();
       $httpServerPool = new Events\Socket\Server ($eventBase);
       
       // Set HTTP-Server-Class as handler
-      $this->assertNull (
-        $httpServerPool->setChildClass (
-          Events\Server\HTTP::class,
-          true
-        )
+      $httpServerPool->setChildClass (
+        Events\Server\HTTP::class,
+        true
       );
       
       // Open listening socket
-      $this->assertNull (
-        $httpServerPool->listen ($httpServerPool::TYPE_TCP)
+      $httpServerPool->listen ($httpServerPool::TYPE_TCP);
+
+      $this->assertTrue (
+        true,
+        'End of test was reached'
       );
-      
+
       return $httpServerPool;
     }
     

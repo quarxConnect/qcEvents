@@ -3,12 +3,13 @@
   /**
    * qcEvents - Command for SMTP-Server
    * Copyright (C) 2012-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -17,11 +18,12 @@
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Server\SMTP;
-  use \quarxConnect\Events;
+
+  use quarxConnect\Events;
   
   class Command {
     /* The SMTP-Server we are running on */
@@ -128,15 +130,15 @@
     // {{{ setIntermediateResponse
     /**
      * Set intermediate response and wait for additional data
-     * 
+     *
      * @param int $smtpCode
-     * @param string|array $responseMessage (optional) Message for the response, may be multi-line
-     * @param callable $intermedateCallback (optional)
-     * 
-     * @access public
+     * @param string|array|null $responseMessage (optional) Message for the response, may be multi-line
+     * @param callable|null $intermediateCallback (optional)
+     *
      * @return Events\Promise
      **/
-    public function setIntermediateResponse (int $smtpCode, $responseMessage = null, callable $intermediateCallback = null) : Events\Promise {
+    public function setIntermediateResponse (int $smtpCode, string|array $responseMessage = null, callable $intermediateCallback = null): Events\Promise
+    {
       $this->smtpCode = $smtpCode;
       $this->responseMessage = $responseMessage;
       $this->intermediatePromise = new Events\Promise\Deferred ();

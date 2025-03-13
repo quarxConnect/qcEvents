@@ -3,7 +3,8 @@
   /**
    * quarxConnect Events - Call asynchronous functions in a synchronous manner
    *
-   * Copyright (C) 2015-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2015-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -66,21 +67,20 @@
     /**
      * Just a static alias for qcEvents_Synchronizer::__invoke()
      *
-     * @param ...
+     * @param mixed ...$invokeParameters
      *
      * @see Synchronizer::__invoke()
      *
-     * @access public
      * @return mixed The first parameter returned
      **/
-    public static function do (): mixed
+    public static function do (mixed ...$invokeParameters): mixed
     {
       static $myInstance = null;
 
       if ($myInstance === null)
         $myInstance = new Synchronizer (static::RESULT_FIRST);
 
-      return call_user_func_array ($myInstance, func_get_args ());
+      return call_user_func_array ($myInstance, $invokeParameters);
     }
     // }}}
 
@@ -88,21 +88,21 @@
     /**
      * Just a static alias for qcEvents_Synchronizer::__invoke()
      *
-     * @param ...
+     * @param mixed ...$invokeParameters
      *
      * @see Synchronizer::__invoke()
      *
      * @access public
      * @return array
      **/
-    public static function doAsArray (): array
+    public static function doAsArray (mixed ...$invokeParameters): array
     {
       static $myInstance = null;
 
       if ($myInstance === null)
         $myInstance = new Synchronizer (static::RESULT_AS_ARRAY);
 
-      return call_user_func_array ($myInstance, func_get_args ());
+      return call_user_func_array ($myInstance, $invokeParameters);
     }
     // }}}
 
@@ -110,12 +110,9 @@
     /**
      * Create a new Synchronizer
      *
-     * @param enum $resultMode (optional) Return results in this mode
+     * @param int|null $resultMode (optional) Return results in this mode
      * @param bool $storeResult (optional) Store results on this class
      * @param bool $throwExceptions (optional) Throw exception if one was received
-     *
-     * @access friendly
-     * @return void
      **/
     public final function __construct (int $resultMode = null, bool $storeResult = null, bool $throwExceptions = null)
     {
@@ -136,36 +133,23 @@
     /**
      * Do an asynchronous call in a synchronous way
      *
-     * If $invokeObject features a getEventBase()-Call:
-     *
-     * @param Promise $eventPromise
-     *
-     * -- OR --
+     * This method accepts a very flexible amount of parameters:
+     * In the most simple version you just pass a `Promise` here or an object-instance followed by a method-name that is
+     * supposed to return a `Promise`. Any subsequent parameters will be passed to the named method in this case.
+     * If this method is used with a `Promise` that has no event-base assigned, the instance of the event-base to use
+     * for synchronizing shall be passed as first argument.
      *
      * @param object $invokeObject
-     * @param string $invokeMethod
-     * @param ...
+     * @param object|string|null $invokeMethod
+     * @param mixed ...$invokeArguments
      *
-     * -- OR --
-     *
-     * @param Base $eventBase
-     * @param Promise $eventPromise
-     *
-     * -- OR --
-     *
-     * @param Base $eventBase
-     * @param object $invokeObject
-     * @param string $invokeMethod
-     * @param ...
-     *
-     * @access friendly
      * @return mixed
+     * @throws InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \ReflectionException
      **/
-    public function __invoke (object $invokeObject, object|string $invokeMethod): mixed
+    public function __invoke (object $invokeObject, object|string $invokeMethod = null, mixed ...$invokeArguments): mixed
     {
-      // Extract parameters
-      $invokeArguments = array_slice (func_get_args (), 2);
-
       // Try to find an event-base
       if ($invokeObject instanceof Base) {
         $eventBase = $invokeObject;
@@ -214,7 +198,7 @@
 
         $isPromise = (
           $reflectedMethod->hasReturnType () &&
-          ($reflectedMethod->getReturnType ()->getName () === Promise::class)
+          ((string)$reflectedMethod->getReturnType () === Promise::class)
         );
 
         // If no promise is returned, try to find a place to inject our callback-function
@@ -279,7 +263,7 @@
           }
         );
       } elseif ($isPromise)
-        throw new Exception ('Expected Promise as return, but did not get one. Things will be weird!');
+        throw new \RuntimeException ('Expected Promise as return, but did not get one. Things will be weird!');
 
       // Run the loop until ready
       $onLoop = true;

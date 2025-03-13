@@ -3,12 +3,13 @@
   /**
    * qcEvents - SMTP-Server Implementation
    * Copyright (C) 2012-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -17,10 +18,11 @@
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Server;
+
   use \quarxConnect\Events;
   
   /**
@@ -370,15 +372,18 @@
     // {{{ smtpAddCommand
     /**
      * Register a command-handler for SMTP
-     * 
+     *
      * @param string $smtpCommand The Command-Verb
      * @param callable $commandCallback The callback to run for the command
-     * @param enum $minState (optional) The minimal state we have to be in for this command
-     * 
-     * @access protected
+     * @param int $minState (optional) The minimal state we have to be in for this command
+     *
      * @return void
      **/
-    protected function smtpAddCommand (string $smtpCommand, callable $commandCallback, int $minState = self::SMTP_STATE_DISCONNECTED) : void {
+    protected function smtpAddCommand (
+      string $smtpCommand,
+      callable $commandCallback,
+      int $minState = self::SMTP_STATE_DISCONNECTED
+    ): void {
       $this->smtpCommands [$smtpCommand] = [ $commandCallback, $minState ];
     }
     // }}}
@@ -580,13 +585,13 @@
     // {{{ smtpSetState
     /**
      * Set our protocol-state
-     * 
-     * @param enum $newState The protocol-state to set
-     * 
-     * @access protected
+     *
+     * @param int $newState The protocol-state to set
+     *
      * @return void
      **/
-    protected function smtpSetState (int $newState) : void {
+    protected function smtpSetState (int $newState): void
+    {
       $this->smtpState = $newState;
     }
     // }}}

@@ -1244,17 +1244,17 @@
     
     // {{{ initStreamConsumer
     /**
-     * Setup ourself to consume data from a stream
-     * 
-     * @param ABI\Source $dataSource
-     * 
-     * @access public
-     * @return qcEvents_Promise
+     * Setup ourselves to consume data from a stream
+     *
+     * @param ABI\Stream $sourceStream
+     *
+     * @return Events\Promise
      **/
-    public function initStreamConsumer (ABI\Stream $dataSource) : Events\Promise {
+    public function initStreamConsumer (ABI\Stream $sourceStream): Events\Promise
+    {
       // Store the source
-      $this->Source = $dataSource;
-      
+      $this->Source = $sourceStream;
+
       // Return resolved promise
       return Events\Promise::resolve ();
     }

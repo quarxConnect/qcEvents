@@ -330,9 +330,7 @@
      *
      * @param string $requestMethod
      *
-     * @access public
-     * @return bool
-     *
+     * @return void
      * @throws InvalidArgumentException
      * @throws LogicException
      **/
@@ -590,10 +588,14 @@
     {
       $responseCookies = [];
 
-      $requestOrigin = $this->previousRequest?->getHostname () ?? '';
+      if ($this->previousRequest instanceof Request)
+        $requestOrigin = $this->previousRequest->getHostname () ?? '';
+      else
+        $requestOrigin = '';
+
       $requestOriginArray = array_reverse (explode ('.', $requestOrigin));
       $requestOriginLength = count ($requestOriginArray);
-      $requestPath = $this->previousRequest->getURI () ?? '/';
+      $requestPath = $this->previousRequest?->getURI () ?? '/';
 
       if (!str_ends_with ($requestPath, '/')) {
         $requestPath = dirname ($requestPath);

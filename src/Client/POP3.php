@@ -2,38 +2,30 @@
 
   /**
    * quarxConnect Events - Asyncronous POP3 Client
-   * Copyright (C) 2015-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2015-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
 
   namespace quarxConnect\Events\Client;
+
   use quarxConnect\Events\Stream;
   use quarxConnect\Events;
-  
-  /**
-   * POP3 Client
-   * -----------
-   * Asynchronous POP3-Client
-   * 
-   * @class POP3
-   * @extends Events\Hookable
-   * @package quarxConnect/Events
-   * @revision 02
-   **/
+
   class POP3 extends Events\Hookable {
     use Events\Feature\Based;
     
@@ -286,14 +278,14 @@
     // {{{ login
     /**
      * Perform USER/PASS login on server
-     * 
+     *
      * @param string $Username
      * @param string $Password
-     * 
-     * @access public
-     * @return qcEvents_Promise
+     *
+     * @return Events\Promise
      **/
-    public function login ($Username, $Password) : Events\Promise {
+    public function login (string $Username, string $Password): Events\Promise
+    {
       return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
@@ -505,13 +497,15 @@
     /**
      * Callback: Our protocol-state was changed
      * 
-     * @param enum $newState
-     * @param enum $oldState
+     * @param int $newState
+     * @param int $oldState
      *  
      * @access protected
      * @return void
      **/
-    protected function popStateChanged ($newState, $oldState) { }
+    protected function popStateChanged (int $newState, int $oldState) {
+      // Noop
+    }
     // }}}
     
     // {{{ popConnecting
@@ -558,12 +552,14 @@
     /**
      * Callback: Server-Capabilities were received/changed
      * 
-     * @param array $Capabilties
+     * @param array $Capabilities
      * 
      * @access protected
      * @return void
      **/
-    protected function popCapabilities ($Capabilities) { }
+    protected function popCapabilities (array $Capabilities) {
+      // Noop
+    }
     // }}}
     
     // {{{ popAuthenticated

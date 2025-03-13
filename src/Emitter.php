@@ -2,7 +2,8 @@
 
     /**
      * quarxConnect Events - Generic Event-Emitter
-     * Copyright (C) 2014-2023 Bernd Holzmueller <bernd@innorize.gmbh>
+     * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+     * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
      * 
      * This program is free software: you can redistribute it and/or modify
      * it under the terms of the GNU General Public License as published by
@@ -188,16 +189,16 @@
         // {{{ addEventPromise
         /**
          * Add a promise that is fulfilled for a given event-class
-         * 
+         *
          * @param string $eventClass Class-Name of the event to listen to
          * @param bool $preventClassCheck (optional) Don't check if the given event-class is a valid event
-         * 
-         * @access public
-         * @return void
-         * 
+         *
+         * @return Promise
+         *
          * @throws Exception\InvalidClass
          **/
-        public function addEventPromise (string $eventClass, bool $preventClassCheck = false): Promise {
+        public function addEventPromise (string $eventClass, bool $preventClassCheck = false): Promise
+        {
             $deferredPromise = new Promise\Deferred ();
 
             $this->addEventListener (
@@ -216,12 +217,12 @@
          * Remove a listener for a given event-class
          *
          * @param string $eventClass
-         * @param callable|Listener $eventListener
+         * @param callable $eventListener
          * 
          * @access public
          * @return void
          **/
-        public function removeEventListener (string $eventClass, $eventListener): void {
+        public function removeEventListener (string $eventClass, callable $eventListener): void {
             if (!isset ($this->eventListeners [$eventClass]))
                 return;
             

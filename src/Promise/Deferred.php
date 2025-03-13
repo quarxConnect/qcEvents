@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - Deferred Execution
-   * Copyright (C) 2019-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2019-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -102,8 +103,7 @@
     /**
      * Retrieve the promise for this deferred execution
      *
-     * @access public
-     * @return Events\Promise
+     * @return Promise
      **/
     public function getPromise (): Promise
     {
@@ -115,20 +115,19 @@
     /**
      * Resolve this deferred execution
      *
-     * @param ...
+     * @param mixed ...$fulfillParameters
      *
-     * @access public
      * @return void
      **/
-    public function resolve (): void
+    public function resolve (mixed ...$fulfillParameters): void
     {
       // Check if we may do it directly
       if ($this->resolveFunction instanceof Closure)
-        call_user_func_array ($this->resolveFunction, func_get_args ());
+        call_user_func_array ($this->resolveFunction, $fulfillParameters);
 
       // Store for later execution
       else
-        $this->resolveFunction = func_get_args ();
+        $this->resolveFunction = $fulfillParameters;
     }
     // }}}
 
@@ -136,20 +135,19 @@
     /**
      * Reject this deferred execution
      *
-     * @param ...
+     * @param mixed ...$rejectParameters
      *
-     * @access public
      * @return void
      **/
-    public function reject (): void
+    public function reject (mixed ...$rejectParameters): void
     {
       // Check if we may do it directly
       if ($this->rejectFunction instanceof Closure)
-        call_user_func_array ($this->rejectFunction, func_get_args ());
+        call_user_func_array ($this->rejectFunction, $rejectParameters);
 
       // Store for later execution
       else
-        $this->rejectFunction = func_get_args ();
+        $this->rejectFunction = $rejectParameters;
     }
     // }}}
   }
