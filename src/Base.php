@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - Event-Loop
-   * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -24,6 +25,7 @@
 
   use Closure;
   use Exception;
+  use RuntimeException;
   use Throwable;
   
   class Base {
@@ -334,7 +336,8 @@
      * @access public
      * @return string
      *
-     * @throws Exception
+     * @throws RuntimeException if the home-directory of the current user could not be identified
+     * @throws RuntimeException if our data-path does not exist and could not be created
      **/
     public function getDataPath (): string
     {
@@ -348,7 +351,7 @@
       } elseif (isset ($_ENV ['HOME']))
         $Path = $_ENV ['HOME'];
       else
-        throw new Exception ('Unable to locate users root-directory');
+        throw new RuntimeException ('Unable to locate users home-directory');
 
       // Append ourselves to path
       $Path .= '/.qcEvents';
@@ -358,7 +361,7 @@
         !is_dir ($Path) &&
         !mkdir ($Path, 0700)
       )
-        throw new Exception ('Failed to create data-path');
+        throw new RuntimeException ('Failed to create data-path');
       
       return $Path;
     }

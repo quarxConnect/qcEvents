@@ -3,7 +3,7 @@
   /**
    * quarxConnect Events - HTTP Header Object
    * Copyright (C) 2009-2022 Bernd Holzmueller <bernd@quarxconnect.de>
-   * Copyright (C) 2023-2024 Bernd Holzmueller <bernd@innorize.gmbh>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -25,9 +25,6 @@
 
   use InvalidArgumentException;
   use LogicException;
-  use RuntimeException;
-
-  use quarxConnect\Events;
 
   class Header {
     /**
@@ -345,7 +342,7 @@
         throw new LogicException ('Not a request-header');
 
       if (!in_array ($requestMethod, $this::$requestMethods))
-        throw new InvalidArgumentException ('Unsupported Method');
+        throw new InvalidArgumentException ('Unsupported Method: '  . $requestMethod);
 
       $this->requestMethod = $requestMethod;
     }
@@ -606,6 +603,8 @@
       }
 
       foreach ($this->getField ('Set-Cookie', true) as $cookieHeader) {
+        $responseCookie = new Cookie ('');
+
         // Parse the cookie
         foreach (explode (';', $cookieHeader) as $i=>$cookieValue) {
           // Get name and value of current pair
@@ -632,7 +631,7 @@
           if ($i == 0) {
             $decodedValue = urldecode ($cookieValue);
 
-            $responseCookie = new Cookie ($cookieName);
+            $responseCookie->cookieName = $cookieName;
             $responseCookie->cookieEncodeValue = (urlencode ($decodedValue) === $cookieValue);
             $responseCookie->cookieValue = ($responseCookie->cookieEncodeValue ? $decodedValue : $cookieValue);
             $responseCookie->cookieDomain = $requestOrigin;

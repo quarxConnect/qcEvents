@@ -2,31 +2,45 @@
 
   /**
    * qcEvents - Representation of an ACME Order
-   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2019-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   namespace quarxConnect\Events\Vendor\ACME;
-  use \quarxConnect\Events;
-  
+
+  use DateTime;
+  use InvalidArgumentException;
+  use OpenSSLAsymmetricKey;
+  use quarxConnect\Events;
+  use RuntimeException;
+
   class Order {
-    /* ACME-Instance for this order */
-    private $ACME = null;
-    
-    /* URI of this order */
-    private $URI = null;
+    /**
+     * ACME-Client-Instance for this order
+     *
+     * @var Events\Vendor\ACME
+     **/
+    private Events\Vendor\ACME $ACME;
+
+    /**
+     * URI of this order
+     *
+     * @var string
+     **/
+    private string $URI;
     
     /* Status of this order */
     public const STATUS_PENDING = 'pending'; // Order was newly created
@@ -34,15 +48,24 @@
     public const STATUS_PROCESSING = 'processing'; // Order is being processed
     public const STATUS_VALID = 'valid'; // Order was authorized and processed successfully
     public const STATUS_INVALID = 'invalid'; // Order could not be authorized or processed
-    
-    private $Status = Order::STATUS_INVALID;
-    
-    /* Timestamp when this order expires */
-    private $Expires = null;
-    
+
+    /**
+     * Status of this order
+     *
+     * @var string
+     **/
+    private string $orderStatus = Order::STATUS_INVALID;
+
+    /**
+     * `DateTime` when this order expires
+     *
+     * @var DateTime|null
+     **/
+    private DateTime|null $expireDate = null;
+
     /* Identifiers for this order */
-    private $Identifiers = [ ];
-    
+    private array $Identifiers = [];
+
     /* Requested notBefore-Timestamp */
     private $notBefore = null;
     
@@ -60,8 +83,41 @@
     
     /* Error-Information that raised while processing */
     private $Error = null;
-    
-    
+
+    private OpenSSLAsymmetricKey|null $privateKey = null;
+
+    // {{{ createKey
+    /**
+     * Create a private key for a certificate
+     *
+     * @param int $keySize (optional)
+     *
+     * @return OpenSSLAsymmetricKey
+     * @throws InvalidArgumentException if the key-size does not match all constraints
+     * @throws RuntimeException if the key could not be created via OpenSSL
+     **/
+    public static function createKey (int $keySize = 2048): OpenSSLAsymmetricKey
+    {
+      // Check size of the key
+      if ($keySize % 1024 != 0)
+        throw new InvalidArgumentException ('Size must be a multiple of 1024');
+
+      if ($keySize < 2048)
+        throw new InvalidArgumentException ('Size is too small (must be at least 2048)');
+
+      // Create the key
+      $newKey = openssl_pkey_new ([
+        'private_key_bits' => $keySize,
+        'private_key_type' => OPENSSL_KEYTYPE_RSA,
+      ]);
+
+      if ($newKey === false)
+        throw new RuntimeException ('Failed to create new private key: ' . openssl_error_string ());
+
+      return $newKey;
+    }
+    // }}}
+
     // {{{ fromJSON
     /**
      * Create/Restore an ACME-Order from JSON
@@ -108,8 +164,8 @@
     function __debugInfo () : array {
       return [
         'URI' => $this->URI,
-        'Status' => $this->Status,
-        'Expires' => $this->Expires,
+        'Status' => $this->orderStatus,
+        'Expires' => $this->expireDate,
         'notBefore' => $this->notBefore,
         'notAfter' => $this->notAfter,
         'Identifiers' => array_map (
@@ -134,7 +190,7 @@
      * @return bool
      **/
     public function isPending () : bool {
-      return ($this->Status == self::STATUS_PENDING);
+      return ($this->orderStatus == self::STATUS_PENDING);
     }
     // }}}
     
@@ -146,7 +202,7 @@
      * @return bool
      **/
     public function isReady () : bool {
-      return ($this->Status == self::STATUS_READY);
+      return ($this->orderStatus == self::STATUS_READY);
     }
     // }}}
     
@@ -158,7 +214,7 @@
      * @return bool
      **/
     public function isProcessing () : bool {
-      return ($this->Status == self::STATUS_PROCESSING);
+      return ($this->orderStatus == self::STATUS_PROCESSING);
     }
     // }}}
     
@@ -170,7 +226,7 @@
      * @return bool
      **/
     public function isValid () : bool {
-      return ($this->Status == self::STATUS_VALID);
+      return ($this->orderStatus == self::STATUS_VALID);
     }
     // }}}
     
@@ -182,7 +238,7 @@
      * @return bool
      **/
     public function isInvalid () {
-      return ($this->Status == $this::STATUS_INVALID);
+      return ($this->orderStatus == $this::STATUS_INVALID);
     }
     // }}}
     
@@ -277,60 +333,62 @@
       );
     }
     // }}}
-    
-    // {{{ createKey
+
+    // {{{ getPrivateKey
     /**
-     * Create a private key for a certificate
-     * 
-     * @param int $keySize (optional)
-     * 
-     * @access public
-     * @return string
-     **/
-    public function createKey (int $keySize = 2048) : string {
-      // Check size of the key
-      if ($keySize % 1024 != 0)
-        throw new \Exception ('Size must be a multiple of 1024');
-      
-      if ($keySize < 2048)
-        throw new \Exception ('Size is too small (must be at least 2048)');
-      
-      // Create the key
-      $newKey = openssl_pkey_new ([
-        'private_key_bits' => $keySize,
-        'private_key_type' => \OPENSSL_KEYTYPE_RSA,
-      ]);
-      
-      // Export key to string
-      if (!openssl_pkey_export ($newKey, $pemKey))
-        throw new \Exception ('Failed to export new key');
-      
-      return $pemKey;
+     * Retrieve the private key used for this order
+     *
+     * @return OpenSSLAsymmetricKey
+     * @throws InvalidArgumentException
+     * @throws RuntimeException
+     */
+    public function getPrivateKey (): OpenSSLAsymmetricKey
+    {
+      if ($this->privateKey === null)
+        $this->privateKey = self::createKey ();
+
+      return $this->privateKey;
     }
     // }}}
-    
+
+    // {{{ getPrivateKeyAsPEM
+    /**
+     * Retrieve private key from this order in PEM-Format
+     *
+     * @return string
+     * @throws RuntimeException if the key could not be exported from OpenSSL
+     **/
+    public function getPrivateKeyAsPEM (): string
+    {
+      if (!openssl_pkey_export ($this->getPrivateKey (), $exportedPrivateKey))
+        throw new RuntimeException ('Failed to export private key from OpenSSL: ' . openssl_error_string ());
+
+      return $exportedPrivateKey;
+    }
+    // }}}
+
     // {{{ createCSR
     /**
      * Create a Certificate-Signing-Request for this order
-     * 
-     * @param mixed $requestKey
+     *
      * @param array $requestSubject (optional)
-     * 
-     * @access public
+     *
      * @return string
+     * @throws RuntimeException if the request could not be created or exported from OpenSSL
      **/
-    public function createCSR ($requestKey, array $requestSubject = [ ]) : string {
+    public function createCSR (array $requestSubject = []): string
+    {
       // Make sure there is a commonName on the subject
       if (!isset ($requestSubject ['commonName']))
         foreach ($this->Identifiers as $ID) {
           $requestSubject ['commonName'] = $ID->value;
-          
+
           break;
         }
-      
+
       // Create temporary configuration for OpenSSL
       $tmpConfig = tempnam (sys_get_temp_dir (), 'openssl');
-      
+
       file_put_contents (
         $tmpConfig,
         '[req]' . "\n" .
@@ -348,29 +406,33 @@
           )
         ) . "\n"
       );
-      
+
       // Generate the CSR
+      $privateKey = $this->getPrivateKey ();
       $certificateRequest = openssl_csr_new (
         $requestSubject,
-        $requestKey,
+        $privateKey,
         [
           'digest_alg' => 'sha256',
           'config' => $tmpConfig,
           'req_extensions' => 'san',
         ]
       );
-      
+
+      if ($certificateRequest === false)
+        throw new RuntimeException ('Failed to create certificate-signing-request');
+
       // Remove temporary configuration again
       unlink ($tmpConfig);
-      
+
       // Convert CSR to string
       if (!openssl_csr_export ($certificateRequest, $pemRequest))
-        throw new \Exception ('Failed to export certificate request');
-      
+        throw new RuntimeException ('Failed to export certificate request');
+
       return $pemRequest;
     }
     // }}}
-    
+
     // {{{ fetch
     /**
      * Fetch this order from server
@@ -438,13 +500,13 @@
      * @return void
      **/
     private function updateFromJSON (object $JSON) : void {
-      $this->Status = $JSON->status;
+      $this->orderStatus = $JSON->status;
       $this->Identifiers = $JSON->identifiers;
       $this->Authorizations = $JSON->authorizations;
       $this->finalizeURI = $JSON->finalize;
     
       if (isset ($JSON->expires))
-        $this->Expires = strtotime ($JSON->expires);
+        $this->expireDate = new DateTime ($JSON->expires);
       
       if (isset ($JSON->notBefore))
         $this->notBefore = strtotime ($JSON->notBefore);

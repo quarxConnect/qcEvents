@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - Asynchronous DNS Resolver
-   * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -36,15 +37,6 @@
   use RuntimeException;
   use Throwable;
 
-  /**
-   * Asynchronous DNS Resolver
-   * ------------------------
-   *
-   * @class DNS
-   * @extends Emitter
-   * @package quarxConnect\Events
-   * @revision 02
-   **/
   class DNS extends Emitter implements ABI\Based
   {
     use Feature\Based;
@@ -147,7 +139,9 @@
       )
         throw new InvalidType ();
 
-      if (
+      if ($serverPort === null)
+        $serverPort = 53;
+      elseif (
         ($serverPort < 0x0001) ||
         ($serverPort > 0xffff)
       )
@@ -156,7 +150,7 @@
       $this->dnsNameservers = [
         [
           'ip' => $serverIP,
-          'port' => $serverPort ?? 53,
+          'port' => $serverPort,
           'proto' => $serverProto ?? Socket::TYPE_UDP,
         ]
       ];

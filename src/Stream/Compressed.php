@@ -2,28 +2,30 @@
 
   /**
    * qcEvents - Compressed Stream
-   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2019-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Stream;
-  use \quarxConnect\Events;
-  use \quarxConnect\Events\ABI;
-  
+
+  use quarxConnect\Events;
+  use quarxConnect\Events\ABI;
+
   class Compressed extends Events\Virtual\Pipe implements ABI\Consumer, ABI\Stream\Consumer, ABI\Source {
     use Events\Feature\Based;
     
@@ -155,12 +157,12 @@
     // {{{ processBuffer
     /**
      * Try to process bytes from the buffer
-     * 
-     * @access private
+     *
      * @return void
      **/
-    private function processBuffer () : void {
-      // Check wheter we need to detect contents of our buffer
+    private function processBuffer (): void
+    {
+      // Check whether we need to detect contents of our buffer
       if ($this->decompressState == self::STATE_DETECT) {
         // We need at least two bytes to work
         if ($this->compressedBufferLength < 2)
@@ -188,7 +190,7 @@
         $this->___callback ('compressedContainerDetected', $this->containerType);
       }
       
-      // Check wheter to process the header
+      // Check whether to process the header
       if ($this->decompressState == self::STATE_HEADER) {
         // Process GZIP-Header (RFC 1952)
         if ($this->containerType == $this::CONTAINER_GZIP) {
@@ -211,7 +213,8 @@
             // Check if there is enough data on the buffer
             if ($this->compressedBufferLength < ($p += $exLength))
               return;
-          }
+          } else
+            $exLength = 0;
           
           // Check how many zeros we need
           $expectedZeros = ($this->gzipFlags & self::FLAG_GZIP_FILENAME ? 1 : 0) + ($this->gzipFlags & self::FLAG_GZIP_COMMENT ? 1 : 0);
@@ -246,7 +249,7 @@
             $exStop = $headerLength + $exLength;
             $exFields = [ ];
             
-            while ($headerLength + 4 < $xStop) {
+            while ($headerLength + 4 < $exStop) {
               $fieldID = ord ($this->compressedBuffer [$headerLength++]) | (ord ($this->compressedBuffer [$headerLength++]) << 8);
               $exLength = min (ord ($this->compressedBuffer [$headerLength++]) | (ord ($this->compressedBuffer [$headerLength++]) << 8), $exStop - $headerLength);
               

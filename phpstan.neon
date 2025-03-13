@@ -14,7 +14,7 @@ parameters:
     # we can also use the [baseline](https://phpstan.org/user-guide/baseline)
     # to ignore existing errors, and only prevent new ones.
     # The errors will then lower over time.
-    level: 0
+    level: 1
     # we don't want to harass developers with this and
     # instead clean up the ignored errors once in a while.
     reportUnmatchedIgnoredErrors: false

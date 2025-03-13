@@ -2,7 +2,8 @@
 
   /**
    * qcEvents - FTP-Client
-   * Copyright (C) 2019-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2019-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -222,16 +223,11 @@
       $ftpSocket = new Events\Socket ($this->getEventBase ());
       
       return $ftpSocket->connect ($this->Hostname, $this->Port, $ftpSocket::TYPE_TCP)->then (
-        function () use ($ftpSocket, $Key, $Stream) {
-          // Connect Stream with socket
-          return $ftpSocket->pipeStream ($Stream);
-        }
+        // Connect Stream with socket
+        fn (): Events\Promise => $ftpSocket->pipeStream ($Stream)
       )->then (
-        // FTP-Connection was established
-        function () use ($Stream, $Key) {
-          // Try to authenticate
-          return $Stream->authenticate ($this->Username, $this->Password, $this->Account);
-        }
+        // FTP-Connection was established, now try to authenticate
+        fn (): Events\Promise => $Stream->authenticate ($this->Username, $this->Password, $this->Account)
       )->then (
         // FTP-Connection was authenticated
         function () use ($Stream, $Key) {

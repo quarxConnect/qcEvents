@@ -3,26 +3,28 @@
   /**
    * qcEvents - Socks Stream
    * Copyright (C) 2019-2022 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Stream;
-  use \quarxConnect\Events;
-  
+
+  use quarxConnect\Events;
+
   class Socks extends Events\Virtual\Source implements Events\ABI\Stream, Events\ABI\Stream\Consumer {
     /* Timeouts */
     public const NEGOTIATE_TIMEOUT = Events\Socket::CONNECT_TIMEOUT;
@@ -129,18 +131,25 @@
         return Events\Promise::reject ('SOCKS4 only supports TCP-Connection-Types');
       
       // Check if we have to process an IPv6-Connection
-      if ($isIPv6 = Events\Socket::isIPv6 ($hostName)) {
+      $isIPv6 = Events\Socket::isIPv6 ($hostName);
+
+      if ($isIPv6) {
         // Make sure we are running at least in SOCKS5-Mode
         if ($this->socksVersion < self::SOCKS5)
           return Events\Promise::reject ('IPv6 is only supported since SOCKS5');
-      
+
+        $isIPv4 = false;
       // Check if we have to process a domainname for connection
-      } elseif (!($isIPv4 = Events\Socket::isIPv4 ($hostName))) {
-        if ($this->socksVersion < self::SOCKS4a)
-          # TODO: Try to resolve manually here
-          return Events\Promise::reject ('SOCKS4 cannot connect to a domainname');
+      } else {
+        $isIPv4 = Events\Socket::isIPv4 ($hostName);
+
+        if (!$isIPv4) {
+          if ($this->socksVersion < self::SOCKS4a)
+            # TODO: Try to resolve manually here
+            return Events\Promise::reject ('SOCKS4 cannot connect to a domainname');
+        }
       }
-      
+
       // Build the message
       if ($this->socksVersion == self::SOCKS5) {
         $socksMessage = pack ('CCC', 5, $connectionType, 0);

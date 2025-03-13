@@ -2,27 +2,29 @@
 
   /**
    * qcEvents - ACME Client
-   * Copyright (C) 2019-2021 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2019-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Vendor;
-  use \quarxConnect\Events;
-  
+
+  use quarxConnect\Events;
+
   class ACME extends Events\Hookable {
     /* Instance of HTTP-pool to use */
     private $httpPool = null;
@@ -569,7 +571,7 @@
         );
       
       return $requestPromise->then (
-        function ($responseBody, Events\Stream\HTTP\Header $responseHeader = null) use ($rejectError, $URL) {
+        function ($responseBody, Events\Stream\HTTP\Header $responseHeader = null) use ($rejectError) {
           // Check for errors on the response
           if (!$responseHeader)
             throw new \Exception ('No header received');
@@ -584,11 +586,11 @@
             ($responseHeader->getField ('Content-Type') == 'application/problem+json')
           )
             $responseBody = json_decode ($responseBody);
-          
+
           // Check for an error-response
           if ($rejectError && $responseHeader->isError ())
-            throw new \Exception ('Errornous response received' . (is_object ($responseBody) && isset ($responseBody->detail) ? ': ' . $responseBody->detail : ''));
-          
+            throw new \Exception ('Erroneous response received' . (is_object ($responseBody) && isset ($responseBody->detail) ? ': ' . $responseBody->detail : ''));
+
           // Forward the result
           return new Events\Promise\Solution ([ $responseBody, $responseHeader ]);
         }

@@ -2,18 +2,19 @@
 
   /**
    * quarxConnect Events - Client-Socket Pool
-   * Copyright (C) 2017-2024 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2017-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
@@ -428,7 +429,7 @@
         
         // Try to connect
         $newSocket->connect ($remoteHost, $remotePort, $socketType, $useTLS)->then (
-          function () use ($newSocket, $socketKey, $socketIndex, $deferredPromise) {
+          function () use ($newSocket, $socketIndex, $deferredPromise) {
             // Check whether to further set up the socket
             if (count ($this->getListenersForEvent (new ConnectedEvent ($newSocket))) == 0) {
               // Mark the socket as acquired
