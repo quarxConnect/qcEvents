@@ -84,7 +84,7 @@
      * @param string $commandName
      * @param array|null $commandParams
      *
-     * @return Promise{string, int}
+     * @return Promise
      **/
     public static function readProcessOutput (Base $eventBase, string $commandName, array $commandParams = null): Promise
     {

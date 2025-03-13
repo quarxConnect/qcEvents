@@ -505,7 +505,7 @@
      * @param bool|Base $justSettle (optional, deprecated) Don't stop on rejections, but enqueue them as result (Instance of Event-Base accepted here in order to remove this parameter in future)
      * @param Base|null $eventBase (optional) Instance of event-base to use for async operations
      *
-     * @return Promise{array}
+     * @return Promise
      * @throws InvalidArgumentException
      **/
     public static function walk (iterable $walkArray, callable $itemCallback, bool|Base $justSettle = false, Base $eventBase = null): Promise
@@ -548,8 +548,7 @@
      * @param callable $itemCallback Callable to invoke for each element on the iterable
      * @param Base|null $eventBase (optional) Instance of event-base to use for async operations
      *
-     * @access public
-     * @return Promise{array<Promise\Status>}
+     * @return Promise
      * @throws InvalidArgumentException
      **/
     public static function walkSettled (iterable $walkArray, callable $itemCallback, Base $eventBase = null): Promise

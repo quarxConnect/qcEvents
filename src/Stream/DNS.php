@@ -51,7 +51,7 @@
     private int $dnsDatagramSize = 0;
 
     /* Source of our pipe */
-    private Events\ABI\Source|null $dataSource = null;
+    private Events\ABI\Source|Events\ABI\Sink|null $dataSource = null;
 
     // {{{ getSource
     /**

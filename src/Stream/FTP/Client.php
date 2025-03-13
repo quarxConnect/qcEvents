@@ -212,7 +212,7 @@
      *
      * @param string|null $forPath (optional) Pathname for file
      *
-     * @return Events\Promise{string}
+     * @return Events\Promise
      **/
     public function getStatus (string $forPath = null): Events\Promise
     {

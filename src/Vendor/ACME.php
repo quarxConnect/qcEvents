@@ -222,7 +222,7 @@
     /**
      * Retrieve a nonce for the next request
      *
-     * @return Events\Promise{string}
+     * @return Events\Promise
      **/
     public function getNonce (): Events\Promise
     {
