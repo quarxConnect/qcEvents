@@ -23,6 +23,7 @@
 
   namespace quarxConnect\Events\Server;
 
+  use InvalidArgumentException;
   use \quarxConnect\Events;
   
   /**
@@ -598,20 +599,21 @@
     
     // {{{ smtpExplodeMailParams
     /** 
-     * Split up mail-adress and parameters
-     * 
+     * Split up mail-address and parameters
+     *
      * @param string $mailData
-     * 
-     * @access private
+     *
      * @return array
+     * @throws InvalidArgumentException if it's not a valid e-mail-address
      **/
-    private function smtpExplodeMailParams (string $mailData) : array {
-      // Check where to start 
+    private function smtpExplodeMailParams (string $mailData): array
+    {
+      // Check where to start
       $haveBrackets = ($mailData [0] == '<');
       $p = ($haveBrackets ? 1 : 0);
       $l = strlen ($mailData);
       
-      // Retrive the localpart
+      // Retrieve the local part
       if ($mailData [$p] == '"') {
         for ($i = $p + 1; $i < $l; $i++)
           if ($mailData [$i] == '\\') {
@@ -643,12 +645,12 @@
       }
       
       if ($mailData [$p++] != '@')
-        return false;
-      
-      // Retrive the domain
+        throw new InvalidArgumentException ('Failed to detect end of local part');
+
+      // Retrieve the domain
       if (($e = strpos ($mailData, ($haveBrackets ? '>' : ' '), $p)) === false)
-        return false;
-      
+        throw new InvalidArgumentException ('Unable to find end of domain');
+
       $Domain = substr ($mailData, $p, $e - $p);
       $p = $e + 1;
       

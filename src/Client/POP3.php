@@ -245,24 +245,24 @@
       return $this->wrapClientCall (__FUNCTION__, func_get_args ());
     }
     // }}}
-    
+
     // {{{ haveCapability
     /**
      * Check if the server supports a given capability
-     * 
+     *
      * @param string $Capability
-     * 
-     * @access public
-     * @return bool
+     *
+     * @return bool|null
      **/
-    public function haveCapability ($Capability) {
+    public function haveCapability ($Capability): bool|null
+    {
       if (!$this->Stream)
         return null;
-      
+
       return $this->Stream->haveCapability ($Capability);
     }
     // }}}
-    
+
     // {{{ startTLS
     /**
      * Try to enable encryption on this connection

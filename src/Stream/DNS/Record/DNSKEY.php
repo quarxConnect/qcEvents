@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - DNS DNSKEY Resource Record
-   * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -344,7 +345,7 @@
       $this->Protocol = $Protocol;
       $this->Algorithm = $Algorithm;
       $this->PublicKey = $PublicKey;
-      $this->keyTag = null;
+      $this->keyTag = 0x00;
       $this->x509Key = null;
     }
     // }}}

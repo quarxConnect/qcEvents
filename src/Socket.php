@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - Asynchronous Sockets
-   * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -1889,14 +1890,13 @@
     /**
      * Retrieve the stream-resource to watch for reads
      *
-     * @access public
-     * @return resource May return NULL if no reads should be watched
+     * @return resource|null May return NULL if no reads should be watched
      **/
     public function getReadFD ()
     {
       if ($this->readBufferLength >= $this::READ_BUFFER_SIZE)
         return null;
-      
+
       return parent::getReadFD ();
     }
     // }}}

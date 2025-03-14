@@ -54,10 +54,14 @@
     
     /* Server-Responses */
     private $Response = [ ];
-    
-    /* Server-Capabilities */
-    private $serverCapabilities = null;
-    
+
+    /**
+     * Server-Capabilities
+     *
+     * @var array<string>|null
+     */
+    private array|null $serverCapabilities = null;
+
     /* Handle of the attached stream */
     private $Stream = null;
     
@@ -123,26 +127,24 @@
       );
     }
     // }}}
-    
+
     // {{{ haveCapability
     /**
      * Check if the server supports a given capability
-     * 
+     *
      * @param string $Capability
-     * 
-     * @access public
-     * @return bool
+     *
+     * @return bool|null
      **/
-    public function haveCapability ($Capability) {
+    public function haveCapability ($Capability): bool|null {
       // Check if we have server-capabilities
-      if (!is_array ($this->serverCapabilities) ||
-          (count ($this->serverCapabilities) == 0))
+      if ($this->serverCapabilities === null)
         return null;
-      
+
       return in_array ($Capability, $this->serverCapabilities);
     }
     // }}}
-    
+
     // {{{ startTLS
     /**
      * Try to enable encryption on this connection
@@ -829,7 +831,9 @@
             $this->popSetState (self::POP3_STATE_DISCONNECTING);
             $this->initPromise = null;
             
-            return $this->close ();
+            $this->close ();
+
+            return;
           }
           
           // Check for a timestamp

@@ -125,40 +125,38 @@
       return $this->Socket;
     }
     // }}}
-    
+
     // {{{ getWriteFD
     /**
      * Retrive the stream-resource to watch for writes
-     * 
-     * @access public
-     * @return resource May return NULL if no writes should be watched
+     *
+     * @return resource|null May return NULL if no writes should be watched
      **/
     public function getWriteFD () {
       return null;
     }
     // }}}
-    
+
     // {{{ getErrorFD
     /**
      * Retrive an additional stream-resource to watch for errors
+     *
      * @remark Read-/Write-FDs are always monitored for errors
-     * 
-     * @access public
-     * @return resource May return NULL if no additional stream-resource should be watched
+     *
+     * @return resource|null May return NULL if no additional stream-resource should be watched
      **/
     public function getErrorFD () {
       return null;  
     }
     // }}}
-    
+
     // {{{ getWriteFDforClient
     /**
-     * Retrive the Write-FD for one of our clients
-     * 
+     * Retrieve the Write-FD for one of our clients
+     *
      * @param Events\Socket $Client
-     * 
-     * @access public
-     * @return resource
+     *
+     * @return resource|null
      **/
     public function getWriteFDforClient (Events\Socket $Client) {
       if (
@@ -166,7 +164,7 @@
         !in_array ($Client, $this->Clients, true)
       )
         return null;
-      
+
       return $this->Socket;
     }
     // }}}

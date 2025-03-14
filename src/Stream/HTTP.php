@@ -102,9 +102,13 @@
      * @access public
      * @return void
      **/
-    public function consume ($Data, Events\ABI\Source $Source) {
-      if ($this->httpState == $this::HTTP_STATE_DISCONNECTED)
-        return trigger_error ('consume() while disconnected');
+    public function consume ($Data, Events\ABI\Source $Source): void
+    {
+      if ($this->httpState === $this::HTTP_STATE_DISCONNECTED) {
+        trigger_error ('consume() while disconnected');
+
+        return;
+      }
       
       // Check if we are just waiting for the connection to be closed
       if ($this->bufferCompleteBody) {
@@ -165,12 +169,14 @@
             if (!$this->expectBody () || !$this->remoteHeader->hasBody ()) {
               $this->httpSetState (self::HTTP_STATE_CONNECTED);
               
-              return $this->___callback ('httpFinished', $this->remoteHeader, null);
+              $this->___callback ('httpFinished', $this->remoteHeader, null);
+
+              return;
             }
-            
+
             $this->httpSetState ($this::HTTP_STATE_BODY);
-            
-            // Prepare to retrive the body
+
+            // Prepare to retrieve the body
             if ($this->remoteHeader->hasField ('transfer-encoding'))
               $this->bodyEncodings = explode (' ', trim ($this->remoteHeader->getField ('transfer-encoding')));
             else

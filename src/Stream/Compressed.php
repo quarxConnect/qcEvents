@@ -990,7 +990,7 @@
               $this->raiseCompressionError ('Table-Offset too large');
             
             $u [$h] = $q = $hn;
-            $hn += $z;
+            $hn += (int)$z;
             
             // connect to last table, if there is one
             if ($h > 0) {
@@ -1003,7 +1003,7 @@
               for ($o = ($u [$h - 1] + $j) * 3, $P = 0; $P < 3; $P++)
                 $hp [$o + $P] = $r [$P];
             } else
-              $t = $q;
+              $t = (int)$q;
           }
           
           // set up table entry in r

@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - I/O-Stream Handler
-   * Copyright (C) 2014-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2014-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -147,22 +148,24 @@
     /*****************************************************************
      * Stream reading                                                *
      *****************************************************************/
-    
+
     // {{{ getReadFD
     /**
-     * Retrive the stream-resource to watch for reads
-     * 
-     * @access public
-     * @return resource May return NULL if no reads should be watched
+     * Retrieve the stream-resource to watch for reads
+     *
+     * @return resource|null May return NULL if no reads should be watched
      **/
     public function getReadFD () {
-      if (($this->watchSetup !== false) && $this->watchReads)
+      if (
+        ($this->watchSetup !== false) &&
+        $this->watchReads
+      )
         return $this->readFD;
-      
+
       return null;
     }
     // }}}
-    
+
     // {{{ read
     /**
      * Try to read pending data from this source
@@ -256,22 +259,25 @@
     /*****************************************************************
      * Stream writing                                                *
      *****************************************************************/
-    
+
     // {{{ getWriteFD
     /**
-     * Retrive the stream-resource to watch for writes
-     * 
-     * @access public
-     * @return resource May return NULL if no writes should be watched
+     * Retrieve the stream-resource to watch for writes
+     *
+     * @return resource|null May return NULL if no writes should be watched
      **/
-    public function getWriteFD ($Force = false) {
-      if (($this->watchSetup !== false) && ($Force || $this->watchWrites || (count ($this->writeBuffer) > 0)))
+    public function getWriteFD ($Force = false)
+    {
+      if (
+        ($this->watchSetup !== false) &&
+        ($Force || $this->watchWrites || (count ($this->writeBuffer) > 0))
+      )
         return $this->writeFD;
-      
+
       return null;
     }
     // }}}
-    
+
     // {{{ write
     /**
      * Write data to this sink
@@ -383,20 +389,21 @@
       return ($this->watchWrites || (count ($this->writeBuffer) > 0));
     }
     // }}}
-    
+
     // {{{ getErrorFD
     /**
-     * Retrive an additional stream-resource to watch for errors
+     * Retrieve an additional stream-resource to watch for errors
+     *
      * @remark Read-/Write-FDs are always monitored for errors
-     * 
-     * @access public
-     * @return resource May return NULL if no additional stream-resource should be watched
+     *
+     * @return resource|null May return NULL if no additional stream-resource should be watched
      **/
-    public function getErrorFD () {
+    public function getErrorFD ()
+    {
       return null;
     }
     // }}}
-    
+
     /*****************************************************************
      * Stream closeing                                               *
      *****************************************************************/

@@ -617,7 +617,7 @@
             $itemKey = $arrayIterator->key ();
 
             try {
-              $itemResult = $itemCallback ($arrayIterator->current ());
+              $itemResult = $itemCallback ($arrayIterator->current (), $itemKey);
 
               if (!($itemResult instanceof Promise))
                 $itemResult = Promise::resolve ($itemResult, $eventBase);
@@ -692,7 +692,15 @@
 
       if ($theIterable instanceof IteratorAggregate)
         try {
-          return $theIterable->getIterator ();
+          $theIterable = $theIterable->getIterator ();
+
+          if (is_array ($theIterable))
+            return new ArrayIterator ($theIterable);
+
+          if ($theIterable instanceof Iterator)
+            return $theIterable;
+
+          throw new InvalidArgumentException ('getIterator() returned Traversable but no Iterator');
         } catch (Throwable $iteratorException) {
           throw new InvalidArgumentException ('Failed to get Iterator from IteratorAggregate', 0, $iteratorException);
         }

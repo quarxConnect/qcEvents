@@ -131,17 +131,16 @@
       return count ($this->dnsRecords);
     }
     // }}}
-    
+
     // {{{ getRecords
     /**
-     * Retrive all records (of a given type) from this set
-     * 
-     * @param int $Type (optional)
-     * 
-     * @access public
+     * Retrieve all records (of a given type) from this set
+     *
+     * @param int|null $Type (optional)
+     *
      * @return Recordset
      **/
-    public function getRecords ($Type = null) : Recordset {
+    public function getRecords (int $Type = null): Recordset {
       // Check if this is a senseless call
       if ($Type === null)
         return $this;
@@ -172,17 +171,17 @@
         unset ($this->dnsRecords [$recordIndex]);
     }
     // }}}
-    
+
     // {{{ validate
     /**
-     * Try to validate the entire resultset
-     * 
+     * Try to validate the entire result-set
+     *
      * @param array $Keys Array with available DNS-Keys
-     * 
-     * @access public
+     *
      * @return bool
      **/
-    public function validate (array $Keys) {
+    public function validate (array $Keys): bool
+    {
       // Inline data of IANA DNS Root Signing Public Key Certificate
       static $rootCertificate = <<<EOF
 -----BEGIN CERTIFICATE-----
@@ -213,18 +212,18 @@ EOF;
       // Make sure DNSSEC-Support is available
       if (!class_exists (__NAMESPACE__ . '\Record\RRSIG')) {
         trigger_error ('DNSSEC-Support unavailable');
-        
+
         return false;
       }
-      
+
       // Isolate all signatures
       $Signatures = array_filter (
         $this->getRecords (),
         fn (Record $dnsRecord): bool => $dnsRecord instanceof Record\RRSIG
       );
-      
+
       if (count ($Signatures) == 0)
-        return null;
+        return true;
       
       // Validate each signature
       foreach ($Signatures as $Signature) {

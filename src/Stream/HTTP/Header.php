@@ -102,7 +102,7 @@
     /**
      * All header-values
      *
-     * @var string[]
+     * @var string[][]
      **/
     private array $headerValues = [];
 
