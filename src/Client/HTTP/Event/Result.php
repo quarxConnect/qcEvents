@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - Event when a HTTP-Request was finished
-   * Copyright (C) 2009-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2009-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -17,16 +18,20 @@
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Client\HTTP\Event;
 
   use quarxConnect\Events\Client\HTTP\Event as BaseEvent;
   use quarxConnect\Events\Client\HTTP as HttpClient;
   use quarxConnect\Events\Stream\HTTP\Request as HttpRequest;
   use quarxConnect\Events\Stream\HTTP\Header as HttpHeader;
-  
+
+  /**
+   * @property-read HttpHeader $responseHeader
+   * @property-read string|null $responseBody
+   **/
   class Result extends BaseEvent {
     /**
      * Header received as response to our request
@@ -48,10 +53,8 @@
      *
      * @param HttpClient $httpClient The HTTP-Client this event was dispatched at
      * @param HttpRequest $httpRequest The HTTP-Request that caused the event
-     * @param HttpHeader $responseHeader The Response-Header received from the server
-     * @param string $responseBody The Response-Body received from the server
-     *
-     * @return void
+     * @param HttpHeader|null $responseHeader The Response-Header received from the server
+     * @param string|null $responseBody The Response-Body received from the server
      **/
     public function __construct (HttpClient $httpClient, HttpRequest $httpRequest, HttpHeader $responseHeader = null, string $responseBody = null)
     {

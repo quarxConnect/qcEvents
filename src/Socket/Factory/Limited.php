@@ -2,24 +2,25 @@
 
   /**
    * quarxConnect Events - Limited Socket Factory
-   * Copyright (C) 2020-2023 Bernd Holzmueller <bernd@quarxconnect.de>
-   * 
+   * Copyright (C) 2020-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
+   *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
    * the Free Software Foundation, either version 3 of the License, or
    * (at your option) any later version.
-   * 
+   *
    * This program is distributed in the hope that it will be useful,
    * but WITHOUT ANY WARRANTY; without even the implied warranty of
    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    * GNU General Public License for more details.
-   * 
+   *
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Socket\Factory;
 
   use quarxConnect\Events\ABI;
@@ -30,49 +31,54 @@
   class Limited extends Emitter implements ABI\Socket\Factory {
     /* Instance of socket-factory we should add limits to */
     private ABI\Socket\Factory $socketFactory;
-    
-    /* Collection of pending connection-requests */
-    private $pendingConnections = [ ];
-    
-    /* Collection of active connections */
-    private $activeConnections = [ ];
-    
-    /* Callback for connection-release */
-    private $releaseCallback = null;
-    
-    /* Maximum number of parallel connection-leases */
-    private $maxConnections = 64;
-    
+
+    /**
+     * Collection of pending connection-requests
+     *
+     * @var array<array<string, Promise\Deferred|ABI\Socket\Factory|array<string, string|int|bool|null>|string|int|bool|null>>
+     **/
+    private array $pendingConnections = [];
+
+    /**
+     * Collection of active connections
+     *
+     * @var array<array<string, Promise\Deferred|ABI\Socket\Factory|ABI\Stream|array<string, string|int|bool|null>|string|int|bool|null>>
+     **/
+    private array $activeConnections = [];
+
+    /**
+     * Maximum number of parallel connection-leases
+     *
+     * @var int
+     **/
+    private int $maxConnections = 64;
+
     // {{{ __construct
     /**
      * Create a new limited Socket-Factory
-     * 
+     *
      * @param ABI\Socket\Factory $socketFactory
-     * 
-     * @access friendly
+     *
      * @return void
      **/
-    function __construct (ABI\Socket\Factory $socketFactory) {
+    public function __construct (ABI\Socket\Factory $socketFactory)
+    {
       $this->socketFactory = $socketFactory;
-      
-      $this->releaseCallback = function (ABI\Stream $releasedSocket) {
-        $this->releaseConnection ($releasedSocket); 
-      };
     }
     // }}}
-    
+
     // {{{ getEventBase
     /**
      * Retrieve the instance of our event-base
-     * 
-     * @access public
-     * @return Base
+     *
+     * @return Base|null
      **/
-    public function getEventBase (): ?Base {
+    public function getEventBase (): ?Base
+    {
       return $this->socketFactory->getEventBase ();
     }
     // }}}
-    
+
     // {{{ setEventBase
     /**
      * Set the event-base of this source
@@ -194,21 +200,20 @@
     /**
      * Request a connected socket from this factory
      * 
-     * @param array|string $remoteHost
+     * @param array<string>|string $remoteHost
      * @param int $remotePort
      * @param int $socketType
-     * @param bool $useTLS (optional)
+     * @param bool|array<string, string|int|bool|null> $useTLS (optional) Enable TLS on the connection, can be an array with TLS-Options for `Socket::tlsVerify()`
      * @param bool $allowReuse (optional)
      * @param ABI\Socket\Factory $factorySession (optional)
-     * 
-     * @access public
+     *
      * @return Promise
      **/
     public function createConnection (
       array|string $remoteHost,
       int $remotePort,
       int $socketType,
-      bool $useTLS = false,
+      bool|array $useTLS = false,
       bool $allowReuse = false,
       ABI\Socket\Factory $factorySession = null
     ): Promise {
@@ -345,12 +350,12 @@
           $nextRequest ['tls'],
           $nextRequest ['reuse']
         )->then (
-          function (ABI\Stream $activeConnection) use ($nextRequest) {
+          function (ABI\Stream $activeConnection) use ($nextRequest): void {
             // Find request on active connections
             if (($requestIndex = array_search ($nextRequest, $this->activeConnections, true)) === false) {
               trigger_error ('Connection-Request not found on active connections - this should never happen', E_USER_WARNING);
               
-              return $activeConnection;
+              return;
             }
             
             // Replace promise with stream on active connections
@@ -366,7 +371,7 @@
             // Check for additional pending connections
             $this->checkPendingConnections ();
           },
-          function () use ($nextRequest) {
+          function () use ($nextRequest): void {
             // Remove from active connections
             if (($requestIndex = array_search ($nextRequest, $this->activeConnections, true)) !== false)
               unset ($this->activeConnections [$requestIndex]);

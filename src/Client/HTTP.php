@@ -44,7 +44,7 @@
     /**
      * All queued HTTP-Requests
      *
-     * @var array
+     * @var array<HttpRequest>
      **/
     private array $httpRequests = [];
 
@@ -58,7 +58,7 @@
     /**
      * Session-Cookies (if enabled)
      *
-     * @var array|null
+     * @var array<Cookie>|null
      **/
     private array|null $sessionCookies = null;
 
@@ -75,6 +75,13 @@
      * @var float|null
      **/
     private float|null $requestTimeout = null;
+
+    /**
+     * TLS-Options for Client-Sockets
+     *
+     * @var array<string, string|int|bool|null>|null
+     **/
+    private array|null $tlsOptions = null;
 
     // {{{ __construct
     /**
@@ -327,6 +334,38 @@
     }
     // }}}
 
+    // {{{ tlsVerify
+    /**
+     * Set verification-options for TLS-secured connections
+     *
+     * @param bool $verifyPeer (optional) Verify the peer (default)
+     * @param bool $verifyName (optional) Verify peers name (default)
+     * @param bool $allowSelfSigned (optional) Allow self-signed certificates
+     * @param string|null $caFile (optional) File or Directory containing CA-Certificates
+     * @param int|null $verifyDepth (optional) Verify-Depth
+     * @param string|null $expectedFingerprint (optional) Expected fingerprint of peers certificate
+     *
+     * @return void
+     **/
+    public function tlsVerify (
+      bool $verifyPeer = true,
+      bool $verifyName = true,
+      bool $allowSelfSigned = false,
+      string $caFile = null,
+      int $verifyDepth = null,
+      string $expectedFingerprint = null
+    ): void {
+      $this->tlsOptions = [
+        'verifyPeer' => $verifyPeer,
+        'verifyName' => $verifyName,
+        'allowSelfSigned' => $allowSelfSigned,
+        'caFile' => $caFile,
+        'verifyDepth' => $verifyDepth,
+        'expectedFingerprint' => $expectedFingerprint,
+      ];
+    }
+    // }}}
+
     // {{{ request
     /**
      * Enqueue an HTTP-Request
@@ -461,7 +500,8 @@
         $httpRequest->getHostname (),
         $httpRequest->getPort (),
         Events\Socket::TYPE_TCP,
-        $httpRequest->useTLS ()
+        ($httpRequest->useTLS () ? ($this->tlsOptions ?? true) : false),
+        true
       )->then (
         function (ABI\Stream $httpConnection)
         use ($httpRequest, $authenticationPreflight, $Username, $Password, $factorySession, $requestTimer, &$requestTimeout): Promise {

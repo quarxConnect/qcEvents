@@ -3,7 +3,7 @@
   /**
    * quarxConnect Events - Base-Event for Cookie-Events on HTTP-Client
    * Copyright (C) 2009-2022 Bernd Holzmueller <bernd@quarxconnect.de>
-   * Copyright (C) 2023-2024 Bernd Holzmueller <bernd@innorize.gmbh>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -18,9 +18,9 @@
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Client\HTTP\Event;
 
   use InvalidArgumentException;
@@ -30,7 +30,13 @@
   use quarxConnect\Events\Stream\HTTP\Cookie as HttpCookie;
   use quarxConnect\Events\Stream\HTTP\Header as HttpHeader;
   use quarxConnect\Events\Stream\HTTP\Request as HttpRequest;
-  
+
+  /**
+   * @property-read HttpClient $httpClient
+   * @property-read HttpRequest $httpRequest
+   * @property-read HttpHeader $httpHeader
+   * @property-read HttpCookie $eventCookie
+   */
   abstract class Cookie implements EventInterface {
     /**
      * HTTP-Client where the event was dispatched
@@ -84,7 +90,6 @@
      *
      * @param string $propertyName
      *
-     * @access public
      * @return mixed
      **/
     public function __get (string $propertyName): mixed

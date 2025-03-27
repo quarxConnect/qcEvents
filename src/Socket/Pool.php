@@ -147,21 +147,20 @@
     /**
      * Request a connected socket from this factory
      *
-     * @param array|string $remoteHost
+     * @param array<string>|string $remoteHost
      * @param int $remotePort
      * @param int $socketType
-     * @param bool $useTLS (optional)
+     * @param bool|array<string, string|int|bool|null> $useTLS (optional) Enable TLS on the connection, can be an array with TLS-Options for `Socket::tlsVerify()`
      * @param bool $allowReuse (optional)
      * @param Pool\Session|null $poolSession (optional)
      *
-     * @access public
      * @return Promise
      **/
     public function createConnection (
       array|string $remoteHost,
       int $remotePort,
       int $socketType,
-      bool $useTLS = false,
+      bool|array $useTLS = false,
       bool $allowReuse = false,
       Pool\Session $poolSession = null
     ): Promise {
@@ -407,6 +406,16 @@
         
         // Create a new socket
         $this->Sockets [] = $newSocket = new Socket ($eventBase);
+
+        if (is_array ($useTLS))
+          $newSocket->tlsVerify (
+            ($useTLS ['verifyPeer'] ?? true) === true,
+            ($useTLS ['verifyName'] ?? true) === true,
+            ($useTLS ['allowSelfSigned'] ?? false) === true,
+            is_string ($useTLS ['caFile'] ?? null) ? $useTLS ['caFile'] : null,
+            is_int ($useTLS ['verifyDepth'] ?? null) ? $useTLS ['verifyDepth'] : null,
+            is_string ($useTLS ['expectedFingerprint'] ?? null) ? $useTLS ['expectedFingerprint'] : null,
+          );
         
         // Get index of new socket
         if (($socketIndex = array_search ($newSocket, $this->Sockets, true)) === false) {
@@ -428,7 +437,7 @@
         $activeSockets++;
         
         // Try to connect
-        $newSocket->connect ($remoteHost, $remotePort, $socketType, $useTLS)->then (
+        $newSocket->connect ($remoteHost, $remotePort, $socketType, $useTLS !== false)->then (
           function () use ($newSocket, $socketIndex, $deferredPromise) {
             // Check whether to further set up the socket
             if (count ($this->getListenersForEvent (new ConnectedEvent ($newSocket))) == 0) {

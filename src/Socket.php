@@ -1737,19 +1737,19 @@
      * @param int|null $verifyDepth (optional) Verify-Depth
      * @param string|null $expectedFingerprint (optional) Expected fingerprint of peers certificate
      *
-     * @access public
      * @return void
      **/
-    public function tlsVerify (bool $verifyPeer = true, bool $verifyName = true, bool $allowSelfSigned = false, string $caFile = null, int $verifyDepth = null, string $expectedFingerprint = null): void
-    {
-      if ($verifyPeer !== null)
-        $this->tlsOptions ['verify_peer'] = $verifyPeer;
-
-      if ($verifyName !== null)
-        $this->tlsOptions ['verify_peer_name'] = $verifyName;
-
-      if ($allowSelfSigned !== null)
-        $this->tlsOptions ['allow_self_signed'] = $allowSelfSigned;
+    public function tlsVerify (
+      bool $verifyPeer = true,
+      bool $verifyName = true,
+      bool $allowSelfSigned = false,
+      string $caFile = null,
+      int $verifyDepth = null,
+      string $expectedFingerprint = null
+    ): void {
+      $this->tlsOptions ['verify_peer'] = $verifyPeer;
+      $this->tlsOptions ['verify_peer_name'] = $verifyName;
+      $this->tlsOptions ['allow_self_signed'] = $allowSelfSigned;
 
       if ($caFile !== null) {
         if (is_dir ($caFile))

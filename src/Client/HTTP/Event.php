@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - Base-Event for HTTP-Client-Events
-   * Copyright (C) 2009-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2009-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -17,9 +18,9 @@
    * You should have received a copy of the GNU General Public License
    * along with this program.  If not, see <http://www.gnu.org/licenses/>.
    **/
-  
+
   declare (strict_types=1);
-  
+
   namespace quarxConnect\Events\Client\HTTP;
 
   use InvalidArgumentException;
@@ -27,7 +28,11 @@
   use quarxConnect\Events\ABI\Event as EventInterface;
   use quarxConnect\Events\Client\HTTP as HttpClient;
   use quarxConnect\Events\Stream\HTTP\Request as HttpRequest;
-  
+
+  /**
+   * @property-read HttpClient $httpClient
+   * @property-read HttpRequest $httpRequest
+   **/
   abstract class Event implements EventInterface {
     /**
      * HTTP-Client where the event was dispatched
@@ -49,8 +54,6 @@
      *
      * @param HttpClient $httpClient The HTTP-Client this event was dispatched at
      * @param HttpRequest $httpRequest The HTTP-Request that caused the event
-     *
-     * @return void
      **/
     public function __construct (HttpClient $httpClient, HttpRequest $httpRequest)
     {
@@ -65,7 +68,6 @@
      *
      * @param string $propertyName
      *
-     * @access public
      * @return mixed
      **/
     public function __get (string $propertyName): mixed

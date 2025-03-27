@@ -2,7 +2,8 @@
 
   /**
    * quarxConnect Events - Socket Factory
-   * Copyright (C) 2017-2024 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2017-2022 Bernd Holzmueller <bernd@quarxconnect.de>
+   * Copyright (C) 2023-2025 Bernd Holzmueller <bernd@innorize.gmbh>
    *
    * This program is free software: you can redistribute it and/or modify
    * it under the terms of the GNU General Public License as published by
@@ -51,21 +52,21 @@
     /**
      * List of all sockets
      *
-     * @var array
+     * @var array<Socket>
      **/
     private array $socketInstances = [];
 
     /**
      * List of consumers for our sockets
      *
-     * @var array
+     * @var array<ABI\Consumer\Common>
      **/
     private array $socketConsumers = [];
 
     /**
      * Status of our sockets
      *
-     * @var array
+     * @var array<int>
      **/
     private array $socketStates = [];
 
@@ -81,9 +82,6 @@
      * Create a new socket-pool
      *
      * @param Base $eventBase
-     *
-     * @access friendly
-     * @return void
      **/
     public function __construct (Base $eventBase)
     {
@@ -95,21 +93,20 @@
     /**
      * Request a connected socket from this factory
      *
-     * @param array|string $remoteHost
+     * @param array<string>|string $remoteHost
      * @param int $remotePort
      * @param int $socketType
-     * @param bool $useTLS (optional)
+     * @param bool|array<string, string|int|bool|null> $useTLS (optional) Enable TLS on the connection, can be an array with TLS-Options for `Socket::tlsVerify()`
      * @param bool $allowReuse (optional)
      * @param Pool\Session|null $poolSession (optional)
      *
-     * @access public
      * @return Promise
      **/
     public function createConnection (
       array|string $remoteHost,
       int $remotePort,
       int $socketType,
-      bool $useTLS = false,
+      bool|array $useTLS = false,
       bool $allowReuse = false,
       Pool\Session $poolSession = null
     ): Promise
@@ -157,11 +154,21 @@
       $this->socketInstances [$socketIndex] = $theSocket;
       $this->socketStates [$socketIndex] = self::STATE_CONNECTING;
 
+      if (is_array ($useTLS))
+        $theSocket->tlsVerify (
+          ($useTLS ['verifyPeer'] ?? true) === true,
+          ($useTLS ['verifyName'] ?? true) === true,
+          ($useTLS ['allowSelfSigned'] ?? false) === true,
+          is_string ($useTLS ['caFile'] ?? null) ? $useTLS ['caFile'] : null,
+          is_int ($useTLS ['verifyDepth'] ?? null) ? $useTLS ['verifyDepth'] : null,
+          is_string ($useTLS ['expectedFingerprint'] ?? null) ? $useTLS ['expectedFingerprint'] : null,
+        );
+
       return $theSocket->connect (
         $remoteHost,
         $remotePort,
         $socketType,
-        $useTLS
+        $useTLS !== false
       )->then (
         fn (): Promise => $this->dispatch ($connectedEvent)
       )->then (
